@@ -448,10 +448,14 @@ export const Dashboard = ({ user }: DashboardProps) => {
                   </div>
 
                   <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 lg:gap-6">
-                    {/* Pie Chart */}
-                    <Card className="bg-gradient-card shadow-card border-border">
-                      <CardHeader>
-                        <CardTitle className="text-lg font-semibold">Distribuição de Despesas</CardTitle>
+                    {/* Pie Chart - Análise por Categoria */}
+                    <Card className="bg-gradient-card shadow-card border-border lg:row-span-2">
+                      <CardHeader className="pb-2">
+                        <CardTitle className="text-lg font-semibold text-white flex items-center gap-2">
+                          <span className="w-2 h-2 bg-primary rounded-full"></span>
+                          Análise por Categoria
+                        </CardTitle>
+                        <p className="text-xs text-white/60">Clique nas categorias para filtrar</p>
                       </CardHeader>
                       <CardContent>
                         <TransactionPieChart transactions={transactions} type="expenses" />
