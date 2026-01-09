@@ -1,0 +1,58 @@
+project_id = "psyebemhvnwkhnypqgge"
+
+[functions.add-transaction-by-phone]
+verify_jwt = false
+
+[functions.cancel-transaction-by-phone]
+verify_jwt = false
+
+[functions.update-transaction-by-phone]
+verify_jwt = false
+
+[functions.register-user]
+verify_jwt = false
+
+[functions.toggle-user-status]
+verify_jwt = false
+
+[functions.delete-user]
+verify_jwt = false
+
+[functions.confirm-user-email]
+verify_jwt = false
+
+[functions.add-appointment]
+verify_jwt = false
+
+[functions.delete-appointment]
+verify_jwt = false
+
+[functions.update-appointment-by-phone]
+verify_jwt = false
+
+[functions.get-appointments-by-phone]
+verify_jwt = false
+
+[functions.get-transactions-by-phone]
+verify_jwt = false
+
+[functions.get-user-by-phone]
+verify_jwt = false
+
+[functions.admin-create-user]
+verify_jwt = false
+
+[functions.admin-list-users]
+verify_jwt = false
+
+[functions.auto-assign-super-admin]
+verify_jwt = false
+
+[functions.debug-list-users]
+verify_jwt = false
+
+[functions.admin-change-user-password]
+verify_jwt = false
+
+[functions.admin-update-user-profile]
+verify_jwt = false

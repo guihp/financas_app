@@ -1,0 +1,161 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Definition of the design system. All colors, gradients, fonts, etc should be defined here. 
+All colors MUST be HSL.
+*/
+
+@layer base {
+  :root {
+    /* IAFÉ Finanças color scheme - Roxo com texto laranja */
+    --background: 270 50% 15%;
+    --foreground: 25 95% 55%;
+
+    --card: 270 45% 20%;
+    --card-foreground: 25 95% 55%;
+
+    --popover: 270 45% 20%;
+    --popover-foreground: 25 95% 55%;
+
+    --primary: 270 60% 50%;
+    --primary-foreground: 50 100% 60%;
+
+    --secondary: 280 60% 45%;
+    --secondary-foreground: 25 95% 55%;
+
+    --muted: 270 40% 25%;
+    --muted-foreground: 25 85% 50%;
+
+    --accent: 280 60% 45%;
+    --accent-foreground: 50 100% 60%;
+
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 98%;
+
+    --success: 143 73% 59%;
+    --success-foreground: 0 0% 98%;
+
+    --warning: 38 92% 50%;
+    --warning-foreground: 0 0% 98%;
+
+    --border: 270 40% 30%;
+    --input: 270 40% 30%;
+    --ring: 280 60% 50%;
+
+    /* Gradients - IAFÉ Finanças Brand */
+    --gradient-primary: linear-gradient(135deg, hsl(270 60% 50%), hsl(280 60% 45%));
+    --gradient-iafe: linear-gradient(135deg, hsl(270 60% 50%), hsl(280 60% 45%));
+    --gradient-card: linear-gradient(135deg, hsl(270 45% 20%), hsl(270 50% 15%));
+    
+    /* Shadows */
+    --shadow-primary: 0 10px 30px -10px hsl(270 60% 50% / 0.3);
+    --shadow-card: 0 4px 20px -4px hsl(270 50% 10% / 0.5);
+
+    --radius: 0.75rem;
+
+    --sidebar-background: 270 50% 15%;
+    --sidebar-foreground: 25 95% 55%;
+    --sidebar-primary: 280 60% 50%;
+    --sidebar-primary-foreground: 50 100% 60%;
+    --sidebar-accent: 270 40% 25%;
+    --sidebar-accent-foreground: 25 95% 55%;
+    --sidebar-border: 270 40% 30%;
+    --sidebar-ring: 280 60% 50%;
+  }
+
+  .light {
+    --background: 270 50% 15%;
+    --foreground: 25 95% 55%;
+
+    --card: 270 45% 20%;
+    --card-foreground: 25 95% 55%;
+
+    --popover: 270 45% 20%;
+    --popover-foreground: 25 95% 55%;
+
+    --primary: 270 60% 50%;
+    --primary-foreground: 50 100% 60%;
+
+    --secondary: 280 60% 45%;
+    --secondary-foreground: 25 95% 55%;
+
+    --muted: 270 40% 25%;
+    --muted-foreground: 25 85% 50%;
+
+    --accent: 280 60% 45%;
+    --accent-foreground: 50 100% 60%;
+
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 98%;
+
+    --success: 143 73% 45%;
+    --success-foreground: 0 0% 98%;
+
+    --warning: 38 92% 50%;
+    --warning-foreground: 0 0% 98%;
+
+    --border: 270 40% 30%;
+    --input: 270 40% 30%;
+    --ring: 280 60% 50%;
+
+    --gradient-primary: linear-gradient(135deg, hsl(270 60% 50%), hsl(280 60% 45%));
+    --gradient-iafe: linear-gradient(135deg, hsl(270 60% 50%), hsl(280 60% 45%));
+    --gradient-card: linear-gradient(135deg, hsl(270 45% 20%), hsl(270 50% 15%));
+    
+    --shadow-primary: 0 10px 30px -10px hsl(270 60% 50% / 0.3);
+    --shadow-card: 0 4px 20px -4px hsl(270 50% 10% / 0.5);
+
+    --sidebar-background: 270 50% 15%;
+    --sidebar-foreground: 25 95% 55%;
+    --sidebar-primary: 280 60% 50%;
+    --sidebar-primary-foreground: 50 100% 60%;
+    --sidebar-accent: 270 40% 25%;
+    --sidebar-accent-foreground: 25 95% 55%;
+    --sidebar-border: 270 40% 30%;
+    --sidebar-ring: 280 60% 50%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  }
+
+  /* Mobile optimizations */
+  @media (max-width: 1023px) {
+    body {
+      padding-bottom: env(safe-area-inset-bottom);
+    }
+  }
+
+  /* Better scrolling on mobile */
+  @media (max-width: 1023px) {
+    .mobile-scroll {
+      -webkit-overflow-scrolling: touch;
+      scroll-behavior: smooth;
+    }
+  }
+
+  /* Ensure proper spacing for mobile bottom nav */
+  .mobile-content {
+    @apply pb-24; /* 6rem = 96px for bottom nav space */
+  }
+
+  @media (min-width: 1024px) {
+    .mobile-content {
+      @apply pb-6; /* Default desktop padding */
+    }
+  }
+
+  /* Mobile bottom navigation */
+  .mobile-bottom-nav {
+    @apply fixed bottom-0 left-0 right-0 bg-background/95 backdrop-blur-sm border-t border-border z-50;
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+}
