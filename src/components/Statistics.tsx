@@ -350,8 +350,8 @@ export const Statistics = ({ transactions }: StatisticsProps) => {
                 </ResponsiveContainer>
               </div>
               
-              {/* Resumo dos últimos meses */}
-              <div className="bg-white/5 rounded-lg p-4">
+              {/* Resumo dos últimos meses - Responsivo */}
+              <div className="bg-white/5 rounded-lg p-3 sm:p-4">
                 <h4 className="text-sm font-medium text-white/70 mb-3">Resumo dos Últimos Meses</h4>
                 <div className="space-y-2">
                   {Object.entries(stats.transactionsByMonth)
@@ -360,9 +360,40 @@ export const Statistics = ({ transactions }: StatisticsProps) => {
                     .map(([month, data]) => {
                       const saldo = data.income - data.expenses;
                       return (
-                        <div key={month} className="flex items-center justify-between p-3 bg-white/5 rounded-lg">
-                          <span className="font-medium text-white">{formatMonth(month)}</span>
-                          <div className="flex items-center gap-4 lg:gap-8">
+                        <div key={month} className="p-3 bg-white/5 rounded-lg">
+                          {/* Mobile: Layout empilhado */}
+                          <div className="flex items-center justify-between mb-2 sm:mb-0">
+                            <span className="font-medium text-white text-sm">{formatMonth(month)}</span>
+                            {/* Desktop: Saldo ao lado do mês */}
+                            <span className={`hidden sm:inline font-bold text-sm ${saldo >= 0 ? 'text-emerald-400' : 'text-orange-400'}`}>
+                              {saldo >= 0 ? '+' : ''}R$ {saldo.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                            </span>
+                          </div>
+                          
+                          {/* Grid responsivo para valores */}
+                          <div className="grid grid-cols-3 gap-2 sm:hidden">
+                            <div className="text-center p-2 bg-green-500/10 rounded">
+                              <span className="text-[10px] text-white/50 block">Receitas</span>
+                              <span className="text-green-400 font-medium text-xs">
+                                +R$ {(data.income / 1000).toFixed(1)}k
+                              </span>
+                            </div>
+                            <div className="text-center p-2 bg-red-500/10 rounded">
+                              <span className="text-[10px] text-white/50 block">Despesas</span>
+                              <span className="text-red-400 font-medium text-xs">
+                                -R$ {(data.expenses / 1000).toFixed(1)}k
+                              </span>
+                            </div>
+                            <div className={`text-center p-2 rounded ${saldo >= 0 ? 'bg-emerald-500/10' : 'bg-orange-500/10'}`}>
+                              <span className="text-[10px] text-white/50 block">Saldo</span>
+                              <span className={`font-bold text-xs ${saldo >= 0 ? 'text-emerald-400' : 'text-orange-400'}`}>
+                                {saldo >= 0 ? '+' : ''}R$ {(saldo / 1000).toFixed(1)}k
+                              </span>
+                            </div>
+                          </div>
+
+                          {/* Desktop: Layout horizontal */}
+                          <div className="hidden sm:flex items-center justify-end gap-6 lg:gap-8">
                             <div className="text-right">
                               <span className="text-xs text-white/50 block">Receitas</span>
                               <span className="text-green-400 font-medium">
@@ -373,12 +404,6 @@ export const Statistics = ({ transactions }: StatisticsProps) => {
                               <span className="text-xs text-white/50 block">Despesas</span>
                               <span className="text-red-400 font-medium">
                                 -R$ {data.expenses.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                              </span>
-                            </div>
-                            <div className="text-right min-w-[100px]">
-                              <span className="text-xs text-white/50 block">Saldo</span>
-                              <span className={`font-bold ${saldo >= 0 ? 'text-emerald-400' : 'text-orange-400'}`}>
-                                {saldo >= 0 ? '+' : ''}R$ {saldo.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                               </span>
                             </div>
                           </div>

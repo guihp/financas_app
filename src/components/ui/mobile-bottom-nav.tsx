@@ -18,48 +18,53 @@ export const MobileBottomNav = ({
     icon: any;
   }> = [
     { id: "dashboard", label: "Início", icon: TrendingUp },
-    { id: "transactions", label: "Transações", icon: CreditCard },
-    { id: "statistics", label: "Estatísticas", icon: BarChart3 },
-    { id: "categories", label: "Categorias", icon: Tag },
-    { id: "appointments", label: "Agendamentos", icon: Calendar },
+    { id: "transactions", label: "Trans.", icon: CreditCard },
+    { id: "statistics", label: "Stats", icon: BarChart3 },
+    { id: "categories", label: "Categ.", icon: Tag },
+    { id: "appointments", label: "Agend.", icon: Calendar },
   ];
 
   return (
-    <div className="mobile-bottom-nav lg:hidden">
-      <div className="grid grid-cols-6 items-center px-2 py-3 safe-area-bottom">
+    <nav className="fixed bottom-0 left-0 right-0 z-50 lg:hidden bg-card/95 backdrop-blur-lg border-t border-border shadow-[0_-4px_20px_rgba(0,0,0,0.3)]">
+      {/* Safe area padding for iPhone notch/home indicator */}
+      <div 
+        className="grid grid-cols-6 items-center px-1 pt-2"
+        style={{ paddingBottom: 'max(8px, env(safe-area-inset-bottom))' }}
+      >
         {navItems.map((item) => {
           const Icon = item.icon;
           const isActive = currentView === item.id;
           
           return (
-            <Button
+            <button
               key={item.id}
-              variant="ghost"
-              size="sm"
-              className={`flex flex-col items-center justify-center h-12 px-1 py-1 ${
+              className={`flex flex-col items-center justify-center py-2 px-1 rounded-lg transition-all active:scale-95 ${
                 isActive 
-                  ? "text-primary bg-primary/10" 
-                  : "text-muted-foreground hover:text-foreground"
+                  ? "text-primary" 
+                  : "text-white/60"
               }`}
               onClick={() => setCurrentView(item.id)}
             >
-              <Icon className={`h-4 w-4 mb-1 ${isActive ? "text-primary" : ""}`} />
-              <span className="text-[10px] leading-tight truncate max-w-[60px]">{item.label}</span>
-            </Button>
+              <div className={`p-1.5 rounded-lg mb-0.5 transition-colors ${isActive ? 'bg-primary/20' : ''}`}>
+                <Icon className={`h-5 w-5 ${isActive ? "text-primary" : ""}`} />
+              </div>
+              <span className={`text-[9px] font-medium leading-tight ${isActive ? 'text-primary' : ''}`}>
+                {item.label}
+              </span>
+            </button>
           );
         })}
         
         {/* Add Transaction FAB */}
         <div className="flex justify-center">
-          <Button
-            size="sm"
+          <button
             onClick={onAddTransaction}
-            className="h-10 w-10 rounded-full bg-primary hover:bg-primary/90 text-primary-foreground shadow-lg"
+            className="h-11 w-11 rounded-full bg-primary hover:bg-primary/90 text-white shadow-lg shadow-primary/30 flex items-center justify-center transition-all active:scale-95"
           >
-            <Plus className="h-4 w-4" />
-          </Button>
+            <Plus className="h-5 w-5" />
+          </button>
         </div>
       </div>
-    </div>
+    </nav>
   );
 };

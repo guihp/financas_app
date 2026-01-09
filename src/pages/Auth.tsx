@@ -31,21 +31,40 @@ const Auth = () => {
   const { toast } = useToast();
 
   // Format phone number to (DDD) 9 XXXX-XXXX
+  // Sempre adiciona o 9 depois do DDD automaticamente
   const formatPhone = (value: string) => {
     // Remove all non-numeric characters
-    const numbers = value.replace(/\D/g, '');
+    let numbers = value.replace(/\D/g, '');
     
-    // Limit to 11 digits (DDD + 9 digits)
+    // Se tiver mais de 2 dígitos (DDD completo), garantir que o 3º dígito seja 9
+    if (numbers.length > 2) {
+      const ddd = numbers.slice(0, 2);
+      let rest = numbers.slice(2);
+      
+      // Se o primeiro dígito após o DDD não for 9, adiciona o 9
+      if (rest.length > 0 && rest[0] !== '9') {
+        rest = '9' + rest;
+      }
+      
+      // Limita o resto a 9 dígitos (9 + 8 números)
+      rest = rest.slice(0, 9);
+      numbers = ddd + rest;
+    }
+    
+    // Limit to 11 digits total (DDD + 9 + 8 dígitos)
     const limited = numbers.slice(0, 11);
     
     // Format: (XX) 9 XXXX-XXXX
     if (limited.length <= 2) {
       return limited.length > 0 ? `(${limited}` : '';
-    } else if (limited.length <= 7) {
+    } else if (limited.length <= 3) {
+      // Só DDD + 9
       return `(${limited.slice(0, 2)}) ${limited.slice(2)}`;
-    } else if (limited.length <= 10) {
+    } else if (limited.length <= 7) {
+      // DDD + 9 + primeiros 4 dígitos
       return `(${limited.slice(0, 2)}) ${limited.slice(2, 3)} ${limited.slice(3)}`;
     } else {
+      // Completo: (XX) 9 XXXX-XXXX
       return `(${limited.slice(0, 2)}) ${limited.slice(2, 3)} ${limited.slice(3, 7)}-${limited.slice(7, 11)}`;
     }
   };
