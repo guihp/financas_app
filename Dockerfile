@@ -21,7 +21,7 @@ ENV VITE_SUPABASE_URL=$VITE_SUPABASE_URL
 ENV VITE_SUPABASE_ANON_KEY=$VITE_SUPABASE_ANON_KEY
 
 # Build the application
-RUN npm run build
+RUN npm run build && ls -la dist/ && cat dist/index.html | head -5
 
 # Production stage
 FROM nginx:alpine
@@ -31,6 +31,16 @@ COPY --from=builder /app/dist /usr/share/nginx/html
 
 # Copy nginx configuration
 COPY nginx.conf /etc/nginx/conf.d/default.conf
+
+# Remove default nginx config to avoid conflicts
+RUN rm -f /etc/nginx/conf.d/default.conf.bak 2>/dev/null || true
+
+# Ensure proper permissions
+RUN chmod -R 755 /usr/share/nginx/html
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+    CMD wget --no-verbose --tries=1 --spider http://localhost:80/health || exit 1
 
 # Expose port
 EXPOSE 80
