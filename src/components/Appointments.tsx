@@ -192,18 +192,18 @@ export const Appointments = ({ user }: AppointmentsProps) => {
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <div className="flex items-center justify-between">
-          <CardTitle className="flex items-center gap-2">
-            <Calendar className="h-5 w-5" />
+    <Card className="overflow-hidden">
+      <CardHeader className="pb-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <CardTitle className="flex items-center gap-2 text-white">
+            <Calendar className="h-5 w-5 text-primary" />
             Agendamentos
           </CardTitle>
           <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
             <DialogTrigger asChild>
-              <Button size="sm">
+              <Button size="sm" className="w-full sm:w-auto">
                 <Plus className="h-4 w-4 mr-2" />
-                Novo Agendamento
+                <span className="whitespace-nowrap">Novo Agendamento</span>
               </Button>
             </DialogTrigger>
             <DialogContent>
