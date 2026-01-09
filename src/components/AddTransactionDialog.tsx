@@ -42,6 +42,29 @@ export const AddTransactionDialog = ({
   const [showNewCategoryInput, setShowNewCategoryInput] = useState(false);
   const { toast } = useToast();
 
+  // Formatar valor como moeda brasileira (1.234,56)
+  const formatCurrency = (value: string) => {
+    // Remove tudo que não é número
+    let numbers = value.replace(/\D/g, '');
+    
+    // Se não há números, retorna vazio
+    if (!numbers) return '';
+    
+    // Converte para número e divide por 100 para ter 2 casas decimais
+    const numValue = parseInt(numbers, 10) / 100;
+    
+    // Formata com separador de milhar e decimal brasileiro
+    return numValue.toLocaleString('pt-BR', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2
+    });
+  };
+
+  const handleAmountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const formatted = formatCurrency(e.target.value);
+    setAmount(formatted);
+  };
+
   const defaultCategories = [
     "alimentacao",
     "transporte", 
@@ -137,45 +160,49 @@ export const AddTransactionDialog = ({
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <Label className="text-sm font-medium">Tipo</Label>
+            <Label className="text-sm font-medium text-white">Tipo</Label>
             <RadioGroup value={type} onValueChange={(value) => setType(value as "income" | "expense")} className="flex gap-6 mt-2">
               <div className="flex items-center space-x-2">
                 <RadioGroupItem value="expense" id="expense" />
-                <Label htmlFor="expense">Despesa</Label>
+                <Label htmlFor="expense" className="text-white">Despesa</Label>
               </div>
               <div className="flex items-center space-x-2">
                 <RadioGroupItem value="income" id="income" />
-                <Label htmlFor="income">Receita</Label>
+                <Label htmlFor="income" className="text-white">Receita</Label>
               </div>
             </RadioGroup>
           </div>
 
           <div>
-            <Label htmlFor="amount" className="text-sm font-medium">Valor (R$)</Label>
-            <Input
-              id="amount"
-              type="text"
-              placeholder="0,00"
-              value={amount}
-              onChange={(e) => setAmount(e.target.value)}
-              className="mt-1"
-            />
+            <Label htmlFor="amount" className="text-sm font-medium text-white">Valor (R$)</Label>
+            <div className="relative mt-1">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-white/70 font-medium">R$</span>
+              <Input
+                id="amount"
+                type="text"
+                inputMode="numeric"
+                placeholder="0,00"
+                value={amount}
+                onChange={handleAmountChange}
+                className="pl-10 text-white text-right font-semibold text-lg"
+              />
+            </div>
           </div>
 
           <div>
-            <Label htmlFor="description" className="text-sm font-medium">Descrição</Label>
+            <Label htmlFor="description" className="text-sm font-medium text-white">Descrição</Label>
             <Input
               id="description"
               type="text"
               placeholder="Descreva a transação"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              className="mt-1"
+              className="mt-1 text-white"
             />
           </div>
 
           <div>
-            <Label htmlFor="category" className="text-sm font-medium">Categoria</Label>
+            <Label htmlFor="category" className="text-sm font-medium text-white">Categoria</Label>
             <div className="space-y-2 mt-1">
               <Select value={category} onValueChange={setCategory}>
                 <SelectTrigger>
