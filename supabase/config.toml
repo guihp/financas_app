@@ -1,4 +1,4 @@
-project_id = "psyebemhvnwkhnypqgge"
+project_id = "dlbiwguzbiosaoyrcvay"
 
 [functions.add-transaction-by-phone]
 verify_jwt = false

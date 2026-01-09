@@ -212,7 +212,7 @@ export const ApiTestForm = () => {
             <div className="mt-6 p-4 bg-muted rounded-lg">
               <h4 className="font-semibold mb-2">URL da API:</h4>
               <code className="text-sm bg-background p-2 rounded block">
-                https://psyebemhvnwkhnypqgge.supabase.co/functions/v1/add-transaction-by-phone
+                https://dlbiwguzbiosaoyrcvay.supabase.co/functions/v1/add-transaction-by-phone
               </code>
             </div>
           </TabsContent>
@@ -250,7 +250,7 @@ export const ApiTestForm = () => {
             <div className="mt-6 p-4 bg-muted rounded-lg">
               <h4 className="font-semibold mb-2">URL da API:</h4>
               <code className="text-sm bg-background p-2 rounded block">
-                https://psyebemhvnwkhnypqgge.supabase.co/functions/v1/cancel-transaction-by-phone
+                https://dlbiwguzbiosaoyrcvay.supabase.co/functions/v1/cancel-transaction-by-phone
               </code>
             </div>
           </TabsContent>

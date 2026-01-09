@@ -538,7 +538,7 @@ export const Dashboard = ({ user }: DashboardProps) => {
                       <div>
                         <strong>URL:</strong>
                         <code className="block bg-background p-2 rounded mt-1">
-                          https://psyebemhvnwkhnypqgge.supabase.co/functions/v1/add-transaction-by-phone
+                          https://dlbiwguzbiosaoyrcvay.supabase.co/functions/v1/add-transaction-by-phone
                         </code>
                       </div>
                       <div>
