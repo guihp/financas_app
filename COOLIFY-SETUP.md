@@ -27,10 +27,11 @@ PORT=8080
 WEBHOOK_BASE_URL=https://n8n-sgo8ksokg404ocg8sgc4sooc.vemprajogo.com
 ```
 
-**Importante**: A URL completa do webhook será:
-`{WEBHOOK_BASE_URL}/webhook/CODIGO-OTP`
+**Importante**: As URLs completas dos webhooks serão construídas automaticamente:
+- `{WEBHOOK_BASE_URL}/webhook/CODIGO-OTP` - Para código OTP
+- `{WEBHOOK_BASE_URL}/webhook/registra_ai_lembrete` - Para lembretes de agendamentos
 
-Onde `CODIGO-OTP` é literalmente o nome do endpoint (não é variável).
+Onde `CODIGO-OTP` e `registra_ai_lembrete` são literalmente os nomes dos endpoints (não são variáveis).
 
 ## 📋 Passos para Deploy
 
@@ -81,9 +82,12 @@ Onde `CODIGO-OTP` é literalmente o nome do endpoint (não é variável).
 - ✅ `vite.config.ts` - Atualizado para usar variável PORT
 - ✅ `src/integrations/supabase/client.ts` - Atualizado para usar variáveis de ambiente
 - ✅ `supabase/functions/generate-otp/index.ts` - Atualizado para usar WEBHOOK_BASE_URL
+- ✅ `supabase/functions/appointment-notifications/index.ts` - Atualizado para usar WEBHOOK_BASE_URL
+- ✅ `supabase/functions/test-webhook/index.ts` - Atualizado para usar WEBHOOK_BASE_URL
 
 ## 📝 Notas
 
 - O projeto usa Vite, então as variáveis de ambiente do frontend devem começar com `VITE_`
-- O webhook só será chamado se `WEBHOOK_BASE_URL` estiver configurado
+- Os webhooks só serão chamados se `WEBHOOK_BASE_URL` estiver configurado
 - Se o webhook falhar, o OTP ainda será gerado (não bloqueia o fluxo)
+- O webhook de lembretes de agendamentos é ativado automaticamente via cron job a cada 5 minutos (configurado na migration `20260109234545_update_appointment_notifications_cron.sql`)

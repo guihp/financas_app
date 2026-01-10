@@ -32,8 +32,25 @@ serve(async (req) => {
 
     console.log('Payload do webhook:', JSON.stringify(webhookPayload, null, 2));
 
+    // Get webhook base URL from environment variable
+    const webhookBaseUrl = Deno.env.get('WEBHOOK_BASE_URL') || '';
+    const webhookUrl = webhookBaseUrl ? `${webhookBaseUrl}/webhook/registra_ai_lembrete` : null;
+    
+    if (!webhookUrl) {
+      return new Response(
+        JSON.stringify({ 
+          success: false,
+          error: 'WEBHOOK_BASE_URL not configured. Please set this environment variable in Supabase Dashboard.'
+        }),
+        { 
+          status: 400,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        }
+      );
+    }
+
     // Send webhook
-    const webhookResponse = await fetch('https://webhook.auto.visionmarck.com.br/webhook/registra_ai_lembrete', {
+    const webhookResponse = await fetch(webhookUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

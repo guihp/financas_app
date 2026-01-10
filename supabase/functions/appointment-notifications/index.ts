@@ -179,9 +179,18 @@ async function checkAndSendNotification(
   console.log(`Sending ${dbNotificationType} notification for appointment ${appointment.id}`);
   console.log('Webhook payload:', JSON.stringify(webhookPayload, null, 2));
 
+  // Get webhook base URL from environment variable
+  const webhookBaseUrl = Deno.env.get('WEBHOOK_BASE_URL') || '';
+  const webhookUrl = webhookBaseUrl ? `${webhookBaseUrl}/webhook/registra_ai_lembrete` : null;
+  
+  if (!webhookUrl) {
+    console.warn('WEBHOOK_BASE_URL not configured, skipping webhook call');
+    return;
+  }
+
   try {
     // Send webhook
-    const webhookResponse = await fetch('https://webhook.auto.visionmarck.com.br/webhook/registra_ai_lembrete', {
+    const webhookResponse = await fetch(webhookUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
