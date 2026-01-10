@@ -233,7 +233,7 @@ export const Dashboard = ({ user }: DashboardProps) => {
 
   return (
     <div className="min-h-screen bg-background">
-      <div className="flex flex-col lg:flex-row">
+      <div className="flex flex-col lg:flex-row lg:h-screen lg:overflow-hidden">
         {/* Mobile Header */}
         <div className="lg:hidden bg-sidebar border-b border-sidebar-border p-4 flex items-center justify-between sticky top-0 z-10">
           <Logo variant="horizontal" size="sm" />
@@ -260,12 +260,12 @@ export const Dashboard = ({ user }: DashboardProps) => {
         </div>
 
         {/* Sidebar - Hidden on mobile, shown on desktop */}
-        <div className="hidden lg:block w-64 bg-sidebar border-r border-sidebar-border p-6">
-          <div className="mb-8">
+        <div className="hidden lg:flex lg:flex-col lg:w-64 bg-sidebar border-r border-sidebar-border p-6 h-screen sticky top-0 overflow-y-auto">
+          <div className="mb-8 flex-shrink-0">
             <Logo variant="horizontal" size="md" />
           </div>
 
-          <nav className="space-y-2">
+          <nav className="space-y-2 flex-1 overflow-y-auto">
             <Button 
               variant={currentView === "dashboard" ? "default" : "ghost"}
               className="w-full justify-start text-sidebar-foreground hover:bg-sidebar-accent" 
@@ -334,8 +334,8 @@ export const Dashboard = ({ user }: DashboardProps) => {
             )}
           </nav>
 
-          <div className="mt-auto pt-4 border-t border-sidebar-border">
-            <div className="text-sm text-sidebar-foreground/60 mb-2 px-2">
+          <div className="mt-auto pt-4 border-t border-sidebar-border flex-shrink-0 space-y-4">
+            <div className="text-sm text-sidebar-foreground/60 mb-2 px-2 truncate" title={user.email}>
               {user.email}
             </div>
             <Button 
@@ -347,9 +347,7 @@ export const Dashboard = ({ user }: DashboardProps) => {
               <LogOut className="w-4 h-4 mr-3" />
               Sair
             </Button>
-          </div>
-
-          <div className="mt-8">
+            
             <Button 
               onClick={() => setIsAddDialogOpen(true)}
               className="w-full bg-primary hover:bg-primary/90 text-primary-foreground"
@@ -361,13 +359,13 @@ export const Dashboard = ({ user }: DashboardProps) => {
         </div>
 
         {/* Main Content */}
-        <div className="flex-1 p-4 lg:p-6 mobile-content lg:pb-6 mobile-scroll overflow-y-auto">
+        <div className="flex-1 p-4 lg:p-6 mobile-content lg:pb-6 mobile-scroll overflow-y-auto lg:h-screen lg:overflow-y-auto">
           {loading ? (
             <div className="flex items-center justify-center h-64">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
             </div>
           ) : (
-            <div className="space-y-6">
+            <div className="space-y-6 min-h-full">
               {currentView === "dashboard" && (
                 <>
                   <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 lg:gap-6 mb-4 lg:mb-6">
@@ -498,10 +496,11 @@ export const Dashboard = ({ user }: DashboardProps) => {
               )}
 
               {currentView === "transactions" && (
-                <TransactionList 
-                  transactions={transactions} 
-                  showAll={true} 
-                  onTransactionDeleted={() => {
+                <div className="min-h-[calc(100vh-120px)]">
+                  <TransactionList 
+                    transactions={transactions} 
+                    showAll={true} 
+                    onTransactionDeleted={() => {
                     // Reload transactions after deletion
                     const loadData = async () => {
                       const { data: transactionsData } = await supabase
@@ -522,7 +521,8 @@ export const Dashboard = ({ user }: DashboardProps) => {
                     };
                     loadData();
                   }}
-                />
+                  />
+                </div>
               )}
 
               {currentView === "statistics" && (
@@ -539,7 +539,9 @@ export const Dashboard = ({ user }: DashboardProps) => {
               )}
 
               {currentView === "appointments" && (
-                <Appointments user={user} />
+                <div className="min-h-[calc(100vh-120px)]">
+                  <Appointments user={user} />
+                </div>
               )}
 
               {currentView === "api-test" && (
@@ -600,7 +602,9 @@ export const Dashboard = ({ user }: DashboardProps) => {
               )}
 
               {currentView === "change-password" && (
-                <ChangePassword />
+                <div className="min-h-[calc(100vh-120px)]">
+                  <ChangePassword />
+                </div>
               )}
 
               {/* Spacer final para garantir 10px de espaço antes do menu mobile */}

@@ -247,11 +247,34 @@ const Auth = () => {
             setMessage(registerError.message || "Erro ao criar conta.");
             setOtpVerified(false); // Reset verification on error
           } else {
+            // Conta criada com sucesso, fazer login automático
             toast({
               title: "Conta criada com sucesso!",
-              description: "Você pode fazer login agora.",
+              description: "Fazendo login automático...",
             });
-            setActiveTab("login");
+            
+            // Fazer login automático
+            const { error: signInError } = await supabase.auth.signInWithPassword({
+              email,
+              password,
+            });
+
+            if (signInError) {
+              // Se falhar o login, mostrar mensagem mas não resetar
+              toast({
+                title: "Conta criada!",
+                description: "Faça login manualmente.",
+              });
+              setActiveTab("login");
+            } else {
+              // Login bem-sucedido, navegar será automático via onAuthStateChange
+              toast({
+                title: "Login realizado!",
+                description: "Bem-vindo à IAFÉ Finanças!",
+              });
+            }
+            
+            // Limpar formulário
             setEmail("");
             setPassword("");
             setFullName("");
