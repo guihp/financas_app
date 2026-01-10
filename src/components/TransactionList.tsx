@@ -17,10 +17,24 @@ export const TransactionList = ({ transactions, showAll = false, onTransactionDe
 
   const handleDeleteTransaction = async (transactionId: string) => {
     try {
+      // Verificar se usuário ainda está ativo
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        toast({
+          title: "Sessão inválida",
+          description: "Por favor, faça login novamente.",
+          variant: "destructive",
+        });
+        await supabase.auth.signOut();
+        return;
+      }
+
+      // Deletar apenas se transação pertencer ao usuário (RLS também protege)
       const { error } = await supabase
         .from('transactions')
         .delete()
-        .eq('id', transactionId);
+        .eq('id', transactionId)
+        .eq('user_id', user.id); // CRÍTICO: Garantir que só deleta suas próprias transações
 
       if (error) throw error;
 

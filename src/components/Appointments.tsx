@@ -42,9 +42,22 @@ export const Appointments = ({ user }: AppointmentsProps) => {
 
   const fetchAppointments = async () => {
     try {
+      // Verificar se usuário ainda está ativo
+      const { data: { user: currentUser }, error: authError } = await supabase.auth.getUser();
+      if (authError || !currentUser || currentUser.id !== user.id) {
+        toast({
+          title: "Sessão inválida",
+          description: "Por favor, faça login novamente.",
+          variant: "destructive",
+        });
+        await supabase.auth.signOut();
+        return;
+      }
+
       const { data, error } = await supabase
         .from("appointments")
         .select("*")
+        .eq("user_id", user.id) // CRÍTICO: Filtrar por user_id para evitar vazamento de dados
         .order("date", { ascending: true })
         .order("time", { ascending: true });
 
@@ -64,7 +77,7 @@ export const Appointments = ({ user }: AppointmentsProps) => {
 
   useEffect(() => {
     fetchAppointments();
-  }, []);
+  }, [user.id]);
 
   const handleCreateAppointment = async () => {
     if (!newAppointment.title || !newAppointment.date) {
@@ -132,7 +145,24 @@ export const Appointments = ({ user }: AppointmentsProps) => {
 
   const handleDeleteAppointment = async (id: string) => {
     try {
-      const { error } = await supabase.from("appointments").delete().eq("id", id);
+      // Verificar se usuário ainda está ativo
+      const { data: { user: currentUser }, error: authError } = await supabase.auth.getUser();
+      if (authError || !currentUser || currentUser.id !== user.id) {
+        toast({
+          title: "Sessão inválida",
+          description: "Por favor, faça login novamente.",
+          variant: "destructive",
+        });
+        await supabase.auth.signOut();
+        return;
+      }
+
+      // Deletar apenas se pertencer ao usuário (RLS também protege, mas adicionar por segurança)
+      const { error } = await supabase
+        .from("appointments")
+        .delete()
+        .eq("id", id)
+        .eq("user_id", user.id); // CRÍTICO: Garantir que só deleta seus próprios appointments
 
       if (error) throw error;
 
@@ -156,10 +186,24 @@ export const Appointments = ({ user }: AppointmentsProps) => {
     const newStatus = currentStatus === 'completed' ? 'pending' : 'completed';
     
     try {
+      // Verificar se usuário ainda está ativo
+      const { data: { user: currentUser }, error: authError } = await supabase.auth.getUser();
+      if (authError || !currentUser || currentUser.id !== user.id) {
+        toast({
+          title: "Sessão inválida",
+          description: "Por favor, faça login novamente.",
+          variant: "destructive",
+        });
+        await supabase.auth.signOut();
+        return;
+      }
+
+      // Atualizar apenas se pertencer ao usuário (RLS também protege, mas adicionar por segurança)
       const { error } = await supabase
         .from("appointments")
         .update({ status: newStatus })
-        .eq("id", id);
+        .eq("id", id)
+        .eq("user_id", user.id); // CRÍTICO: Garantir que só atualiza seus próprios appointments
 
       if (error) throw error;
 

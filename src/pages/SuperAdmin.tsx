@@ -37,25 +37,60 @@ const SuperAdmin = () => {
 
       setUser(session.user);
 
-      // Check if user is super admin
-      console.log('Checking if user is super admin...');
-      const { data: userRole, error } = await supabase
-        .from('user_roles')
-        .select('role')
+      // Verificar se usuário existe e está ativo
+      const { data: profileData, error: profileError } = await supabase
+        .from('profiles')
+        .select('id')
         .eq('user_id', session.user.id)
-        .eq('role', 'super_admin')
-        .single()
-      
-      console.log('Super admin check result:', { userRole, error });
-      
-      if (error && error.code !== 'PGRST116') { // PGRST116 = no rows found
-        console.error('Error checking super admin status:', error);
-        toast.error("Erro ao verificar permissões");
-        navigate("/");
+        .single();
+
+      if (profileError || !profileData) {
+        console.error('User profile not found:', profileError);
+        toast.error("Usuário não encontrado");
+        await supabase.auth.signOut();
+        navigate("/auth");
         return;
       }
 
-      if (!userRole) {
+      // Check if user is super admin - buscar todas as roles
+      console.log('Checking if user is super admin...');
+      const { data: userRoles, error } = await supabase
+        .from('user_roles')
+        .select('role')
+        .eq('user_id', session.user.id);
+      
+      console.log('Super admin check result:', { userRoles, error });
+      
+      if (error) {
+        // Se erro 406 ou outro erro, tentar usar função RPC
+        if (error.code !== 'PGRST116') {
+          console.error('Error checking super admin status:', error);
+          // Tentar função RPC como fallback
+          try {
+            const { data: isSuperAdminData } = await supabase.rpc('is_super_admin');
+            if (isSuperAdminData !== true) {
+              toast.error("Acesso negado - Apenas super administradores");
+              navigate("/");
+              return;
+            }
+          } catch (rpcError) {
+            console.error('Error with RPC fallback:', rpcError);
+            toast.error("Erro ao verificar permissões");
+            navigate("/");
+            return;
+          }
+        } else {
+          // PGRST116 = no rows found - não é super admin
+          toast.error("Acesso negado - Apenas super administradores");
+          navigate("/");
+          return;
+        }
+      }
+
+      // Verificar se tem role super_admin
+      const isSuperAdmin = userRoles?.some(role => role.role === 'super_admin') || false;
+
+      if (!isSuperAdmin) {
         console.log('User is not super admin');
         toast.error("Acesso negado - Apenas super administradores");
         navigate("/");

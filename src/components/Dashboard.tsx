@@ -64,15 +64,67 @@ export const Dashboard = ({ user }: DashboardProps) => {
   // Load transactions and categories from Supabase
   useEffect(() => {
     const loadData = async () => {
-      // Check if user is super admin
-      const { data: userRole } = await supabase
+      // Verificar se usuário existe e está ativo
+      const { data: { user: authUser }, error: authError } = await supabase.auth.getUser();
+      
+      if (authError || !authUser || authUser.id !== user.id) {
+        toast({
+          title: "Sessão inválida",
+          description: "Usuário não encontrado ou sessão expirada. Por favor, faça login novamente.",
+          variant: "destructive",
+        });
+        await supabase.auth.signOut();
+        navigate("/auth");
+        return;
+      }
+
+      // Verificar se usuário tem perfil (se foi deletado, não terá perfil)
+      const { data: profileData, error: profileError } = await supabase
+        .from('profiles')
+        .select('id')
+        .eq('user_id', user.id)
+        .single();
+
+      if (profileError || !profileData) {
+        toast({
+          title: "Usuário não encontrado",
+          description: "Seu perfil não foi encontrado. Por favor, entre em contato com o suporte.",
+          variant: "destructive",
+        });
+        await supabase.auth.signOut();
+        navigate("/auth");
+        return;
+      }
+
+      // Check if user is super admin - buscar todas as roles e verificar no frontend
+      const { data: userRolesData, error: roleError } = await supabase
         .from('user_roles')
         .select('role')
-        .eq('user_id', user.id)
-        .eq('role', 'super_admin')
-        .single()
+        .eq('user_id', user.id);
       
-      setIsSuperAdmin(!!userRole);
+      // Se erro, verificar se é 406 (Not Acceptable) ou outro
+      if (roleError) {
+        console.error("Error checking user roles:", roleError);
+        // Se erro 406, pode ser problema de RLS - não bloquear, apenas não definir como super admin
+        if (roleError.code === 'PGRST116') {
+          // No rows found - usuário não tem role, não é super admin
+          setIsSuperAdmin(false);
+        } else {
+          // Outro erro - tentar usar função RPC como fallback
+          try {
+            const { data: isSuperAdminData } = await supabase
+              .rpc('is_super_admin');
+            setIsSuperAdmin(isSuperAdminData === true);
+          } catch (rpcError) {
+            console.error("Error with RPC fallback:", rpcError);
+            setIsSuperAdmin(false);
+          }
+        }
+      } else {
+        // Verificar se tem role super_admin
+        const isSuperAdmin = userRolesData?.some(role => role.role === 'super_admin') || false;
+        setIsSuperAdmin(isSuperAdmin);
+      }
 
       // Load transactions
       const { data: transactionsData, error: transactionsError } = await supabase

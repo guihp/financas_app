@@ -45,10 +45,20 @@ export const Categories = ({ transactions, categories, onAddCategory, onUpdateCa
     }
 
     try {
+      // Verificar se usuário ainda está ativo
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        toast.error("Sessão inválida. Por favor, faça login novamente.");
+        await supabase.auth.signOut();
+        return;
+      }
+
+      // Atualizar apenas se categoria pertencer ao usuário (RLS também protege)
       const { error } = await supabase
         .from('categories')
         .update({ name: editCategoryName.trim() })
-        .eq('id', editingCategory.id);
+        .eq('id', editingCategory.id)
+        .eq('user_id', user.id); // CRÍTICO: Garantir que só atualiza suas próprias categorias
 
       if (error) throw error;
 
@@ -65,10 +75,20 @@ export const Categories = ({ transactions, categories, onAddCategory, onUpdateCa
 
   const handleDeleteCategory = async (category: any) => {
     try {
+      // Verificar se usuário ainda está ativo
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        toast.error("Sessão inválida. Por favor, faça login novamente.");
+        await supabase.auth.signOut();
+        return;
+      }
+
+      // Deletar apenas se categoria pertencer ao usuário (RLS também protege)
       const { error } = await supabase
         .from('categories')
         .delete()
-        .eq('id', category.id);
+        .eq('id', category.id)
+        .eq('user_id', user.id); // CRÍTICO: Garantir que só deleta suas próprias categorias
 
       if (error) throw error;
 
