@@ -83,17 +83,24 @@ serve(async (req) => {
       );
     }
 
-    // Find matching code (handle both string and number comparison)
+    // Find matching code - normalize both to strings and compare
     const matchingOtp = otpData.find(otp => {
-      const otpCodeStr = String(otp.code).trim();
-      const otpCodeNum = Number(otp.code);
-      const inputCodeStr = cleanCode;
-      const inputCodeNum = Number(cleanCode);
+      // Normalize both codes to strings and trim
+      const otpCodeNormalized = String(otp.code || '').trim();
+      const inputCodeNormalized = cleanCode.trim();
       
-      return otpCodeStr === inputCodeStr || 
-             otpCodeNum === inputCodeNum ||
-             otpCodeStr === inputCodeNum.toString() ||
-             otpCodeNum.toString() === inputCodeStr;
+      // Direct string comparison
+      const match = otpCodeNormalized === inputCodeNormalized;
+      
+      if (match) {
+        console.log('Found matching OTP:', { 
+          otpId: otp.id, 
+          storedCode: otpCodeNormalized, 
+          receivedCode: inputCodeNormalized 
+        });
+      }
+      
+      return match;
     });
 
     if (!matchingOtp) {
