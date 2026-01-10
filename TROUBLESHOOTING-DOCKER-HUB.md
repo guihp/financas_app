@@ -10,8 +10,25 @@ ERROR: failed to authorize: failed to fetch oauth token: unexpected status from 
 
 O Coolify está tentando fazer pull das imagens base (`node:20-alpine` e `nginx:alpine`) do Docker Hub, mas está recebendo erro 401 porque:
 
-1. **Não há credenciais do Docker Hub configuradas** no Coolify
-2. **Rate limiting** - usuários não autenticados têm limites de pull no Docker Hub
+1. **Rate limiting do Docker Hub foi atingido** - Este é o motivo mais comum!
+2. **Não há credenciais do Docker Hub configuradas** no Coolify
+
+### ⏱️ Por que funcionou antes e agora não?
+
+**Docker Hub tem limites rígidos:**
+- **Usuários não autenticados**: 100 pulls a cada 6 horas por endereço IP
+- **Usuários autenticados (gratuito)**: 200 pulls a cada 6 horas
+
+**Na primeira tentativa:**
+- ✅ O limite ainda não tinha sido atingido
+- ✅ Pode ter havido cache de imagens no servidor
+
+**Agora não funciona porque:**
+- ❌ Múltiplas tentativas de deploy esgotaram o limite (cada build faz vários pulls)
+- ❌ O IP do servidor pode ser compartilhado com outros usuários/projetos
+- ❌ Cache de imagens expirou ou foi removido
+
+**Solução:** Configurar credenciais do Docker Hub aumenta o limite para 200 pulls e evita esse problema no futuro.
 
 ## ✅ Solução: Configurar Docker Hub no Coolify
 
