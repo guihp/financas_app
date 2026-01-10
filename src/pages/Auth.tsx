@@ -10,6 +10,13 @@ import { DollarSign, Mail, Lock, User, ArrowLeft, Eye, EyeOff } from "lucide-rea
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { Logo } from "@/components/Logo";
+import { 
+  isValidEmail, 
+  isValidPhone, 
+  isStrongPassword, 
+  isValidFullName,
+  sanitizeText 
+} from "@/utils/validation";
 
 const Auth = () => {
   const [activeTab, setActiveTab] = useState<"login" | "signup" | "forgot">("login");
@@ -126,9 +133,26 @@ const Auth = () => {
     setLoading(true);
     setMessage("");
 
+    // Validar email
+    if (!email || !isValidEmail(email)) {
+      setMessage("Por favor, informe um e-mail válido.");
+      setLoading(false);
+      return;
+    }
+
+    // Validar senha
+    if (!password || password.length < 6) {
+      setMessage("A senha deve ter pelo menos 6 caracteres.");
+      setLoading(false);
+      return;
+    }
+
+    // Sanitizar email
+    const sanitizedEmail = email.trim().toLowerCase();
+
     try {
       const { error } = await supabase.auth.signInWithPassword({
-        email,
+        email: sanitizedEmail,
         password,
       });
 
@@ -155,23 +179,41 @@ const Auth = () => {
     e.preventDefault();
     setMessage("");
 
-    // Validate basic fields first
+    // Validar email
+    if (!email || !isValidEmail(email)) {
+      setMessage("Por favor, informe um e-mail válido.");
+      return;
+    }
+
+    // Validar nome completo
+    const fullNameValidation = isValidFullName(fullName);
+    if (!fullNameValidation.valid) {
+      setMessage(fullNameValidation.message);
+      return;
+    }
+
+    // Validar senha
     if (password !== confirmPassword) {
       setMessage("As senhas não coincidem.");
       return;
     }
 
-    if (password.length < 6) {
-      setMessage("A senha deve ter pelo menos 6 caracteres.");
+    const passwordValidation = isStrongPassword(password);
+    if (!passwordValidation.valid) {
+      setMessage(passwordValidation.message);
       return;
     }
 
-    // Validate phone format
+    // Validar telefone
     const cleanPhone = phone.replace(/\D/g, '');
-    if (cleanPhone.length !== 11) {
-      setMessage("Por favor, informe um número de telefone válido com DDD.");
+    if (!isValidPhone(phone)) {
+      setMessage("Por favor, informe um número de telefone válido com DDD (11 dígitos).");
       return;
     }
+
+    // Sanitizar dados
+    const sanitizedEmail = email.trim().toLowerCase();
+    const sanitizedFullName = sanitizeText(fullName, 100);
 
     // If OTP not sent yet, generate and send it
     if (!otpSent) {
@@ -235,9 +277,9 @@ const Auth = () => {
         try {
           const { data: registerData, error: registerError } = await supabase.functions.invoke('register-user', {
             body: {
-              email,
+              email: sanitizedEmail,
               password,
-              full_name: fullName,
+              full_name: sanitizedFullName,
               phone: cleanPhone,
               otp_code: otpCode
             }

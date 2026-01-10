@@ -8,6 +8,7 @@ import { Transaction } from "./Dashboard";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
+import { sanitizeCategoryName } from "@/utils/validation";
 
 interface CategoriesProps {
   transactions: Transaction[];
@@ -29,7 +30,14 @@ export const Categories = ({ transactions, categories, onAddCategory, onUpdateCa
       return;
     }
 
-    const success = await onAddCategory(newCategoryName.trim());
+    // Sanitizar nome da categoria
+    const sanitized = sanitizeCategoryName(newCategoryName);
+    if (!sanitized || sanitized.length < 2) {
+      toast.error("Nome da categoria deve ter pelo menos 2 caracteres e não pode conter caracteres especiais");
+      return;
+    }
+
+    const success = await onAddCategory(sanitized);
     if (success) {
       setNewCategoryName("");
       setIsAddDialogOpen(false);

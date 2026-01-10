@@ -6,6 +6,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { useToast } from "@/hooks/use-toast";
+import { isValidAmount, sanitizeDescription, sanitizeCategoryName } from "@/utils/validation";
 
 export interface Transaction {
   id: string;
@@ -125,11 +126,34 @@ export const AddTransactionDialog = ({
       return;
     }
 
-    const numericAmount = parseFloat(amount.replace(",", "."));
-    if (isNaN(numericAmount) || numericAmount <= 0) {
+    // Validar e sanitizar valor
+    const amountValidation = isValidAmount(amount);
+    if (!amountValidation.valid) {
       toast({
         title: "Erro",
-        description: "Valor deve ser um número positivo",
+        description: amountValidation.message,
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // Sanitizar descrição e categoria
+    const sanitizedDescription = sanitizeDescription(description);
+    const sanitizedCategory = sanitizeCategoryName(category);
+
+    if (!sanitizedDescription || sanitizedDescription.length < 3) {
+      toast({
+        title: "Erro",
+        description: "Descrição deve ter pelo menos 3 caracteres",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!sanitizedCategory) {
+      toast({
+        title: "Erro",
+        description: "Categoria inválida",
         variant: "destructive",
       });
       return;
@@ -137,9 +161,9 @@ export const AddTransactionDialog = ({
 
     onAddTransaction({
       type,
-      amount: numericAmount,
-      description,
-      category,
+      amount: amountValidation.value!,
+      description: sanitizedDescription,
+      category: sanitizedCategory,
       date: new Date(),
     });
 
