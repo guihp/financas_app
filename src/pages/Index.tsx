@@ -13,8 +13,11 @@ const Index = () => {
   const { toast } = useToast();
 
   useEffect(() => {
+    let mounted = true;
+    let subscription: { unsubscribe: () => void } | null = null;
+
     // Função para verificar se usuário existe e está ativo
-    const validateUser = async (sessionUser: User) => {
+    const validateUser = async (sessionUser: User): Promise<boolean> => {
       try {
         // Verificar se usuário tem perfil (se foi deletado, não terá perfil)
         const { data: profileData, error: profileError } = await supabase
@@ -25,13 +28,17 @@ const Index = () => {
 
         if (profileError || !profileData) {
           console.error("User profile not found:", profileError);
-          toast({
-            title: "Usuário não encontrado",
-            description: "Seu perfil não foi encontrado. Por favor, entre em contato com o suporte.",
-            variant: "destructive",
-          });
+          if (mounted) {
+            toast({
+              title: "Usuário não encontrado",
+              description: "Seu perfil não foi encontrado. Por favor, entre em contato com o suporte.",
+              variant: "destructive",
+            });
+          }
           await supabase.auth.signOut();
-          navigate("/auth");
+          if (mounted) {
+            navigate("/auth");
+          }
           return false;
         }
 
@@ -41,7 +48,9 @@ const Index = () => {
         if (authError || !currentUser || currentUser.id !== sessionUser.id) {
           console.error("Invalid session:", authError);
           await supabase.auth.signOut();
-          navigate("/auth");
+          if (mounted) {
+            navigate("/auth");
+          }
           return false;
         }
 
@@ -49,49 +58,32 @@ const Index = () => {
       } catch (error) {
         console.error("Error validating user:", error);
         await supabase.auth.signOut();
-        navigate("/auth");
+        if (mounted) {
+          navigate("/auth");
+        }
         return false;
       }
     };
 
-    // Set up auth state listener
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
-        setSession(session);
-        
-        if (!session) {
-          setUser(null);
-          setLoading(false);
-          navigate("/auth");
-          return;
-        }
+    // Função para processar sessão
+    const processSession = async (session: Session | null, isInitialCheck = false) => {
+      if (!mounted) return;
 
-        // Validar usuário antes de permitir acesso
-        const isValid = await validateUser(session.user);
-        
-        if (isValid) {
-          setUser(session.user);
-        } else {
-          setUser(null);
-        }
-        
-        setLoading(false);
-      }
-    );
-
-    // Check for existing session
-    supabase.auth.getSession().then(async ({ data: { session } }) => {
       if (!session) {
         setSession(null);
         setUser(null);
         setLoading(false);
-        navigate("/auth");
+        if (isInitialCheck) {
+          navigate("/auth");
+        }
         return;
       }
 
       // Validar usuário antes de permitir acesso
       const isValid = await validateUser(session.user);
       
+      if (!mounted) return;
+
       if (isValid) {
         setSession(session);
         setUser(session.user);
@@ -101,10 +93,39 @@ const Index = () => {
       }
       
       setLoading(false);
+    };
+
+    // Check for existing session first
+    supabase.auth.getSession().then(async ({ data: { session }, error }) => {
+      if (!mounted) return;
+
+      if (error) {
+        console.error("Error getting session:", error);
+        setLoading(false);
+        navigate("/auth");
+        return;
+      }
+
+      await processSession(session, true);
     });
 
-    return () => subscription.unsubscribe();
-  }, [navigate]);
+    // Set up auth state listener AFTER initial check
+    const { data: { subscription: authSubscription } } = supabase.auth.onAuthStateChange(
+      async (event, session) => {
+        if (!mounted) return;
+        await processSession(session, false);
+      }
+    );
+
+    subscription = authSubscription;
+
+    return () => {
+      mounted = false;
+      if (subscription) {
+        subscription.unsubscribe();
+      }
+    };
+  }, [navigate, toast]);
 
   if (loading) {
     return (

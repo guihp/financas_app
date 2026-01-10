@@ -64,108 +64,120 @@ export const Dashboard = ({ user }: DashboardProps) => {
   // Load transactions and categories from Supabase
   useEffect(() => {
     const loadData = async () => {
-      // Verificar se usuário existe e está ativo
-      const { data: { user: authUser }, error: authError } = await supabase.auth.getUser();
-      
-      if (authError || !authUser || authUser.id !== user.id) {
-        toast({
-          title: "Sessão inválida",
-          description: "Usuário não encontrado ou sessão expirada. Por favor, faça login novamente.",
-          variant: "destructive",
-        });
-        await supabase.auth.signOut();
-        navigate("/auth");
-        return;
-      }
-
-      // Verificar se usuário tem perfil (se foi deletado, não terá perfil)
-      const { data: profileData, error: profileError } = await supabase
-        .from('profiles')
-        .select('id')
-        .eq('user_id', user.id)
-        .single();
-
-      if (profileError || !profileData) {
-        toast({
-          title: "Usuário não encontrado",
-          description: "Seu perfil não foi encontrado. Por favor, entre em contato com o suporte.",
-          variant: "destructive",
-        });
-        await supabase.auth.signOut();
-        navigate("/auth");
-        return;
-      }
-
-      // Check if user is super admin - buscar todas as roles e verificar no frontend
-      const { data: userRolesData, error: roleError } = await supabase
-        .from('user_roles')
-        .select('role')
-        .eq('user_id', user.id);
-      
-      // Se erro, verificar se é 406 (Not Acceptable) ou outro
-      if (roleError) {
-        console.error("Error checking user roles:", roleError);
-        // Se erro 406, pode ser problema de RLS - não bloquear, apenas não definir como super admin
-        if (roleError.code === 'PGRST116') {
-          // No rows found - usuário não tem role, não é super admin
-          setIsSuperAdmin(false);
-        } else {
-          // Outro erro - tentar usar função RPC como fallback
-          try {
-            const { data: isSuperAdminData } = await supabase
-              .rpc('is_super_admin');
-            setIsSuperAdmin(isSuperAdminData === true);
-          } catch (rpcError) {
-            console.error("Error with RPC fallback:", rpcError);
-            setIsSuperAdmin(false);
-          }
+      try {
+        // Verificar se usuário existe e está ativo
+        const { data: { user: authUser }, error: authError } = await supabase.auth.getUser();
+        
+        if (authError || !authUser || authUser.id !== user.id) {
+          toast({
+            title: "Sessão inválida",
+            description: "Usuário não encontrado ou sessão expirada. Por favor, faça login novamente.",
+            variant: "destructive",
+          });
+          setLoading(false);
+          await supabase.auth.signOut();
+          navigate("/auth");
+          return;
         }
-      } else {
-        // Verificar se tem role super_admin
-        const isSuperAdmin = userRolesData?.some(role => role.role === 'super_admin') || false;
-        setIsSuperAdmin(isSuperAdmin);
-      }
 
-      // Load transactions
-      const { data: transactionsData, error: transactionsError } = await supabase
-        .from('transactions')
-        .select('*')
-        .eq('user_id', user.id)
-        .order('created_at', { ascending: false });
+        // Verificar se usuário tem perfil (se foi deletado, não terá perfil)
+        const { data: profileData, error: profileError } = await supabase
+          .from('profiles')
+          .select('id')
+          .eq('user_id', user.id)
+          .single();
 
-      if (transactionsError) {
+        if (profileError || !profileData) {
+          toast({
+            title: "Usuário não encontrado",
+            description: "Seu perfil não foi encontrado. Por favor, entre em contato com o suporte.",
+            variant: "destructive",
+          });
+          setLoading(false);
+          await supabase.auth.signOut();
+          navigate("/auth");
+          return;
+        }
+
+        // Check if user is super admin - buscar todas as roles e verificar no frontend
+        const { data: userRolesData, error: roleError } = await supabase
+          .from('user_roles')
+          .select('role')
+          .eq('user_id', user.id);
+        
+        // Se erro, verificar se é 406 (Not Acceptable) ou outro
+        if (roleError) {
+          console.error("Error checking user roles:", roleError);
+          // Se erro 406, pode ser problema de RLS - não bloquear, apenas não definir como super admin
+          if (roleError.code === 'PGRST116') {
+            // No rows found - usuário não tem role, não é super admin
+            setIsSuperAdmin(false);
+          } else {
+            // Outro erro - tentar usar função RPC como fallback
+            try {
+              const { data: isSuperAdminData } = await supabase
+                .rpc('is_super_admin');
+              setIsSuperAdmin(isSuperAdminData === true);
+            } catch (rpcError) {
+              console.error("Error with RPC fallback:", rpcError);
+              setIsSuperAdmin(false);
+            }
+          }
+        } else {
+          // Verificar se tem role super_admin
+          const isSuperAdmin = userRolesData?.some(role => role.role === 'super_admin') || false;
+          setIsSuperAdmin(isSuperAdmin);
+        }
+
+        // Load transactions
+        const { data: transactionsData, error: transactionsError } = await supabase
+          .from('transactions')
+          .select('*')
+          .eq('user_id', user.id)
+          .order('created_at', { ascending: false });
+
+        if (transactionsError) {
+          toast({
+            title: "Erro ao carregar transações",
+            description: transactionsError.message,
+            variant: "destructive",
+          });
+        } else {
+          const mappedTransactions = (transactionsData || []).map(t => ({
+            ...t,
+            amount: Number(t.amount),
+            date: t.date || t.created_at,
+            type: t.type as "income" | "expense"
+          }));
+          setTransactions(mappedTransactions);
+        }
+
+        // Load categories
+        const { data: categoriesData, error: categoriesError } = await supabase
+          .from('categories')
+          .select('*')
+          .eq('user_id', user.id)
+          .order('name');
+
+        if (categoriesError) {
+          console.error("Erro ao carregar categorias:", categoriesError);
+        } else {
+          setCategories(categoriesData || []);
+        }
+        setLoading(false);
+      } catch (error) {
+        console.error("Error loading dashboard data:", error);
+        setLoading(false);
         toast({
-          title: "Erro ao carregar transações",
-          description: transactionsError.message,
+          title: "Erro ao carregar dados",
+          description: "Ocorreu um erro ao carregar os dados. Por favor, tente novamente.",
           variant: "destructive",
         });
-      } else {
-        const mappedTransactions = (transactionsData || []).map(t => ({
-          ...t,
-          amount: Number(t.amount),
-          date: t.date || t.created_at,
-          type: t.type as "income" | "expense"
-        }));
-        setTransactions(mappedTransactions);
       }
-
-      // Load categories
-      const { data: categoriesData, error: categoriesError } = await supabase
-        .from('categories')
-        .select('*')
-        .eq('user_id', user.id)
-        .order('name');
-
-      if (categoriesError) {
-        console.error("Erro ao carregar categorias:", categoriesError);
-      } else {
-        setCategories(categoriesData || []);
-      }
-      setLoading(false);
     };
 
     loadData();
-  }, [user.id, toast]);
+  }, [user.id, toast, navigate]);
 
   const addTransaction = async (transaction: Omit<Transaction, "id">) => {
     // Buscar o phone do usuário na tabela profiles
