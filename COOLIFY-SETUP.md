@@ -34,13 +34,39 @@ Onde `CODIGO-OTP` é literalmente o nome do endpoint (não é variável).
 
 ## 📋 Passos para Deploy
 
+### ⚠️ IMPORTANTE: Configurar Docker Hub antes do Deploy
+
+**ERRO COMUM**: `401 Unauthorized` ao fazer pull de imagens base
+
+**SOLUÇÃO**: Configure credenciais do Docker Hub no Coolify:
+
+1. **No Coolify Dashboard:**
+   - Vá em **Settings** (Configurações) → **Docker Hub Registry**
+   - Se não tiver conta no Docker Hub, crie em: https://hub.docker.com/signup
+   - Adicione suas credenciais:
+     - Username: seu usuário do Docker Hub
+     - Password: sua senha ou token de acesso (recomendado)
+   
+2. **Para criar um token de acesso (mais seguro):**
+   - Acesse: https://hub.docker.com/settings/security
+   - Clique em "New Access Token"
+   - Dê um nome (ex: "coolify-deploy")
+   - Copie o token gerado
+   - Use este token como senha no Coolify
+
+3. **Alternativa (se não quiser usar Docker Hub):**
+   - Configure um registry mirror nas configurações do Coolify
+   - Ou use imagens de um registry privado
+
 ### 1. No Coolify
-1. Conecte o repositório Git
-2. Configure as variáveis de ambiente do frontend:
+1. ✅ **Configure Docker Hub primeiro** (veja acima)
+2. Conecte o repositório Git: `https://github.com/guihp/financas_app.git`
+3. Configure as variáveis de ambiente do frontend (Build Arguments):
    - `VITE_SUPABASE_URL`
    - `VITE_SUPABASE_ANON_KEY`
-   - `PORT` (opcional)
-3. Inicie o deploy
+4. Certifique-se de que o **Build Command** está como: `docker build`
+5. Certifique-se de que o **Dockerfile** está no caminho: `./Dockerfile`
+6. Inicie o deploy
 
 ### 2. No Supabase Dashboard
 1. Acesse: https://supabase.com/dashboard/project/dlbiwguzbiosaoyrcvay/settings/functions
