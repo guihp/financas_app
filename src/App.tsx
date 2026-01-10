@@ -2,11 +2,22 @@ import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
-import Index from "./pages/Index";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+
+// Pages
 import Auth from "./pages/Auth";
 import SuperAdmin from "./pages/SuperAdmin";
 import NotFound from "./pages/NotFound";
+import DashPage from "./pages/DashPage";
+import TransactionsPage from "./pages/TransactionsPage";
+import StatsPage from "./pages/StatsPage";
+import AgendaPage from "./pages/AgendaPage";
+import CategoriasPage from "./pages/CategoriasPage";
+import AlterarSenhaPage from "./pages/AlterarSenhaPage";
+
+// Components
+import { ProtectedRoute } from "./components/ProtectedRoute";
+import { AppLayout } from "./components/AppLayout";
 
 const queryClient = new QueryClient();
 
@@ -17,10 +28,30 @@ const App = () => (
       <Sonner />
       <BrowserRouter>
         <Routes>
-          <Route path="/" element={<Index />} />
+          {/* Rota pública de autenticação */}
           <Route path="/auth" element={<Auth />} />
-          <Route path="/super-admin" element={<SuperAdmin />} />
-          {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
+          
+          {/* Rotas protegidas com layout compartilhado */}
+          <Route
+            element={
+              <ProtectedRoute>
+                <AppLayout />
+              </ProtectedRoute>
+            }
+          >
+            <Route path="/dash" element={<DashPage />} />
+            <Route path="/transactions" element={<TransactionsPage />} />
+            <Route path="/stats" element={<StatsPage />} />
+            <Route path="/agenda" element={<AgendaPage />} />
+            <Route path="/categorias" element={<CategoriasPage />} />
+            <Route path="/alterar-senha" element={<AlterarSenhaPage />} />
+            <Route path="/super-admin" element={<SuperAdmin />} />
+          </Route>
+
+          {/* Redirecionar raiz para dashboard */}
+          <Route path="/" element={<Navigate to="/dash" replace />} />
+          
+          {/* Rota 404 */}
           <Route path="*" element={<NotFound />} />
         </Routes>
       </BrowserRouter>
