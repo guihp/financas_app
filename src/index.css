@@ -189,14 +189,19 @@ All colors MUST be HSL.
 
   /* Ensure proper spacing for mobile bottom nav */
   .mobile-content {
-    /* Extra padding for bottom nav + safe area */
-    padding-bottom: calc(80px + env(safe-area-inset-bottom, 0px));
+    /* Extra padding for bottom nav + safe area - aumentado para 100px */
+    padding-bottom: calc(100px + env(safe-area-inset-bottom, 20px));
   }
 
   @media (min-width: 1024px) {
     .mobile-content {
       @apply pb-6; /* Default desktop padding */
     }
+  }
+
+  /* Classe específica para páginas com muito scroll */
+  .mobile-content-extra {
+    padding-bottom: calc(120px + env(safe-area-inset-bottom, 20px));
   }
 
   /* Hide scrollbar on mobile but keep functionality */

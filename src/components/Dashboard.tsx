@@ -361,7 +361,7 @@ export const Dashboard = ({ user }: DashboardProps) => {
         </div>
 
         {/* Main Content */}
-        <div className="flex-1 p-4 lg:p-6 mobile-content lg:pb-6 mobile-scroll">
+        <div className="flex-1 p-4 lg:p-6 mobile-content lg:pb-6 mobile-scroll overflow-y-auto">
           {loading ? (
             <div className="flex items-center justify-center h-64">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>

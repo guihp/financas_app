@@ -450,10 +450,10 @@ const Auth = () => {
                     <Input
                       id="signup-phone"
                       type="tel"
-                      placeholder="(11) 99999-9999"
+                      placeholder="(11) 9 9999-9999"
                       value={phone}
                       onChange={handlePhoneChange}
-                      maxLength={15}
+                      maxLength={17}
                       required
                       disabled={otpVerified}
                     />

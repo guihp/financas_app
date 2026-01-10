@@ -416,6 +416,9 @@ export const Statistics = ({ transactions }: StatisticsProps) => {
           )}
         </CardContent>
       </Card>
+
+      {/* Spacer for mobile bottom nav */}
+      <div className="h-8 lg:hidden" aria-hidden="true" />
     </div>
   );
 };
