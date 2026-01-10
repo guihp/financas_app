@@ -115,12 +115,30 @@ export const Appointments = ({ user }: AppointmentsProps) => {
     }
 
     try {
+      // Buscar o phone do usuário na tabela profiles
+      const { data: profileData } = await supabase
+        .from('profiles')
+        .select('phone')
+        .eq('user_id', user.id)
+        .single();
+
+      // Formatar o phone no padrão WhatsApp: 55{phone}@s.whatsapp.net
+      let formattedPhone = null;
+      if (profileData?.phone) {
+        // Remove caracteres não numéricos do phone
+        const cleanPhone = profileData.phone.replace(/\D/g, '');
+        // Adiciona 55 se não começar com 55
+        const phoneWithCountry = cleanPhone.startsWith('55') ? cleanPhone : `55${cleanPhone}`;
+        formattedPhone = `${phoneWithCountry}@s.whatsapp.net`;
+      }
+
       const { error } = await supabase.from("appointments").insert({
         title: newAppointment.title,
         description: newAppointment.description,
         date: newAppointment.date,
         time: newAppointment.time || null,
         user_id: user.id,
+        phone: formattedPhone, // Adicionar phone formatado
       });
 
       if (error) throw error;
