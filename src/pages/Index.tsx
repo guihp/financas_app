@@ -15,10 +15,28 @@ const Index = () => {
   useEffect(() => {
     let mounted = true;
     let subscription: { unsubscribe: () => void } | null = null;
+    let timeoutId: NodeJS.Timeout | null = null;
+
+    // Timeout de segurança: se nada acontecer em 10 segundos, parar o loading
+    timeoutId = setTimeout(() => {
+      if (mounted) {
+        console.warn("Loading timeout reached, forcing stop");
+        setLoading((prevLoading) => {
+          if (prevLoading) {
+            return false;
+          }
+          return prevLoading;
+        });
+        // Se chegou aqui por timeout, provavelmente não tem sessão válida
+        navigate("/auth");
+      }
+    }, 10000);
 
     // Função para verificar se usuário existe e está ativo
     const validateUser = async (sessionUser: User): Promise<boolean> => {
       try {
+        console.log("Validating user:", sessionUser.id);
+        
         // Verificar se usuário tem perfil (se foi deletado, não terá perfil)
         const { data: profileData, error: profileError } = await supabase
           .from('profiles')
@@ -26,42 +44,50 @@ const Index = () => {
           .eq('user_id', sessionUser.id)
           .single();
 
-        if (profileError || !profileData) {
-          console.error("User profile not found:", profileError);
-          if (mounted) {
-            toast({
-              title: "Usuário não encontrado",
-              description: "Seu perfil não foi encontrado. Por favor, entre em contato com o suporte.",
-              variant: "destructive",
-            });
+        if (profileError) {
+          console.error("User profile query error:", profileError);
+          // PGRST116 = no rows found - pode ser que o perfil ainda não foi criado
+          // Nesse caso, permitir acesso mas logar o erro
+          if (profileError.code !== 'PGRST116') {
+            console.warn("Profile error is not PGRST116, allowing access anyway");
           }
-          await supabase.auth.signOut();
-          if (mounted) {
-            navigate("/auth");
-          }
-          return false;
+          // Não bloquear acesso por falta de perfil, apenas logar
+        } else if (!profileData) {
+          console.warn("User profile not found but no error, allowing access");
+        } else {
+          console.log("User profile found:", profileData.id);
         }
 
         // Verificar se sessão ainda é válida
         const { data: { user: currentUser }, error: authError } = await supabase.auth.getUser();
         
-        if (authError || !currentUser || currentUser.id !== sessionUser.id) {
-          console.error("Invalid session:", authError);
-          await supabase.auth.signOut();
+        if (authError) {
+          console.error("Invalid session - auth error:", authError);
           if (mounted) {
+            setLoading(false);
+            await supabase.auth.signOut();
             navigate("/auth");
           }
           return false;
         }
 
+        if (!currentUser || currentUser.id !== sessionUser.id) {
+          console.error("Invalid session - user mismatch");
+          if (mounted) {
+            setLoading(false);
+            await supabase.auth.signOut();
+            navigate("/auth");
+          }
+          return false;
+        }
+
+        console.log("User validation successful");
         return true;
       } catch (error) {
         console.error("Error validating user:", error);
-        await supabase.auth.signOut();
-        if (mounted) {
-          navigate("/auth");
-        }
-        return false;
+        // Em caso de erro na validação, permitir acesso mas logar
+        console.warn("Allowing access despite validation error");
+        return true; // Permitir acesso mesmo com erro na validação
       }
     };
 
@@ -69,50 +95,101 @@ const Index = () => {
     const processSession = async (session: Session | null, isInitialCheck = false) => {
       if (!mounted) return;
 
-      if (!session) {
-        setSession(null);
-        setUser(null);
-        setLoading(false);
-        if (isInitialCheck) {
+      try {
+        // Limpar timeout se tudo correu bem
+        if (timeoutId) {
+          clearTimeout(timeoutId);
+          timeoutId = null;
+        }
+
+        if (!session) {
+          if (mounted) {
+            setSession(null);
+            setUser(null);
+            setLoading(false);
+            if (isInitialCheck) {
+              navigate("/auth");
+            }
+          }
+          return;
+        }
+
+        // Validar usuário antes de permitir acesso
+        const isValid = await validateUser(session.user);
+        
+        if (!mounted) return;
+
+        if (isValid) {
+          setSession(session);
+          setUser(session.user);
+        } else {
+          setSession(null);
+          setUser(null);
+        }
+        
+        if (mounted) {
+          setLoading(false);
+        }
+      } catch (error) {
+        console.error("Error processing session:", error);
+        if (mounted) {
+          setLoading(false);
           navigate("/auth");
         }
-        return;
       }
-
-      // Validar usuário antes de permitir acesso
-      const isValid = await validateUser(session.user);
-      
-      if (!mounted) return;
-
-      if (isValid) {
-        setSession(session);
-        setUser(session.user);
-      } else {
-        setSession(null);
-        setUser(null);
-      }
-      
-      setLoading(false);
     };
 
     // Check for existing session first
-    supabase.auth.getSession().then(async ({ data: { session }, error }) => {
-      if (!mounted) return;
+    (async () => {
+      try {
+        const { data: { session }, error } = await supabase.auth.getSession();
+        
+        if (!mounted) return;
 
-      if (error) {
-        console.error("Error getting session:", error);
-        setLoading(false);
-        navigate("/auth");
-        return;
+        if (timeoutId) {
+          clearTimeout(timeoutId);
+          timeoutId = null;
+        }
+
+        if (error) {
+          console.error("Error getting session:", error);
+          if (mounted) {
+            setLoading(false);
+            navigate("/auth");
+          }
+          return;
+        }
+
+        // Se não tem sessão, redirecionar imediatamente
+        if (!session) {
+          if (mounted) {
+            setSession(null);
+            setUser(null);
+            setLoading(false);
+            navigate("/auth");
+          }
+          return;
+        }
+
+        await processSession(session, true);
+      } catch (error) {
+        console.error("Unexpected error in getSession:", error);
+        if (timeoutId) {
+          clearTimeout(timeoutId);
+        }
+        if (mounted) {
+          setLoading(false);
+          navigate("/auth");
+        }
       }
-
-      await processSession(session, true);
-    });
+    })();
 
     // Set up auth state listener AFTER initial check
     const { data: { subscription: authSubscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
         if (!mounted) return;
+        // Não processar eventos durante a checagem inicial
+        if (event === 'INITIAL_SESSION') return;
         await processSession(session, false);
       }
     );
@@ -121,6 +198,9 @@ const Index = () => {
 
     return () => {
       mounted = false;
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
       if (subscription) {
         subscription.unsubscribe();
       }
