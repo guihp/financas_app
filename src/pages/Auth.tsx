@@ -247,18 +247,43 @@ const Auth = () => {
 
       setVerifyingOtp(true);
       try {
+        // Trim e garantir que o código tem 6 dígitos
+        const trimmedCode = otpCode.trim();
+        
+        if (!trimmedCode || trimmedCode.length !== 6) {
+          setMessage("Por favor, informe um código de 6 dígitos.");
+          setVerifyingOtp(false);
+          return;
+        }
+
+        console.log('Verifying OTP:', { phone: cleanPhone, code: trimmedCode });
+
         const { data, error } = await supabase.functions.invoke('verify-otp', {
           body: {
             phone: cleanPhone,
-            code: otpCode
+            code: trimmedCode
           }
         });
 
         if (error) {
-          setMessage(error.message || "Código inválido ou expirado.");
+          console.error('OTP verification error:', error);
+          const errorMessage = error.message || "Código inválido ou expirado.";
+          setMessage(errorMessage);
           toast({
-            title: "Erro",
-            description: error.message || "Código inválido ou expirado.",
+            title: "Erro na verificação",
+            description: errorMessage,
+            variant: "destructive"
+          });
+          setVerifyingOtp(false);
+          return;
+        }
+
+        if (!data || !data.success) {
+          console.error('OTP verification failed:', data);
+          setMessage("Código inválido ou expirado. Por favor, solicite um novo código.");
+          toast({
+            title: "Erro na verificação",
+            description: "Código inválido ou expirado. Por favor, solicite um novo código.",
             variant: "destructive"
           });
           setVerifyingOtp(false);
