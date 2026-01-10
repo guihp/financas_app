@@ -306,14 +306,45 @@ const Auth = () => {
               password,
               full_name: sanitizedFullName,
               phone: cleanPhone,
-              otp_code: otpCode
+              otp_code: trimmedCode
             }
           });
 
+          // Extrair mensagem de erro do corpo da resposta
+          let errorMessage = "";
           if (registerError) {
-            setMessage(registerError.message || "Erro ao criar conta.");
-            setOtpVerified(false); // Reset verification on error
-          } else {
+            // Tentar extrair mensagem do contexto ou do corpo
+            try {
+              const errorContext = (registerError as any).context;
+              if (errorContext && typeof errorContext.json === 'function') {
+                const errorBody = await errorContext.json();
+                errorMessage = errorBody?.error || registerError.message || "Erro ao criar conta.";
+              } else {
+                errorMessage = registerError.message || "Erro ao criar conta.";
+              }
+            } catch {
+              errorMessage = registerError.message || "Erro ao criar conta.";
+            }
+          }
+          
+          // Verificar também se registerData contém erro
+          if (!registerError && registerData?.error) {
+            errorMessage = registerData.error;
+          }
+
+          if (errorMessage) {
+            console.error('Register error:', errorMessage);
+            setMessage(errorMessage);
+            toast({
+              title: "Erro ao criar conta",
+              description: errorMessage,
+              variant: "destructive"
+            });
+            // Não resetar verificação se for erro de email duplicado
+            if (!errorMessage.includes('já está cadastrado')) {
+              setOtpVerified(false);
+            }
+          } else if (registerData && !registerData.error) {
             // Conta criada com sucesso, fazer login automático
             toast({
               title: "Conta criada com sucesso!",

@@ -88,17 +88,46 @@ serve(async (req) => {
     
     console.log('Found matching OTP:', matchingOtp.id);
 
+    // Check if email already exists
+    const { data: existingUsers, error: listError } = await supabaseAdmin.auth.admin.listUsers();
+    
+    if (!listError && existingUsers) {
+      const emailExists = existingUsers.users.some(u => u.email?.toLowerCase() === email.toLowerCase());
+      if (emailExists) {
+        console.error('Email already exists:', email);
+        return new Response(
+          JSON.stringify({ error: 'Este e-mail já está cadastrado. Por favor, faça login ou use outro e-mail.' }),
+          { 
+            status: 400, 
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+          }
+        );
+      }
+    }
+
     // Create user in auth.users
     const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
       email,
       password,
+      email_confirm: true, // Confirmar email automaticamente
       user_metadata: { full_name }
     });
 
     if (authError) {
       console.error('Auth error:', authError);
+      
+      // Tratar erros específicos
+      let errorMessage = authError.message;
+      if (authError.message.includes('already been registered') || 
+          authError.message.includes('User already registered') ||
+          authError.message.includes('duplicate key')) {
+        errorMessage = 'Este e-mail já está cadastrado. Por favor, faça login ou use outro e-mail.';
+      } else if (authError.message.includes('Password')) {
+        errorMessage = 'A senha não atende aos requisitos de segurança. Use pelo menos 8 caracteres com letras e números.';
+      }
+      
       return new Response(
-        JSON.stringify({ error: authError.message }),
+        JSON.stringify({ error: errorMessage }),
         { 
           status: 400, 
           headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
