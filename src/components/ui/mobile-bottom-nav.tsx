@@ -25,10 +25,10 @@ export const MobileBottomNav = ({
   ];
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-50 lg:hidden bg-card/95 backdrop-blur-lg border-t border-border shadow-[0_-4px_20px_rgba(0,0,0,0.3)]">
+    <nav className="fixed bottom-0 left-0 right-0 z-[100] lg:hidden bg-card/95 backdrop-blur-lg border-t border-border shadow-[0_-4px_20px_rgba(0,0,0,0.3)]">
       {/* Safe area padding for iPhone notch/home indicator */}
       <div 
-        className="grid grid-cols-6 items-center px-1 pt-2"
+        className="grid grid-cols-6 items-center px-1 pt-2 min-h-[70px]"
         style={{ paddingBottom: 'max(8px, env(safe-area-inset-bottom))' }}
       >
         {navItems.map((item) => {

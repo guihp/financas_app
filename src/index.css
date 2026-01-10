@@ -188,20 +188,21 @@ All colors MUST be HSL.
   }
 
   /* Ensure proper spacing for mobile bottom nav */
+  /* 10px gap + menu height (70px) + safe area (20px) = ~100px */
   .mobile-content {
-    /* Extra padding for bottom nav + safe area - aumentado para 100px */
-    padding-bottom: calc(100px + env(safe-area-inset-bottom, 20px));
+    padding-bottom: calc(10px + 70px + env(safe-area-inset-bottom, 20px));
   }
 
   @media (min-width: 1024px) {
     .mobile-content {
       @apply pb-6; /* Default desktop padding */
+      min-height: auto;
     }
   }
 
   /* Classe específica para páginas com muito scroll */
   .mobile-content-extra {
-    padding-bottom: calc(120px + env(safe-area-inset-bottom, 20px));
+    padding-bottom: calc(10px + 100px + env(safe-area-inset-bottom, 20px));
   }
 
   /* Hide scrollbar on mobile but keep functionality */

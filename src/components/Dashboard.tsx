@@ -367,7 +367,7 @@ export const Dashboard = ({ user }: DashboardProps) => {
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
             </div>
           ) : (
-            <>
+            <div className="space-y-6">
               {currentView === "dashboard" && (
                 <>
                   <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 lg:gap-6 mb-4 lg:mb-6">
@@ -602,7 +602,10 @@ export const Dashboard = ({ user }: DashboardProps) => {
               {currentView === "change-password" && (
                 <ChangePassword />
               )}
-            </>
+
+              {/* Spacer final para garantir 10px de espaço antes do menu mobile */}
+              <div className="h-10 lg:hidden" aria-hidden="true" />
+            </div>
           )}
         </div>
 
@@ -619,56 +622,6 @@ export const Dashboard = ({ user }: DashboardProps) => {
           </div>
         )}
 
-        {/* Mobile Bottom Navigation */}
-        <div className="lg:hidden fixed bottom-0 left-0 right-0 bg-sidebar border-t border-sidebar-border p-2">
-          <div className="grid grid-cols-5 gap-1">
-            <Button
-              variant={currentView === "dashboard" ? "default" : "ghost"}
-              size="sm"
-              className="flex-col gap-1 h-14 text-xs px-1"
-              onClick={() => setCurrentView("dashboard")}
-            >
-              <TrendingUp className="w-4 h-4" />
-              Início
-            </Button>
-            <Button
-              variant={currentView === "transactions" ? "default" : "ghost"}
-              size="sm"
-              className="flex-col gap-1 h-14 text-xs px-1"
-              onClick={() => setCurrentView("transactions")}
-            >
-              <CreditCard className="w-4 h-4" />
-              Transações
-            </Button>
-            <Button
-              variant={currentView === "statistics" ? "default" : "ghost"}
-              size="sm"
-              className="flex-col gap-1 h-14 text-xs px-1"
-              onClick={() => setCurrentView("statistics")}
-            >
-              <BarChart3 className="w-4 h-4" />
-              Estatísticas
-            </Button>
-            <Button
-              variant={currentView === "categories" ? "default" : "ghost"}
-              size="sm"
-              className="flex-col gap-1 h-14 text-xs px-1"
-              onClick={() => setCurrentView("categories")}
-            >
-              <Tag className="w-4 h-4" />
-              Categorias
-            </Button>
-            <Button
-              variant={currentView === "appointments" ? "default" : "ghost"}
-              size="sm"
-              className="flex-col gap-1 h-14 text-xs px-1"
-              onClick={() => setCurrentView("appointments")}
-            >
-              <Calendar className="w-4 h-4" />
-              Agendamentos
-            </Button>
-          </div>
-        </div>
       </div>
 
       {/* Mobile Bottom Navigation */}
