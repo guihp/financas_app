@@ -115,10 +115,42 @@
 - `supabase/migrations/20260109220000_fix_security_policies_and_user_validation.sql` - Políticas RLS corrigidas
 - `supabase/migrations/20260109230000_add_user_validation_function.sql` - Funções de validação
 
+## Problemas Adicionais Corrigidos
+
+### 7. 🔴 RLS Desabilitado em n8n_chat_histories_registra_ai
+**Problema:** Tabela pública sem RLS habilitado, expondo dados sensíveis (session_id)
+**Solução:**
+- Habilitado RLS na tabela
+- Criada política que apenas service_role pode acessar
+- Session_id protegido agora
+
+### 8. ⚠️ Política Muito Permissiva em appointment_notifications_sent
+**Problema:** Política com `USING (true)` permitia acesso irrestrito
+**Solução:**
+- Removida política permissiva
+- Criada política que apenas service_role pode acessar
+
+### 9. ⚠️ Funções sem search_path definido
+**Problema:** Funções com search_path mutável podem ser exploradas
+**Solução:**
+- Corrigido `handle_new_user()` com `SET search_path TO public, auth`
+- Corrigido `update_updated_at_column()` com `SET search_path TO public`
+- Funções em Edge Functions já usam service_role (protegidas)
+
 ## Recomendações Adicionais
 
-1. ⚠️ **Revisar logs do Supabase** regularmente para detectar tentativas de acesso não autorizado
-2. ⚠️ **Monitorar queries** que retornam muitos dados
-3. ⚠️ **Implementar rate limiting** nas Edge Functions
-4. ⚠️ **Adicionar auditoria** (logs de quem acessou o quê)
-5. ⚠️ **Considerar adicionar 2FA** para usuários administrativos
+1. ⚠️ **Habilitar Leaked Password Protection** no Supabase Auth
+   - Ativar proteção contra senhas vazadas (HaveIBeenPwned)
+   - Dashboard Supabase → Authentication → Password Settings
+
+2. ⚠️ **Revisar logs do Supabase** regularmente para detectar tentativas de acesso não autorizado
+
+3. ⚠️ **Monitorar queries** que retornam muitos dados
+
+4. ⚠️ **Implementar rate limiting** nas Edge Functions
+
+5. ⚠️ **Adicionar auditoria** (logs de quem acessou o quê)
+
+6. ⚠️ **Considerar adicionar 2FA** para usuários administrativos
+
+7. ⚠️ **Mover extensão pg_net** para outro schema (não crítico, mas recomendado)
