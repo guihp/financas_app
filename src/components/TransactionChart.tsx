@@ -1,4 +1,4 @@
-import { BarChart, Bar, XAxis, YAxis, ResponsiveContainer } from "recharts";
+import { BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Tooltip, CartesianGrid } from "recharts";
 import { Transaction } from "./Dashboard";
 
 interface TransactionChartProps {
@@ -8,7 +8,6 @@ interface TransactionChartProps {
 
 export const TransactionChart = ({ transactions, type = "expenses" }: TransactionChartProps) => {
   // Filtrar transações do tipo especificado
-  // Converter "expenses" para "expense" e manter "income" como está
   const transactionType = type === "expenses" ? "expense" : "income";
   const filteredTransactions = transactions.filter(t => t.type === transactionType);
 
@@ -38,7 +37,6 @@ export const TransactionChart = ({ transactions, type = "expenses" }: Transactio
   let finalChartData = chartData;
 
   if (!hasRecentData && filteredTransactions.length > 0) {
-    // Agrupar todas as transações por dia
     const allTransactionsByDay = filteredTransactions.reduce((acc, t) => {
       const date = new Date(t.date || t.created_at);
       const day = date.getDate().toString().padStart(2, '0') + '/' + String(date.getMonth() + 1).padStart(2, '0');
@@ -46,7 +44,6 @@ export const TransactionChart = ({ transactions, type = "expenses" }: Transactio
       return acc;
     }, {} as Record<string, number>);
 
-    // Pegar os últimos 7 dias com dados
     const sortedDays = Object.entries(allTransactionsByDay)
       .sort(([a], [b]) => {
         const [dayA, monthA] = a.split('/').map(Number);
@@ -56,36 +53,73 @@ export const TransactionChart = ({ transactions, type = "expenses" }: Transactio
         return dateA.getTime() - dateB.getTime();
       })
       .slice(-7);
-    
+
     finalChartData = sortedDays.map(([day, amount]) => ({
       day,
       amount
     }));
   }
 
+  const formatCurrency = (value: number) => {
+    return new Intl.NumberFormat('pt-BR', {
+      style: 'currency',
+      currency: 'BRL'
+    }).format(value);
+  };
+
+  const barColor = type === "expenses" ? "#ef4444" : "#22c55e";
+
+  // Se não há dados, mostrar mensagem
+  if (finalChartData.every(d => d.amount === 0)) {
+    return (
+      <div className="h-48 sm:h-64 flex items-center justify-center text-muted-foreground">
+        <p className="text-sm">Nenhum dado para exibir</p>
+      </div>
+    );
+  }
+
   return (
-    <div className="h-24 sm:h-32">
+    <div className="h-48 sm:h-64">
       <ResponsiveContainer width="100%" height="100%">
-        <BarChart 
-          data={finalChartData} 
-          margin={{ top: 5, right: 5, left: 5, bottom: 5 }}
-          barCategoryGap="15%"
+        <BarChart
+          data={finalChartData}
+          margin={{ top: 10, right: 10, left: -10, bottom: 5 }}
+          barCategoryGap="20%"
         >
-          <XAxis 
-            dataKey="day" 
+          <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" vertical={false} />
+          <XAxis
+            dataKey="day"
             axisLine={false}
             tickLine={false}
-            tick={{ fontSize: 8, fill: "hsl(var(--muted-foreground))" }}
+            tick={{ fontSize: 10, fill: "rgba(255,255,255,0.6)" }}
           />
-          <YAxis 
-            hide 
-            domain={[0, 'dataMax']}
+          <YAxis
+            axisLine={false}
+            tickLine={false}
+            tick={{ fontSize: 10, fill: "rgba(255,255,255,0.5)" }}
+            tickFormatter={(value) => `R$${(value / 1000).toFixed(0)}k`}
+            width={45}
           />
-          <Bar 
-            dataKey="amount" 
-            fill={type === "expenses" ? "hsl(var(--destructive))" : "hsl(var(--success))"}
-            radius={[4, 4, 0, 0]}
-            minPointSize={5}
+          <Tooltip
+            content={({ active, payload, label }) => {
+              if (active && payload && payload.length) {
+                return (
+                  <div className="bg-card border border-border rounded-lg p-3 shadow-xl">
+                    <p className="font-medium text-white text-sm">{label}</p>
+                    <p className={`text-sm font-bold ${type === "expenses" ? "text-red-400" : "text-green-400"}`}>
+                      {formatCurrency(Number(payload[0].value))}
+                    </p>
+                  </div>
+                );
+              }
+              return null;
+            }}
+          />
+          <Bar
+            dataKey="amount"
+            fill={barColor}
+            radius={[6, 6, 0, 0]}
+            maxBarSize={60}
           />
         </BarChart>
       </ResponsiveContainer>
