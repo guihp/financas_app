@@ -3,15 +3,15 @@ import { useNavigate, useLocation, Outlet } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { User } from "@supabase/supabase-js";
 import { useToast } from "@/hooks/use-toast";
-import { IafeLogo } from "@/components/Logo";
+import { Logo } from "@/components/Logo";
 import { MobileBottomNav } from "@/components/ui/mobile-bottom-nav";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { Button } from "@/components/ui/button";
-import { 
-  LayoutDashboard, 
-  PieChart, 
-  Calendar, 
-  Settings, 
+import {
+  LayoutDashboard,
+  PieChart,
+  Calendar,
+  Settings,
   LogOut,
   DollarSign,
   Tag,
@@ -34,7 +34,7 @@ export const AppLayout = () => {
     const loadUser = async () => {
       try {
         const { data: { session } } = await supabase.auth.getSession();
-        
+
         if (!session?.user) {
           if (mounted) {
             setLoading(false);
@@ -145,21 +145,20 @@ export const AppLayout = () => {
       <div className="flex flex-col lg:flex-row">
         {/* Desktop Sidebar */}
         {!isMobile && (
-          <div className="hidden lg:block w-64 bg-sidebar border-r border-sidebar-border p-6">
+          <div className="hidden lg:flex w-64 flex-col bg-sidebar border-r border-sidebar-border p-6 min-h-screen">
             <div className="mb-8">
-              <IafeLogo />
+              <Logo />
             </div>
-            
-            <nav className="space-y-2">
+
+            <nav className="space-y-2 flex-1">
               {menuItems.map((item) => (
                 <Button
                   key={item.path}
                   variant={isActive(item.path) ? "secondary" : "ghost"}
-                  className={`w-full justify-start gap-3 ${
-                    isActive(item.path) 
-                      ? "bg-sidebar-accent text-sidebar-accent-foreground" 
-                      : "text-sidebar-foreground hover:bg-sidebar-accent/50"
-                  }`}
+                  className={`w-full justify-start gap-3 ${isActive(item.path)
+                    ? "bg-sidebar-accent text-sidebar-accent-foreground"
+                    : "text-sidebar-foreground hover:bg-sidebar-accent/50"
+                    }`}
                   onClick={() => navigate(item.path)}
                 >
                   <item.icon className="h-5 w-5" />
@@ -168,7 +167,7 @@ export const AppLayout = () => {
               ))}
             </nav>
 
-            <div className="mt-auto pt-4 border-t border-sidebar-border absolute bottom-6 left-6 right-6">
+            <div className="mt-auto pt-4 border-t border-sidebar-border">
               <div className="text-sm text-sidebar-foreground/60 mb-2 px-2 truncate" title={user.email || ""}>
                 {user.email}
               </div>

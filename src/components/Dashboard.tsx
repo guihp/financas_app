@@ -152,6 +152,7 @@ export const Dashboard = ({ user }: DashboardProps) => {
           setTransactions(mappedTransactions);
         }
 
+
         // Load categories
         const { data: categoriesData, error: categoriesError } = await supabase
           .from('categories')
@@ -164,19 +165,42 @@ export const Dashboard = ({ user }: DashboardProps) => {
         } else {
           setCategories(categoriesData || []);
         }
-        setLoading(false);
+        
       } catch (error) {
         console.error("Error loading dashboard data:", error);
-        setLoading(false);
         toast({
           title: "Erro ao carregar dados",
           description: "Ocorreu um erro ao carregar os dados. Por favor, tente novamente.",
           variant: "destructive",
         });
+      } finally {
+        // Garantir que loading seja false ao final (sucesso ou erro)
+        if (isMounted) {
+          setLoading(false);
+        }
       }
     };
 
+    // Timeout de segurança - se dados não carregarem em 15 segundos, libera a tela
+    const safetyTimeout = setTimeout(() => {
+      if (isMounted && loading) {
+        console.warn("Dashboard data load timeout triggered explicitly");
+        setLoading(false);
+        toast({
+          title: "Carregamento lento",
+          description: "A conexão parece instável. Alguns dados podem não ter sido carregados completamente.",
+          variant: "default",
+        });
+      }
+    }, 15000);
+
+    let isMounted = true;
     loadData();
+
+    return () => {
+      isMounted = false;
+      clearTimeout(safetyTimeout);
+    };
   }, [user.id, toast, navigate]);
 
   const addTransaction = async (transaction: Omit<Transaction, "id">) => {
@@ -236,19 +260,33 @@ export const Dashboard = ({ user }: DashboardProps) => {
   };
 
   const addCategory = async (name: string) => {
+    // Verificar se categoria já existe (case insensitive)
+    const normalizedName = name.toLowerCase().trim();
+    const exists = categories.some(idx => idx.name.toLowerCase() === normalizedName);
+    
+    if (exists) {
+      toast({
+        title: "Categoria duplicada",
+        description: "Você já possui uma categoria com este nome.",
+        variant: "destructive", // ou warning se preferir
+      });
+      return false;
+    }
+
     const { data, error } = await supabase
       .from('categories')
       .insert([{
-        name: name.toLowerCase(),
+        name: normalizedName,
         user_id: user.id,
       }])
       .select()
       .single();
 
     if (error) {
+      console.error("Erro Supabase ao criar categoria:", error);
       toast({
         title: "Erro ao criar categoria",
-        description: error.message,
+        description: error.message || "Erro desconhecido ao salvar categoria.",
         variant: "destructive",
       });
       return false;

@@ -22,6 +22,7 @@ export const Categories = ({ transactions, categories, onAddCategory, onUpdateCa
   const [editingCategory, setEditingCategory] = useState<any>(null);
   const [editCategoryName, setEditCategoryName] = useState("");
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
 
   const handleAddCategory = async () => {
@@ -37,12 +38,19 @@ export const Categories = ({ transactions, categories, onAddCategory, onUpdateCa
       return;
     }
 
-    const success = await onAddCategory(sanitized);
-    if (success) {
-      setNewCategoryName("");
-      setIsAddDialogOpen(false);
-      toast.success("Categoria criada com sucesso!");
-      onUpdateCategories();
+    setIsSubmitting(true);
+    try {
+      const success = await onAddCategory(sanitized);
+      if (success) {
+        setNewCategoryName("");
+        setIsAddDialogOpen(false);
+        toast.success("Categoria criada com sucesso!");
+        onUpdateCategories();
+      }
+    } catch (error) {
+      console.error("Erro interno ao adicionar categoria:", error);
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -114,9 +122,9 @@ export const Categories = ({ transactions, categories, onAddCategory, onUpdateCa
     setIsEditDialogOpen(true);
   };
   const categoryStats = useMemo(() => {
-    const stats: Record<string, { 
-      income: number; 
-      expenses: number; 
+    const stats: Record<string, {
+      income: number;
+      expenses: number;
       count: number;
       lastTransaction: Date;
     }> = {};
@@ -134,9 +142,9 @@ export const Categories = ({ transactions, categories, onAddCategory, onUpdateCa
       } else {
         stats[t.category].expenses += amount;
       }
-      
+
       stats[t.category].count += 1;
-      
+
       if (transactionDate > stats[t.category].lastTransaction) {
         stats[t.category].lastTransaction = transactionDate;
       }
@@ -154,7 +162,7 @@ export const Categories = ({ transactions, categories, onAddCategory, onUpdateCa
 
   const categoriesList = [
     "alimentacao",
-    "transporte", 
+    "transporte",
     "saude",
     "lazer",
     "educacao",
@@ -168,7 +176,7 @@ export const Categories = ({ transactions, categories, onAddCategory, onUpdateCa
     const names: Record<string, string> = {
       alimentacao: "Alimentação",
       transporte: "Transporte",
-      saude: "Saúde", 
+      saude: "Saúde",
       lazer: "Lazer",
       educacao: "Educação",
       casa: "Casa",
@@ -190,7 +198,7 @@ export const Categories = ({ transactions, categories, onAddCategory, onUpdateCa
           <Tag className="w-6 h-6 text-primary" />
           <h1 className="text-2xl font-bold">Categorias</h1>
         </div>
-        
+
         <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
           <DialogTrigger asChild>
             <Button>
@@ -207,14 +215,15 @@ export const Categories = ({ transactions, categories, onAddCategory, onUpdateCa
                 placeholder="Nome da categoria"
                 value={newCategoryName}
                 onChange={(e) => setNewCategoryName(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && handleAddCategory()}
+                onKeyDown={(e) => e.key === 'Enter' && !isSubmitting && handleAddCategory()}
+                disabled={isSubmitting}
               />
               <div className="flex gap-2 justify-end">
-                <Button variant="outline" onClick={() => setIsAddDialogOpen(false)}>
+                <Button variant="outline" onClick={() => setIsAddDialogOpen(false)} disabled={isSubmitting}>
                   Cancelar
                 </Button>
-                <Button onClick={handleAddCategory}>
-                  Adicionar
+                <Button onClick={handleAddCategory} disabled={isSubmitting}>
+                  {isSubmitting ? "Adicionando..." : "Adicionar"}
                 </Button>
               </div>
             </div>
@@ -278,20 +287,19 @@ export const Categories = ({ transactions, categories, onAddCategory, onUpdateCa
               const isCustomCategory = !!customCategory;
 
               return (
-                <div 
-                  key={category} 
-                  className={`p-4 rounded-lg border-2 transition-colors ${
-                    hasTransactions 
-                      ? 'border-primary/20 bg-primary/5' 
+                <div
+                  key={category}
+                  className={`p-4 rounded-lg border-2 transition-colors ${hasTransactions
+                      ? 'border-primary/20 bg-primary/5'
                       : 'border-dashed border-muted-foreground/30 bg-muted/20'
-                  }`}
+                    }`}
                 >
                   <div className="flex items-center justify-between mb-2">
                     <div className="flex items-center gap-2">
                       <Tag className={`w-4 h-4 ${hasTransactions ? 'text-primary' : 'text-muted-foreground'}`} />
                       <h3 className="font-medium">{getCategoryDisplayName(category)}</h3>
                     </div>
-                    
+
                     {isCustomCategory && (
                       <div className="flex gap-1">
                         <Button
@@ -302,7 +310,7 @@ export const Categories = ({ transactions, categories, onAddCategory, onUpdateCa
                         >
                           <Edit className="w-3 h-3" />
                         </Button>
-                        
+
                         <AlertDialog>
                           <AlertDialogTrigger asChild>
                             <Button
@@ -317,7 +325,7 @@ export const Categories = ({ transactions, categories, onAddCategory, onUpdateCa
                             <AlertDialogHeader>
                               <AlertDialogTitle>Excluir categoria</AlertDialogTitle>
                               <AlertDialogDescription>
-                                Tem certeza que deseja excluir a categoria "{getCategoryDisplayName(category)}"? 
+                                Tem certeza que deseja excluir a categoria "{getCategoryDisplayName(category)}"?
                                 Esta ação não pode ser desfeita.
                               </AlertDialogDescription>
                             </AlertDialogHeader>
@@ -335,7 +343,7 @@ export const Categories = ({ transactions, categories, onAddCategory, onUpdateCa
                       </div>
                     )}
                   </div>
-                  
+
                   {hasTransactions && stats ? (
                     <div className="space-y-1 text-sm">
                       <div className="flex justify-between">
