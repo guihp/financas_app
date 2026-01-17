@@ -11,7 +11,7 @@ const AgendaPage = () => {
   const { user } = useOutletContext<OutletContextType>();
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 pb-32 lg:pb-6">
       <h1 className="text-2xl font-bold text-foreground">Agenda</h1>
       <Appointments user={user} />
     </div>
