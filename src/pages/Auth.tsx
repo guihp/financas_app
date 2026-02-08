@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -6,7 +6,8 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { DollarSign, Mail, Lock, User, ArrowLeft, Eye, EyeOff } from "lucide-react";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { DollarSign, Mail, Lock, User, ArrowLeft, Eye, EyeOff, QrCode, FileText, Loader2, CheckCircle2, Copy } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { Logo } from "@/components/Logo";
@@ -17,6 +18,28 @@ import {
   isValidFullName,
   sanitizeText 
 } from "@/utils/validation";
+
+// Payment data interface
+interface PaymentData {
+  paymentId: string;
+  status: string;
+  value: number;
+  dueDate: string;
+  invoiceUrl?: string;
+  pixCode?: string;
+  pixQrCodeBase64?: string;
+  boletoUrl?: string;
+  registrationId: string;
+  customerId: string;
+}
+
+// Plan interface
+interface Plan {
+  id: string;
+  name: string;
+  price: number;
+  interval: string;
+}
 
 const Auth = () => {
   const [activeTab, setActiveTab] = useState<"login" | "signup" | "forgot">("login");
@@ -34,6 +57,19 @@ const Auth = () => {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
   const [resetEmailSent, setResetEmailSent] = useState(false);
+  
+  // Payment states
+  const [paymentStep, setPaymentStep] = useState(false);
+  const [paymentMethod, setPaymentMethod] = useState<"PIX" | "BOLETO">("PIX");
+  const [paymentData, setPaymentData] = useState<PaymentData | null>(null);
+  const [plan, setPlan] = useState<Plan | null>(null);
+  const [registrationId, setRegistrationId] = useState<string | null>(null);
+  const [customerId, setCustomerId] = useState<string | null>(null);
+  const [checkingPayment, setCheckingPayment] = useState(false);
+  const [paymentConfirmed, setPaymentConfirmed] = useState(false);
+  const [creatingPayment, setCreatingPayment] = useState(false);
+  const pollingRef = useRef<NodeJS.Timeout | null>(null);
+  
   const navigate = useNavigate();
   const { toast } = useToast();
 
@@ -107,6 +143,257 @@ const Auth = () => {
     }
   };
 
+  // Create Asaas customer and get payment info
+  const handleCreateCustomer = async () => {
+    setCreatingPayment(true);
+    try {
+      const cleanPhone = phone.replace(/\D/g, '');
+      const sanitizedEmail = email.trim().toLowerCase();
+      const sanitizedFullName = sanitizeText(fullName, 100);
+
+      // Create customer in Asaas
+      const { data, error } = await supabase.functions.invoke('create-asaas-customer', {
+        body: {
+          email: sanitizedEmail,
+          full_name: sanitizedFullName,
+          phone: cleanPhone,
+          password: password
+        }
+      });
+
+      if (error) {
+        throw new Error(error.message || "Erro ao criar cliente.");
+      }
+
+      if (data.error) {
+        throw new Error(data.error);
+      }
+
+      setCustomerId(data.customerId);
+      setRegistrationId(data.registrationId);
+      setPlan(data.plan);
+      
+      return { customerId: data.customerId, registrationId: data.registrationId };
+    } catch (error: any) {
+      throw error;
+    } finally {
+      setCreatingPayment(false);
+    }
+  };
+
+  // Create payment in Asaas
+  const handleCreatePayment = async (custId: string, regId: string, method: "PIX" | "BOLETO") => {
+    setCreatingPayment(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('create-asaas-payment', {
+        body: {
+          customerId: custId,
+          registrationId: regId,
+          billingType: method
+        }
+      });
+
+      if (error) {
+        throw new Error(error.message || "Erro ao criar cobrança.");
+      }
+
+      if (data.error) {
+        throw new Error(data.error);
+      }
+
+      setPaymentData({
+        ...data,
+        registrationId: regId,
+        customerId: custId
+      });
+
+      // Start polling for payment status
+      startPaymentPolling(regId);
+
+      return data;
+    } catch (error: any) {
+      throw error;
+    } finally {
+      setCreatingPayment(false);
+    }
+  };
+
+  // Check payment status
+  const checkPaymentStatus = async (regId: string) => {
+    try {
+      const { data, error } = await supabase.functions.invoke('check-payment-status', {
+        body: { registrationId: regId }
+      });
+
+      if (error) {
+        console.error('Payment status check error:', error);
+        return false;
+      }
+
+      if (data.isPaid || data.registrationStatus === 'paid') {
+        setPaymentConfirmed(true);
+        stopPaymentPolling();
+        return true;
+      }
+
+      return false;
+    } catch (error) {
+      console.error('Payment status check error:', error);
+      return false;
+    }
+  };
+
+  // Start polling for payment status
+  const startPaymentPolling = (regId: string) => {
+    // Stop any existing polling
+    stopPaymentPolling();
+    
+    // Poll every 5 seconds
+    pollingRef.current = setInterval(async () => {
+      setCheckingPayment(true);
+      const isPaid = await checkPaymentStatus(regId);
+      setCheckingPayment(false);
+      
+      if (isPaid) {
+        toast({
+          title: "Pagamento confirmado!",
+          description: "Criando sua conta...",
+        });
+        // Complete registration
+        await completeRegistration(regId);
+      }
+    }, 5000);
+  };
+
+  // Stop polling
+  const stopPaymentPolling = () => {
+    if (pollingRef.current) {
+      clearInterval(pollingRef.current);
+      pollingRef.current = null;
+    }
+  };
+
+  // Complete registration after payment
+  const completeRegistration = async (regId: string) => {
+    setLoading(true);
+    try {
+      const cleanPhone = phone.replace(/\D/g, '');
+      const sanitizedEmail = email.trim().toLowerCase();
+      const sanitizedFullName = sanitizeText(fullName, 100);
+
+      const { data: registerData, error: registerError } = await supabase.functions.invoke('register-user', {
+        body: {
+          email: sanitizedEmail,
+          full_name: sanitizedFullName,
+          phone: cleanPhone,
+          registrationId: regId
+        }
+      });
+
+      let errorMessage = "";
+      if (registerError) {
+        try {
+          const errorContext = (registerError as any).context;
+          if (errorContext && typeof errorContext.json === 'function') {
+            const errorBody = await errorContext.json();
+            errorMessage = errorBody?.error || registerError.message || "Erro ao criar conta.";
+          } else {
+            errorMessage = registerError.message || "Erro ao criar conta.";
+          }
+        } catch {
+          errorMessage = registerError.message || "Erro ao criar conta.";
+        }
+      }
+
+      if (!registerError && registerData?.error) {
+        errorMessage = registerData.error;
+      }
+
+      if (errorMessage) {
+        console.error('Register error:', errorMessage);
+        setMessage(errorMessage);
+        toast({
+          title: "Erro ao criar conta",
+          description: errorMessage,
+          variant: "destructive"
+        });
+      } else if (registerData && !registerData.error) {
+        toast({
+          title: "Conta criada com sucesso!",
+          description: "Fazendo login automático...",
+        });
+        
+        // Auto login
+        const { error: signInError } = await supabase.auth.signInWithPassword({
+          email,
+          password,
+        });
+
+        if (signInError) {
+          toast({
+            title: "Conta criada!",
+            description: "Faça login manualmente.",
+          });
+          resetSignupForm();
+          setActiveTab("login");
+        } else {
+          toast({
+            title: "Login realizado!",
+            description: "Bem-vindo à IAFÉ Finanças!",
+          });
+        }
+      }
+    } catch (error: any) {
+      setMessage(error.message || "Erro inesperado. Tente novamente.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Reset signup form
+  const resetSignupForm = () => {
+    setEmail("");
+    setPassword("");
+    setFullName("");
+    setPhone("");
+    setConfirmPassword("");
+    setOtpCode("");
+    setOtpSent(false);
+    setOtpVerified(false);
+    setPaymentStep(false);
+    setPaymentData(null);
+    setPlan(null);
+    setRegistrationId(null);
+    setCustomerId(null);
+    setPaymentConfirmed(false);
+    stopPaymentPolling();
+  };
+
+  // Copy PIX code to clipboard
+  const copyPixCode = async () => {
+    if (paymentData?.pixCode) {
+      try {
+        await navigator.clipboard.writeText(paymentData.pixCode);
+        toast({
+          title: "Código copiado!",
+          description: "Cole no app do seu banco para pagar.",
+        });
+      } catch (error) {
+        toast({
+          title: "Erro ao copiar",
+          description: "Copie o código manualmente.",
+          variant: "destructive"
+        });
+      }
+    }
+  };
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      stopPaymentPolling();
+    };
+  }, []);
 
   useEffect(() => {
     // Check if user is already logged in
@@ -290,103 +577,31 @@ const Auth = () => {
           return;
         }
 
-        // OTP verified successfully, now create the account
+        // OTP verified successfully, proceed to payment step
         setOtpVerified(true);
         toast({
           title: "Código verificado!",
-          description: "Criando sua conta...",
+          description: "Preparando etapa de pagamento...",
         });
 
-        // Create the account
-        setLoading(true);
+        // Create Asaas customer and proceed to payment
         try {
-          const { data: registerData, error: registerError } = await supabase.functions.invoke('register-user', {
-            body: {
-              email: sanitizedEmail,
-              password,
-              full_name: sanitizedFullName,
-              phone: cleanPhone,
-              otp_code: trimmedCode
-            }
-          });
-
-          // Extrair mensagem de erro do corpo da resposta
-          let errorMessage = "";
-          if (registerError) {
-            // Tentar extrair mensagem do contexto ou do corpo
-            try {
-              const errorContext = (registerError as any).context;
-              if (errorContext && typeof errorContext.json === 'function') {
-                const errorBody = await errorContext.json();
-                errorMessage = errorBody?.error || registerError.message || "Erro ao criar conta.";
-              } else {
-                errorMessage = registerError.message || "Erro ao criar conta.";
-              }
-            } catch {
-              errorMessage = registerError.message || "Erro ao criar conta.";
-            }
-          }
+          const { customerId: custId, registrationId: regId } = await handleCreateCustomer();
+          setPaymentStep(true);
+          setVerifyingOtp(false);
           
-          // Verificar também se registerData contém erro
-          if (!registerError && registerData?.error) {
-            errorMessage = registerData.error;
-          }
-
-          if (errorMessage) {
-            console.error('Register error:', errorMessage);
-            setMessage(errorMessage);
-            toast({
-              title: "Erro ao criar conta",
-              description: errorMessage,
-              variant: "destructive"
-            });
-            // Não resetar verificação se for erro de email duplicado
-            if (!errorMessage.includes('já está cadastrado')) {
-              setOtpVerified(false);
-            }
-          } else if (registerData && !registerData.error) {
-            // Conta criada com sucesso, fazer login automático
-            toast({
-              title: "Conta criada com sucesso!",
-              description: "Fazendo login automático...",
-            });
-            
-            // Fazer login automático
-            const { error: signInError } = await supabase.auth.signInWithPassword({
-              email,
-              password,
-            });
-
-            if (signInError) {
-              // Se falhar o login, mostrar mensagem mas não resetar
-              toast({
-                title: "Conta criada!",
-                description: "Faça login manualmente.",
-              });
-              setActiveTab("login");
-            } else {
-              // Login bem-sucedido, navegar será automático via onAuthStateChange
-              toast({
-                title: "Login realizado!",
-                description: "Bem-vindo à IAFÉ Finanças!",
-              });
-            }
-            
-            // Limpar formulário
-            setEmail("");
-            setPassword("");
-            setFullName("");
-            setPhone("");
-            setConfirmPassword("");
-            setOtpCode("");
-            setOtpSent(false);
-            setOtpVerified(false);
-          }
-        } catch (registerError: any) {
-          setMessage(registerError.message || "Erro inesperado. Tente novamente.");
-          setOtpVerified(false); // Reset verification on error
-        } finally {
-          setLoading(false);
+          toast({
+            title: "Escolha a forma de pagamento",
+            description: "Selecione PIX ou Boleto para continuar.",
+          });
+        } catch (customerError: any) {
+          console.error('Customer creation error:', customerError);
+          setMessage(customerError.message || "Erro ao preparar pagamento.");
+          toast({
+            title: "Erro",
+            description: customerError.message || "Erro ao preparar pagamento.",
+            variant: "destructive"
+          });
           setVerifyingOtp(false);
         }
       } catch (error: any) {
@@ -461,10 +676,17 @@ const Auth = () => {
             setActiveTab(v as "login" | "signup" | "forgot");
             setMessage("");
             setResetEmailSent(false);
-            // Reset OTP state when switching tabs
+            // Reset OTP and payment state when switching tabs
             setOtpSent(false);
             setOtpVerified(false);
             setOtpCode("");
+            setPaymentStep(false);
+            setPaymentData(null);
+            setPlan(null);
+            setRegistrationId(null);
+            setCustomerId(null);
+            setPaymentConfirmed(false);
+            stopPaymentPolling();
           }}>
             <TabsList className="grid w-full grid-cols-3">
               <TabsTrigger value="login">Entrar</TabsTrigger>
@@ -532,149 +754,375 @@ const Auth = () => {
 
             {/* Signup Tab */}
             <TabsContent value="signup" className="space-y-4 mt-4">
-              <form onSubmit={handleSignUp} className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="signup-name">Nome Completo *</Label>
-                  <div className="relative">
-                    <User className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                    <Input
-                      id="signup-name"
-                      type="text"
-                      placeholder="Seu nome completo"
-                      value={fullName}
-                      onChange={(e) => setFullName(e.target.value)}
-                      className="pl-10"
-                      required
-                    />
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="signup-email">E-mail *</Label>
-                  <div className="relative">
-                    <Mail className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                    <Input
-                      id="signup-email"
-                      type="email"
-                      placeholder="seu@email.com"
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      className="pl-10"
-                      required
-                    />
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="signup-phone">Telefone *</Label>
-                  <div className="relative">
-                    <Input
-                      id="signup-phone"
-                      type="tel"
-                      placeholder="(11) 9 9999-9999"
-                      value={phone}
-                      onChange={handlePhoneChange}
-                      maxLength={17}
-                      required
-                      disabled={otpVerified}
-                    />
-                  </div>
-                  {otpSent && (
-                    <div className="space-y-2">
-                      <Alert>
-                        <AlertDescription>
-                          Código OTP enviado para seu WhatsApp! Digite o código abaixo para verificar.
-                        </AlertDescription>
-                      </Alert>
-                      <Label htmlFor="signup-otp">Código de Verificação *</Label>
-                      <Input
-                        id="signup-otp"
-                        type="text"
-                        placeholder="000000"
-                        value={otpCode}
-                        onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                        maxLength={6}
-                        className="text-center text-lg font-mono tracking-widest"
-                        required
-                      />
-                      {otpVerified && (
-                        <p className="text-sm text-green-600">✓ Código verificado com sucesso!</p>
-                      )}
+              {/* Payment Step */}
+              {paymentStep ? (
+                <div className="space-y-4">
+                  {/* Plan Info */}
+                  {plan && (
+                    <div className="p-4 bg-primary/10 rounded-lg border border-primary/20">
+                      <h3 className="font-semibold text-lg">{plan.name}</h3>
+                      <p className="text-2xl font-bold text-primary">
+                        R$ {plan.price.toFixed(2).replace('.', ',')}
+                        <span className="text-sm font-normal text-muted-foreground">/mês</span>
+                      </p>
                     </div>
                   )}
-                </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor="signup-password">Senha *</Label>
-                  <div className="relative">
-                    <Lock className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                    <Input
-                      id="signup-password"
-                      type={showPassword ? "text" : "password"}
-                      placeholder="Mínimo 8 caracteres"
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      className="pl-10 pr-10"
-                      required
-                      minLength={6}
-                    />
-                    <button
+                  {/* Payment Confirmed */}
+                  {paymentConfirmed ? (
+                    <div className="text-center space-y-4">
+                      <CheckCircle2 className="h-16 w-16 text-green-500 mx-auto" />
+                      <h3 className="text-xl font-semibold text-green-600">Pagamento Confirmado!</h3>
+                      <p className="text-muted-foreground">Criando sua conta...</p>
+                      <Loader2 className="h-6 w-6 animate-spin mx-auto" />
+                    </div>
+                  ) : paymentData ? (
+                    /* Show Payment Info */
+                    <div className="space-y-4">
+                      {paymentData.pixQrCodeBase64 && (
+                        <div className="space-y-4 text-center">
+                          <h3 className="font-semibold flex items-center justify-center gap-2">
+                            <QrCode className="h-5 w-5" />
+                            Pague com PIX
+                          </h3>
+                          <div className="bg-white p-4 rounded-lg inline-block mx-auto">
+                            <img 
+                              src={`data:image/png;base64,${paymentData.pixQrCodeBase64}`} 
+                              alt="QR Code PIX" 
+                              className="w-48 h-48 mx-auto"
+                            />
+                          </div>
+                          {paymentData.pixCode && (
+                            <div className="space-y-2">
+                              <p className="text-sm text-muted-foreground">Ou copie o código:</p>
+                              <div className="flex gap-2">
+                                <Input 
+                                  value={paymentData.pixCode} 
+                                  readOnly 
+                                  className="text-xs font-mono"
+                                />
+                                <Button 
+                                  type="button" 
+                                  variant="outline" 
+                                  size="icon"
+                                  onClick={copyPixCode}
+                                >
+                                  <Copy className="h-4 w-4" />
+                                </Button>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {paymentData.boletoUrl && (
+                        <div className="space-y-4 text-center">
+                          <h3 className="font-semibold flex items-center justify-center gap-2">
+                            <FileText className="h-5 w-5" />
+                            Boleto Bancário
+                          </h3>
+                          <Button 
+                            type="button"
+                            onClick={() => window.open(paymentData.boletoUrl, '_blank')}
+                            className="w-full"
+                          >
+                            Abrir Boleto
+                          </Button>
+                        </div>
+                      )}
+
+                      {/* Checking Payment Status */}
+                      <div className="text-center p-4 bg-muted/50 rounded-lg">
+                        <div className="flex items-center justify-center gap-2 text-muted-foreground">
+                          {checkingPayment ? (
+                            <>
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                              <span>Verificando pagamento...</span>
+                            </>
+                          ) : (
+                            <span>Aguardando confirmação do pagamento...</span>
+                          )}
+                        </div>
+                        <p className="text-xs text-muted-foreground mt-2">
+                          A página será atualizada automaticamente quando o pagamento for confirmado.
+                        </p>
+                      </div>
+
+                      {/* Manual Check Button */}
+                      <Button 
+                        type="button"
+                        variant="outline"
+                        className="w-full"
+                        onClick={async () => {
+                          if (registrationId) {
+                            setCheckingPayment(true);
+                            const isPaid = await checkPaymentStatus(registrationId);
+                            setCheckingPayment(false);
+                            if (isPaid) {
+                              toast({
+                                title: "Pagamento confirmado!",
+                                description: "Criando sua conta...",
+                              });
+                              await completeRegistration(registrationId);
+                            } else {
+                              toast({
+                                title: "Pagamento pendente",
+                                description: "Ainda não identificamos seu pagamento.",
+                              });
+                            }
+                          }
+                        }}
+                        disabled={checkingPayment}
+                      >
+                        {checkingPayment ? (
+                          <>
+                            <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                            Verificando...
+                          </>
+                        ) : (
+                          "Já paguei"
+                        )}
+                      </Button>
+                    </div>
+                  ) : (
+                    /* Payment Method Selection */
+                    <div className="space-y-4">
+                      <Label>Escolha a forma de pagamento:</Label>
+                      <RadioGroup 
+                        value={paymentMethod} 
+                        onValueChange={(v) => setPaymentMethod(v as "PIX" | "BOLETO")}
+                        className="space-y-2"
+                      >
+                        <div className="flex items-center space-x-3 p-3 border rounded-lg hover:bg-muted/50 cursor-pointer">
+                          <RadioGroupItem value="PIX" id="pix" />
+                          <Label htmlFor="pix" className="flex items-center gap-2 cursor-pointer flex-1">
+                            <QrCode className="h-5 w-5 text-primary" />
+                            <div>
+                              <p className="font-medium">PIX</p>
+                              <p className="text-xs text-muted-foreground">Pagamento instantâneo</p>
+                            </div>
+                          </Label>
+                        </div>
+                        <div className="flex items-center space-x-3 p-3 border rounded-lg hover:bg-muted/50 cursor-pointer">
+                          <RadioGroupItem value="BOLETO" id="boleto" />
+                          <Label htmlFor="boleto" className="flex items-center gap-2 cursor-pointer flex-1">
+                            <FileText className="h-5 w-5 text-primary" />
+                            <div>
+                              <p className="font-medium">Boleto</p>
+                              <p className="text-xs text-muted-foreground">Vencimento em 1 dia útil</p>
+                            </div>
+                          </Label>
+                        </div>
+                      </RadioGroup>
+
+                      <Button 
+                        type="button"
+                        className="w-full bg-primary hover:bg-primary/90"
+                        onClick={async () => {
+                          if (customerId && registrationId) {
+                            try {
+                              await handleCreatePayment(customerId, registrationId, paymentMethod);
+                            } catch (error: any) {
+                              setMessage(error.message || "Erro ao gerar pagamento.");
+                              toast({
+                                title: "Erro",
+                                description: error.message || "Erro ao gerar pagamento.",
+                                variant: "destructive"
+                              });
+                            }
+                          }
+                        }}
+                        disabled={creatingPayment}
+                      >
+                        {creatingPayment ? (
+                          <>
+                            <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                            Gerando cobrança...
+                          </>
+                        ) : (
+                          `Gerar ${paymentMethod === 'PIX' ? 'QR Code PIX' : 'Boleto'}`
+                        )}
+                      </Button>
+                    </div>
+                  )}
+
+                  {message && (
+                    <Alert>
+                      <AlertDescription>{message}</AlertDescription>
+                    </Alert>
+                  )}
+
+                  {/* Back Button */}
+                  {!paymentConfirmed && (
+                    <Button 
                       type="button"
-                      onClick={() => setShowPassword(!showPassword)}
-                      className="absolute right-3 top-3 h-4 w-4 text-muted-foreground hover:text-foreground"
+                      variant="ghost"
+                      className="w-full"
+                      onClick={() => {
+                        stopPaymentPolling();
+                        setPaymentStep(false);
+                        setPaymentData(null);
+                        setOtpVerified(false);
+                        setOtpSent(false);
+                        setOtpCode("");
+                      }}
                     >
-                      {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                    </button>
-                  </div>
+                      <ArrowLeft className="h-4 w-4 mr-2" />
+                      Voltar
+                    </Button>
+                  )}
                 </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="signup-confirm-password">Confirmar Senha *</Label>
-                  <div className="relative">
-                    <Lock className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                    <Input
-                      id="signup-confirm-password"
-                      type={showConfirmPassword ? "text" : "password"}
-                      placeholder="Confirme sua senha"
-                      value={confirmPassword}
-                      onChange={(e) => setConfirmPassword(e.target.value)}
-                      className="pl-10 pr-10"
-                      required
-                      minLength={6}
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                      className="absolute right-3 top-3 h-4 w-4 text-muted-foreground hover:text-foreground"
-                    >
-                      {showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                    </button>
+              ) : (
+                /* Regular Signup Form */
+                <form onSubmit={handleSignUp} className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="signup-name">Nome Completo *</Label>
+                    <div className="relative">
+                      <User className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                      <Input
+                        id="signup-name"
+                        type="text"
+                        placeholder="Seu nome completo"
+                        value={fullName}
+                        onChange={(e) => setFullName(e.target.value)}
+                        className="pl-10"
+                        required
+                      />
+                    </div>
                   </div>
-                </div>
 
-                {message && (
-                  <Alert>
-                    <AlertDescription>{message}</AlertDescription>
-                  </Alert>
-                )}
+                  <div className="space-y-2">
+                    <Label htmlFor="signup-email">E-mail *</Label>
+                    <div className="relative">
+                      <Mail className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                      <Input
+                        id="signup-email"
+                        type="email"
+                        placeholder="seu@email.com"
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                        className="pl-10"
+                        required
+                      />
+                    </div>
+                  </div>
 
-                <Button 
-                  type="submit" 
-                  className="w-full bg-primary hover:bg-primary/90" 
-                  disabled={loading || verifyingOtp}
-                >
-                  {loading && !otpSent ? "Enviando código..." : 
-                   verifyingOtp ? "Verificando código..." :
-                   otpSent && !otpVerified ? "Verificar e Criar Conta" :
-                   otpVerified ? "Criando conta..." :
-                   "Criar Conta"}
-                </Button>
-                {otpSent && !otpVerified && (
-                  <p className="text-sm text-muted-foreground text-center">
-                    Digite o código recebido no WhatsApp e clique novamente em "Criar Conta" para verificar e criar sua conta.
-                  </p>
-                )}
-              </form>
+                  <div className="space-y-2">
+                    <Label htmlFor="signup-phone">Telefone *</Label>
+                    <div className="relative">
+                      <Input
+                        id="signup-phone"
+                        type="tel"
+                        placeholder="(11) 9 9999-9999"
+                        value={phone}
+                        onChange={handlePhoneChange}
+                        maxLength={17}
+                        required
+                        disabled={otpVerified}
+                      />
+                    </div>
+                    {otpSent && !paymentStep && (
+                      <div className="space-y-2">
+                        <Alert>
+                          <AlertDescription>
+                            Código OTP enviado para seu WhatsApp! Digite o código abaixo para verificar.
+                          </AlertDescription>
+                        </Alert>
+                        <Label htmlFor="signup-otp">Código de Verificação *</Label>
+                        <Input
+                          id="signup-otp"
+                          type="text"
+                          placeholder="000000"
+                          value={otpCode}
+                          onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                          maxLength={6}
+                          className="text-center text-lg font-mono tracking-widest"
+                          required
+                        />
+                        {otpVerified && (
+                          <p className="text-sm text-green-600">✓ Código verificado com sucesso!</p>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="signup-password">Senha *</Label>
+                    <div className="relative">
+                      <Lock className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                      <Input
+                        id="signup-password"
+                        type={showPassword ? "text" : "password"}
+                        placeholder="Mínimo 8 caracteres"
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        className="pl-10 pr-10"
+                        required
+                        minLength={6}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowPassword(!showPassword)}
+                        className="absolute right-3 top-3 h-4 w-4 text-muted-foreground hover:text-foreground"
+                      >
+                        {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="signup-confirm-password">Confirmar Senha *</Label>
+                    <div className="relative">
+                      <Lock className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                      <Input
+                        id="signup-confirm-password"
+                        type={showConfirmPassword ? "text" : "password"}
+                        placeholder="Confirme sua senha"
+                        value={confirmPassword}
+                        onChange={(e) => setConfirmPassword(e.target.value)}
+                        className="pl-10 pr-10"
+                        required
+                        minLength={6}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                        className="absolute right-3 top-3 h-4 w-4 text-muted-foreground hover:text-foreground"
+                      >
+                        {showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                      </button>
+                    </div>
+                  </div>
+
+                  {message && (
+                    <Alert>
+                      <AlertDescription>{message}</AlertDescription>
+                    </Alert>
+                  )}
+
+                  <Button 
+                    type="submit" 
+                    className="w-full bg-primary hover:bg-primary/90" 
+                    disabled={loading || verifyingOtp || creatingPayment}
+                  >
+                    {loading && !otpSent ? "Enviando código..." : 
+                     verifyingOtp ? "Verificando código..." :
+                     creatingPayment ? "Preparando pagamento..." :
+                     otpSent && !otpVerified ? "Verificar Código" :
+                     "Continuar"}
+                  </Button>
+                  {otpSent && !otpVerified && (
+                    <p className="text-sm text-muted-foreground text-center">
+                      Digite o código recebido no WhatsApp e clique em "Verificar Código" para prosseguir.
+                    </p>
+                  )}
+                  {!otpSent && (
+                    <p className="text-xs text-muted-foreground text-center">
+                      Ao continuar, você receberá um código de verificação no WhatsApp e será direcionado para a página de pagamento.
+                    </p>
+                  )}
+                </form>
+              )}
             </TabsContent>
 
             {/* Forgot Password Tab */}

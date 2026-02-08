@@ -14,6 +14,8 @@ As Edge Functions do Supabase usam variáveis de ambiente configuradas automatic
 - `SUPABASE_URL` - Configurado automaticamente
 - `SUPABASE_SERVICE_ROLE_KEY` - Configurado automaticamente
 - `WEBHOOK_BASE_URL` - **IMPORTANTE**: URL base do webhook (sem o caminho do endpoint)
+- `ASAAS_API_KEY` - **IMPORTANTE**: Chave da API do Asaas (sandbox ou produção)
+- `ASAAS_BASE_URL` - URL base da API do Asaas (padrão: https://api-sandbox.asaas.com/v3)
 
 ### Exemplo de WEBHOOK_BASE_URL:
 ```
@@ -87,9 +89,72 @@ Para ver histórico de execuções:
 SELECT * FROM cron.job_run_details WHERE jobid = (SELECT jobid FROM cron.job WHERE jobname = 'appointment-notifications');
 ```
 
+## Integração Asaas (Pagamentos)
+
+### Configuração
+
+1. **ASAAS_API_KEY**: Chave da API do Asaas
+   - Sandbox: Começa com `$aact_hmlg_...`
+   - Produção: Começa com `$aact_prod_...`
+
+2. **ASAAS_BASE_URL**: 
+   - Sandbox: `https://api-sandbox.asaas.com/v3`
+   - Produção: `https://api.asaas.com/v3`
+
+### Webhook de Pagamentos
+
+Configure o webhook no painel do Asaas para enviar eventos para:
+
+```
+https://n8n-sgo8ksokg404ocg8sgc4sooc.vemprajogo.com/webhook/financas-asaas
+```
+
+O n8n deve então encaminhar os eventos para a Edge Function `process-asaas-webhook`:
+
+```
+POST https://dlbiwguzbiosaoyrcvay.supabase.co/functions/v1/process-asaas-webhook
+Authorization: Bearer {SUPABASE_ANON_KEY}
+Content-Type: application/json
+Body: { event, payment }
+```
+
+### Eventos Suportados
+
+- `PAYMENT_CONFIRMED` - Pagamento confirmado
+- `PAYMENT_RECEIVED` - Pagamento recebido
+- `PAYMENT_OVERDUE` - Pagamento vencido
+- `PAYMENT_DELETED` - Pagamento excluído
+- `PAYMENT_REFUNDED` - Pagamento estornado
+
+### Fluxo de Pagamento no Cadastro
+
+1. Usuário preenche formulário e verifica OTP
+2. Sistema cria cliente no Asaas (`create-asaas-customer`)
+3. Sistema cria cobrança PIX/Boleto (`create-asaas-payment`)
+4. Usuário paga via QR Code ou boleto
+5. Asaas envia evento para webhook n8n
+6. n8n encaminha para `process-asaas-webhook`
+7. Sistema marca registro como pago
+8. Sistema cria conta do usuário (`register-user`)
+
+### Edge Functions de Pagamento
+
+- `create-asaas-customer` - Cria cliente no Asaas
+- `create-asaas-payment` - Cria cobrança (PIX/Boleto)
+- `check-payment-status` - Verifica status do pagamento
+- `process-asaas-webhook` - Processa webhooks do Asaas
+
 ## Configuração no Coolify
 
 1. Acesse as configurações do projeto no Coolify
 2. Vá em "Environment Variables"
 3. Adicione as variáveis acima
-4. Para Edge Functions, configure `WEBHOOK_BASE_URL` nas variáveis de ambiente do projeto Supabase
+4. Para Edge Functions, configure `WEBHOOK_BASE_URL` e `ASAAS_API_KEY` nas variáveis de ambiente do projeto Supabase
+
+### Variáveis Necessárias no Supabase
+
+No painel do Supabase, vá em Project Settings > Edge Functions > Secrets e adicione:
+
+- `WEBHOOK_BASE_URL` = https://n8n-sgo8ksokg404ocg8sgc4sooc.vemprajogo.com
+- `ASAAS_API_KEY` = $aact_hmlg_... (sua chave da API)
+- `ASAAS_BASE_URL` = https://api-sandbox.asaas.com/v3

@@ -17,19 +17,17 @@ serve(async (req) => {
     const body = await req.json();
     console.log('Received request body:', { ...body, password: '[HIDDEN]' });
     
-    const { email, password, full_name, phone, otp_code } = body;
+    const { email, password, full_name, phone, otp_code, registrationId } = body;
 
     // Validate required fields
-    if (!email || !password || !full_name || !phone || !otp_code) {
+    if (!email || !full_name || !phone) {
       console.error('Missing required fields:', { 
         email: !!email, 
-        password: !!password, 
         full_name: !!full_name, 
-        phone: !!phone, 
-        otp_code: !!otp_code 
+        phone: !!phone
       });
       return new Response(
-        JSON.stringify({ error: 'Email, password, full_name, phone and otp_code are required' }),
+        JSON.stringify({ error: 'Email, nome completo e telefone são obrigatórios' }),
         { 
           status: 400, 
           headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
@@ -43,50 +41,130 @@ serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
 
-    // Verify OTP code - check if it was verified (we don't re-check expiration since verify-otp already did that)
     const cleanPhone = phone.replace(/\D/g, '');
-    const cleanOtpCode = String(otp_code).trim();
-    
-    console.log('Looking for OTP:', { phone: cleanPhone, code: cleanOtpCode });
-    
-    // First, find any verified OTP for this phone (within the last hour for safety)
-    const oneHourAgo = new Date();
-    oneHourAgo.setHours(oneHourAgo.getHours() - 1);
-    
-    const { data: otpData, error: otpError } = await supabaseAdmin
-      .from('otp_codes')
-      .select('*')
-      .eq('phone', cleanPhone)
-      .eq('verified', true)
-      .gt('created_at', oneHourAgo.toISOString())
-      .order('created_at', { ascending: false })
-      .limit(5);
+    let userPassword = password;
+    let asaasCustomerId = null;
 
-    console.log('OTP query result:', { 
-      found: otpData?.length || 0, 
-      error: otpError?.message || null,
-      codes: otpData?.map(o => ({ id: o.id, code: o.code, verified: o.verified })) || []
-    });
+    // ============================================
+    // PAYMENT VERIFICATION (if registrationId provided)
+    // ============================================
+    if (registrationId) {
+      console.log('Checking payment status for registration:', registrationId);
+      
+      const { data: registration, error: regError } = await supabaseAdmin
+        .from('pending_registrations')
+        .select('*')
+        .eq('id', registrationId)
+        .single();
 
-    // Find matching code
-    const matchingOtp = otpData?.find(otp => String(otp.code).trim() === cleanOtpCode);
+      if (regError || !registration) {
+        console.error('Registration not found:', regError);
+        return new Response(
+          JSON.stringify({ error: 'Registro de pagamento não encontrado. Por favor, reinicie o processo de cadastro.' }),
+          { 
+            status: 404, 
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+          }
+        );
+      }
 
-    if (otpError || !matchingOtp) {
-      console.error('OTP verification failed:', { 
-        error: otpError?.message, 
-        foundCodes: otpData?.length || 0,
-        searchedCode: cleanOtpCode 
-      });
+      // Verify payment status
+      if (registration.status !== 'paid') {
+        console.error('Payment not confirmed:', registration.status);
+        return new Response(
+          JSON.stringify({ 
+            error: 'Pagamento ainda não confirmado. Por favor, aguarde a confirmação do pagamento.',
+            status: registration.status
+          }),
+          { 
+            status: 402, // Payment Required
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+          }
+        );
+      }
+
+      // Check if registration already used
+      if (registration.status === 'registered') {
+        console.error('Registration already used:', registrationId);
+        return new Response(
+          JSON.stringify({ error: 'Este registro já foi utilizado. Por favor, faça login.' }),
+          { 
+            status: 400, 
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+          }
+        );
+      }
+
+      // Use password from registration if not provided
+      if (!userPassword && registration.password_hash) {
+        try {
+          userPassword = atob(registration.password_hash);
+        } catch (e) {
+          console.error('Failed to decode password:', e);
+        }
+      }
+
+      asaasCustomerId = registration.asaas_customer_id;
+      console.log('Payment verified for registration:', registrationId);
+    } else {
+      // ============================================
+      // LEGACY OTP VERIFICATION (for backwards compatibility)
+      // ============================================
+      if (!otp_code) {
+        return new Response(
+          JSON.stringify({ error: 'Código OTP ou registrationId é obrigatório' }),
+          { 
+            status: 400, 
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+          }
+        );
+      }
+
+      const cleanOtpCode = String(otp_code).trim();
+      console.log('Looking for OTP:', { phone: cleanPhone, code: cleanOtpCode });
+      
+      const oneHourAgo = new Date();
+      oneHourAgo.setHours(oneHourAgo.getHours() - 1);
+      
+      const { data: otpData, error: otpError } = await supabaseAdmin
+        .from('otp_codes')
+        .select('*')
+        .eq('phone', cleanPhone)
+        .eq('verified', true)
+        .gt('created_at', oneHourAgo.toISOString())
+        .order('created_at', { ascending: false })
+        .limit(5);
+
+      const matchingOtp = otpData?.find(otp => String(otp.code).trim() === cleanOtpCode);
+
+      if (otpError || !matchingOtp) {
+        console.error('OTP verification failed:', { 
+          error: otpError?.message, 
+          foundCodes: otpData?.length || 0,
+          searchedCode: cleanOtpCode 
+        });
+        return new Response(
+          JSON.stringify({ error: 'Código OTP inválido ou não verificado. Por favor, verifique o código recebido no WhatsApp e tente novamente.' }),
+          { 
+            status: 400, 
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+          }
+        );
+      }
+      
+      console.log('Found matching OTP:', matchingOtp.id);
+    }
+
+    // Validate password
+    if (!userPassword) {
       return new Response(
-        JSON.stringify({ error: 'Código OTP inválido ou não verificado. Por favor, verifique o código recebido no WhatsApp e tente novamente.' }),
+        JSON.stringify({ error: 'Senha é obrigatória' }),
         { 
           status: 400, 
           headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
         }
       );
     }
-    
-    console.log('Found matching OTP:', matchingOtp.id);
 
     // Check if email already exists
     const { data: existingUsers, error: listError } = await supabaseAdmin.auth.admin.listUsers();
@@ -108,7 +186,7 @@ serve(async (req) => {
     // Create user in auth.users
     const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
       email,
-      password,
+      password: userPassword,
       email_confirm: true, // Confirmar email automaticamente
       user_metadata: { full_name }
     });
@@ -146,11 +224,57 @@ serve(async (req) => {
       // Don't fail the whole operation if profile update fails
     }
 
+    // ============================================
+    // CREATE SUBSCRIPTION (if payment was verified)
+    // ============================================
+    if (registrationId && asaasCustomerId) {
+      // Get plan info from registration
+      const { data: registration } = await supabaseAdmin
+        .from('pending_registrations')
+        .select('plan_id')
+        .eq('id', registrationId)
+        .single();
+
+      // Calculate subscription period (1 month)
+      const periodStart = new Date();
+      const periodEnd = new Date();
+      periodEnd.setMonth(periodEnd.getMonth() + 1);
+
+      // Create subscription record
+      const { error: subError } = await supabaseAdmin
+        .from('subscriptions')
+        .insert({
+          user_id: authData.user.id,
+          asaas_customer_id: asaasCustomerId,
+          plan_id: registration?.plan_id,
+          status: 'active',
+          current_period_start: periodStart.toISOString().split('T')[0],
+          current_period_end: periodEnd.toISOString().split('T')[0]
+        });
+
+      if (subError) {
+        console.error('Failed to create subscription:', subError);
+        // Don't fail registration if subscription creation fails
+      } else {
+        console.log('Subscription created for user:', authData.user.id);
+      }
+
+      // Update pending registration status
+      await supabaseAdmin
+        .from('pending_registrations')
+        .update({ 
+          status: 'registered',
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', registrationId);
+    }
+
     console.log('User created successfully:', { 
       user_id: authData.user.id, 
       email, 
       phone, 
-      full_name 
+      full_name,
+      hasSubscription: !!registrationId
     });
 
     return new Response(

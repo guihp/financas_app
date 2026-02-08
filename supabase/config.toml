@@ -56,3 +56,15 @@ verify_jwt = false
 
 [functions.admin-update-user-profile]
 verify_jwt = false
+
+[functions.create-asaas-customer]
+verify_jwt = false
+
+[functions.create-asaas-payment]
+verify_jwt = false
+
+[functions.check-payment-status]
+verify_jwt = false
+
+[functions.process-asaas-webhook]
+verify_jwt = false
