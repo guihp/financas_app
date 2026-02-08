@@ -189,7 +189,7 @@ export const AppLayout = () => {
         </div>
 
         {/* Mobile Bottom Navigation */}
-        {isMobile && <MobileBottomNav />}
+        {isMobile && <MobileBottomNav userEmail={user.email} />}
       </div>
     </div>
   );
