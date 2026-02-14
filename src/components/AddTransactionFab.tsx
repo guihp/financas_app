@@ -135,20 +135,6 @@ export const AddTransactionFab = ({
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Usuário não autenticado");
 
-      // Buscar o telefone do perfil
-      const { data: profileData } = await supabase
-        .from("profiles")
-        .select("phone")
-        .eq("user_id", user.id)
-        .single();
-
-      // Formatar telefone para WhatsApp
-      let formattedPhone = null;
-      if (profileData?.phone) {
-        const cleanPhone = profileData.phone.replace(/\D/g, '');
-        formattedPhone = `55${cleanPhone}@s.whatsapp.net`;
-      }
-
       const { error } = await supabase
         .from("transactions")
         .insert({
@@ -158,7 +144,6 @@ export const AddTransactionFab = ({
           description: sanitizedDescription,
           category: sanitizedCategory,
           transaction_date: new Date().toISOString().split('T')[0],
-          phone: formattedPhone
         });
 
       if (error) throw error;

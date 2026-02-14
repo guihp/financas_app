@@ -1,29 +1,49 @@
 import { useNavigate, useLocation } from "react-router-dom";
-import { TrendingUp, CreditCard, BarChart3, Tag, Calendar, Plus, Settings, Key, LogOut, X, User } from "lucide-react";
+import {
+  TrendingUp,
+  CreditCard,
+  BarChart3,
+  Tag,
+  Calendar,
+  Plus,
+  Settings,
+  Key,
+  LogOut,
+  User,
+  Shield,
+  Crown,
+} from "lucide-react";
 import { useState } from "react";
+import { AnimatePresence, motion } from "framer-motion";
 import { AddTransactionFab } from "@/components/AddTransactionFab";
 import { supabase } from "@/integrations/supabase/client";
-import { useToast } from "@/hooks/use-toast";
+import { Dock, DockIcon } from "@/components/ui/dock";
 import {
   Sheet,
   SheetContent,
   SheetHeader,
   SheetTitle,
-  SheetTrigger,
 } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
+import { Separator } from "@/components/ui/separator";
 
 interface MobileBottomNavProps {
   currentView?: string;
   setCurrentView?: (view: any) => void;
   onAddTransaction?: () => void;
   userEmail?: string;
+  isSuperAdmin?: boolean;
 }
 
-export const MobileBottomNav = ({ currentView, setCurrentView, onAddTransaction, userEmail }: MobileBottomNavProps) => {
+export const MobileBottomNav = ({
+  currentView,
+  setCurrentView,
+  onAddTransaction,
+  userEmail,
+  isSuperAdmin = false,
+}: MobileBottomNavProps) => {
   const navigate = useNavigate();
   const location = useLocation();
-  const { toast } = useToast();
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
 
@@ -37,29 +57,19 @@ export const MobileBottomNav = ({ currentView, setCurrentView, onAddTransaction,
 
   const handleLogout = async () => {
     try {
-      await supabase.auth.signOut();
-      toast({
-        title: "Logout realizado",
-        description: "Você foi desconectado com sucesso.",
-      });
       setShowSettings(false);
-      navigate("/auth");
+      await supabase.auth.signOut({ scope: 'local' });
+      window.location.href = "/auth";
     } catch (error) {
       console.error("Logout error:", error);
-      toast({
-        title: "Erro",
-        description: "Erro ao fazer logout. Tente novamente.",
-        variant: "destructive"
-      });
+      window.location.href = "/auth";
     }
   };
 
   const handleTransactionAdded = () => {
-    // Se estiver usando state mode
     if (setCurrentView) {
       setCurrentView("transactions");
     } else {
-      // Se estiver usando router mode
       navigate("/transactions");
     }
   };
@@ -68,129 +78,189 @@ export const MobileBottomNav = ({ currentView, setCurrentView, onAddTransaction,
 
   return (
     <>
-      <nav className="fixed bottom-0 left-0 right-0 z-[100] lg:hidden bg-card/95 backdrop-blur-lg border-t border-border shadow-[0_-4px_20px_rgba(0,0,0,0.3)]">
-        {/* Safe area padding for iPhone notch/home indicator */}
-        <div
-          className="grid grid-cols-7 items-center px-1 pt-3 min-h-[80px]"
-          style={{ paddingBottom: 'max(12px, env(safe-area-inset-bottom))' }}
-        >
-          {navItems.map((item) => {
-            const Icon = item.icon;
-            const active = isRouterMode
-              ? location.pathname === item.path
-              : currentView === item.view;
+      {/* Dock - hide when settings sheet is open */}
+      <AnimatePresence>
+        {!showSettings && (
+          <motion.div
+            initial={{ y: 100, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            exit={{ y: 100, opacity: 0 }}
+            transition={{ type: "spring", damping: 20, stiffness: 300 }}
+            className="fixed bottom-0 left-0 right-0 z-[100] flex justify-center"
+            style={{ paddingBottom: "max(12px, env(safe-area-inset-bottom))" }}
+          >
+            <Dock
+              iconSize={40}
+              iconMagnification={56}
+              iconDistance={120}
+              direction="bottom"
+              className="mx-3 h-[56px] gap-1 rounded-2xl border-border/40 bg-card/90 backdrop-blur-2xl px-1.5 pb-1.5 shadow-[0_-2px_30px_rgba(0,0,0,0.4)]"
+            >
+              {navItems.map((item) => {
+                const Icon = item.icon;
+                const active = isRouterMode
+                  ? location.pathname === item.path
+                  : currentView === item.view;
 
-            return (
-              <button
-                key={item.path}
-                className={`flex flex-col items-center justify-center py-2 px-0.5 rounded-lg transition-all active:scale-95 ${active
-                  ? "text-primary"
-                  : "text-white/60"
-                  }`}
+                return (
+                  <DockIcon
+                    key={item.path}
+                    label={item.label}
+                    active={active}
+                    onClick={() => {
+                      if (isRouterMode) {
+                        navigate(item.path);
+                      } else {
+                        setCurrentView?.(item.view);
+                      }
+                    }}
+                    className={active ? "text-primary" : "text-white/60"}
+                  >
+                    <Icon className={`h-5 w-5 ${active ? "text-primary" : ""}`} />
+                  </DockIcon>
+                );
+              })}
+
+              {/* Separator */}
+              <div className="h-8 w-px bg-border/40 self-center mx-0.5" />
+
+              {/* Add Transaction Button */}
+              <DockIcon
+                label="Novo"
                 onClick={() => {
-                  if (isRouterMode) {
-                    navigate(item.path);
+                  if (onAddTransaction) {
+                    onAddTransaction();
                   } else {
-                    setCurrentView?.(item.view);
+                    setShowAddDialog(true);
                   }
                 }}
+                className="bg-primary hover:bg-primary/90 text-white shadow-lg shadow-primary/30"
               >
-                <div className={`p-1.5 rounded-lg mb-0.5 transition-colors ${active ? 'bg-primary/20' : ''}`}>
-                  <Icon className={`h-5 w-5 ${active ? "text-primary" : ""}`} />
-                </div>
-                <span className={`text-[8px] font-medium leading-tight ${active ? 'text-primary' : ''}`}>
-                  {item.label}
-                </span>
-              </button>
-            );
-          })}
+                <Plus className="h-5 w-5 text-white" />
+              </DockIcon>
 
-          {/* Add Transaction FAB */}
-          <div className="flex justify-center">
-            <button
-              onClick={() => {
-                if (onAddTransaction) {
-                  onAddTransaction();
-                } else {
-                  setShowAddDialog(true);
-                }
-              }}
-              className="h-10 w-10 rounded-full bg-primary hover:bg-primary/90 text-white shadow-lg shadow-primary/30 flex items-center justify-center transition-all active:scale-95"
-            >
-              <Plus className="h-5 w-5" />
-            </button>
-          </div>
+              {/* Separator */}
+              <div className="h-8 w-px bg-border/40 self-center mx-0.5" />
 
-          {/* Settings Button */}
-          <Sheet open={showSettings} onOpenChange={setShowSettings}>
-            <SheetTrigger asChild>
-              <button
-                className={`flex flex-col items-center justify-center py-2 px-0.5 rounded-lg transition-all active:scale-95 ${
-                  location.pathname === "/alterar-senha"
+              {/* Settings Button */}
+              <DockIcon
+                label="Config"
+                active={showSettings}
+                onClick={() => setShowSettings(true)}
+                className={
+                  showSettings
                     ? "text-primary"
                     : "text-white/60"
-                }`}
+                }
               >
-                <div className={`p-1.5 rounded-lg mb-0.5 transition-colors ${
-                  location.pathname === "/alterar-senha" ? 'bg-primary/20' : ''
-                }`}>
-                  <Settings className={`h-5 w-5 ${location.pathname === "/alterar-senha" ? "text-primary" : ""}`} />
-                </div>
-                <span className={`text-[8px] font-medium leading-tight ${
-                  location.pathname === "/alterar-senha" ? 'text-primary' : ''
-                }`}>
-                  Config
-                </span>
-              </button>
-            </SheetTrigger>
-            <SheetContent side="bottom" className="rounded-t-2xl">
-              <SheetHeader className="mb-4">
-                <SheetTitle>Configurações</SheetTitle>
-              </SheetHeader>
-              
-              {/* User Info */}
-              {userEmail && (
-                <div className="flex items-center gap-3 p-3 bg-muted/50 rounded-lg mb-4">
-                  <div className="h-10 w-10 rounded-full bg-primary/20 flex items-center justify-center">
-                    <User className="h-5 w-5 text-primary" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium truncate">{userEmail}</p>
-                    <p className="text-xs text-muted-foreground">Conta conectada</p>
-                  </div>
-                </div>
-              )}
+                <Settings
+                  className={`h-5 w-5 ${
+                    showSettings ? "text-primary" : ""
+                  }`}
+                />
+              </DockIcon>
+            </Dock>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
-              <div className="space-y-2">
-                {/* Change Password */}
+      {/* Settings Sheet - slides up from bottom, dock hides */}
+      <Sheet open={showSettings} onOpenChange={setShowSettings}>
+        <SheetContent
+          side="bottom"
+          className="rounded-t-3xl"
+          style={{ paddingBottom: "max(2rem, env(safe-area-inset-bottom))" }}
+        >
+          <SheetHeader className="mb-6">
+            <SheetTitle className="text-lg font-semibold">
+              Configurações
+            </SheetTitle>
+          </SheetHeader>
+
+          {/* User Info */}
+          {userEmail && (
+            <div className="flex items-center gap-4 p-4 bg-muted/50 rounded-xl mb-6">
+              <div className="h-12 w-12 rounded-full bg-primary/20 flex items-center justify-center flex-shrink-0">
+                <User className="h-6 w-6 text-primary" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium truncate">{userEmail}</p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Conta conectada
+                </p>
+              </div>
+            </div>
+          )}
+
+          <div className="space-y-1">
+            {/* Super Admin - only visible for super admins */}
+            {isSuperAdmin && (
+              <>
                 <Button
                   variant="ghost"
-                  className="w-full justify-start gap-3 h-12"
+                  className="w-full justify-start gap-4 h-14 text-base rounded-xl"
                   onClick={() => {
                     setShowSettings(false);
-                    navigate("/alterar-senha");
+                    navigate("/super-admin");
                   }}
                 >
-                  <Key className="h-5 w-5" />
-                  Alterar Senha
+                  <div className="h-9 w-9 rounded-lg bg-orange-500/20 flex items-center justify-center">
+                    <Shield className="h-5 w-5 text-orange-500" />
+                  </div>
+                  <span className="text-orange-500 font-medium">Painel Admin</span>
                 </Button>
+                <Separator className="my-2" />
+              </>
+            )}
 
-                {/* Logout */}
-                <Button
-                  variant="ghost"
-                  className="w-full justify-start gap-3 h-12 text-destructive hover:text-destructive hover:bg-destructive/10"
-                  onClick={handleLogout}
-                >
-                  <LogOut className="h-5 w-5" />
-                  Sair da Conta
-                </Button>
+            {/* Assinatura */}
+            <Button
+              variant="ghost"
+              className="w-full justify-start gap-4 h-14 text-base rounded-xl"
+              onClick={() => {
+                setShowSettings(false);
+                navigate("/assinatura");
+              }}
+            >
+              <div className="h-9 w-9 rounded-lg bg-primary/20 flex items-center justify-center">
+                <Crown className="h-5 w-5 text-primary" />
               </div>
-            </SheetContent>
-          </Sheet>
-        </div>
-      </nav>
+              <span>Minha Assinatura</span>
+            </Button>
 
-      {/* Internal Add Transaction Dialog - only used if no external handler provided */}
+            {/* Change Password */}
+            <Button
+              variant="ghost"
+              className="w-full justify-start gap-4 h-14 text-base rounded-xl"
+              onClick={() => {
+                setShowSettings(false);
+                navigate("/alterar-senha");
+              }}
+            >
+              <div className="h-9 w-9 rounded-lg bg-muted/80 flex items-center justify-center">
+                <Key className="h-5 w-5" />
+              </div>
+              <span>Alterar Senha</span>
+            </Button>
+
+            <Separator className="my-2" />
+
+            {/* Logout */}
+            <Button
+              variant="ghost"
+              className="w-full justify-start gap-4 h-14 text-base rounded-xl text-destructive hover:text-destructive hover:bg-destructive/10"
+              onClick={handleLogout}
+            >
+              <div className="h-9 w-9 rounded-lg bg-destructive/10 flex items-center justify-center">
+                <LogOut className="h-5 w-5" />
+              </div>
+              <span>Sair da Conta</span>
+            </Button>
+          </div>
+        </SheetContent>
+      </Sheet>
+
+      {/* Internal Add Transaction Dialog */}
       {!onAddTransaction && (
         <AddTransactionFab
           open={showAddDialog}

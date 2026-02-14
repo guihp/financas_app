@@ -68,3 +68,9 @@ verify_jwt = false
 
 [functions.process-asaas-webhook]
 verify_jwt = false
+
+[functions.send-payment-email]
+verify_jwt = false
+
+[functions.get-pending-payment]
+verify_jwt = false

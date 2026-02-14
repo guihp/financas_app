@@ -23,6 +23,18 @@ serve(async (req) => {
     
     const { email, full_name, phone, cpfCnpj, password } = body;
 
+    // Check if API key is configured
+    if (!ASAAS_API_KEY) {
+      console.error('ASAAS_API_KEY not configured');
+      return new Response(
+        JSON.stringify({ error: 'Configuração de pagamento não encontrada. Entre em contato com o suporte.' }),
+        { 
+          status: 500, 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        }
+      );
+    }
+
     // Validate required fields
     if (!email || !full_name || !phone) {
       return new Response(
@@ -43,6 +55,9 @@ serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
 
+    console.log('Searching for existing Asaas customer with email:', email);
+    console.log('Using API URL:', ASAAS_BASE_URL);
+
     // Check if customer already exists in Asaas by email
     const searchResponse = await fetch(`${ASAAS_BASE_URL}/customers?email=${encodeURIComponent(email)}`, {
       method: 'GET',
@@ -53,7 +68,20 @@ serve(async (req) => {
     });
 
     const searchData = await searchResponse.json();
+    console.log('Asaas customer search response status:', searchResponse.status);
     console.log('Asaas customer search result:', searchData);
+
+    // Check for API key error
+    if (searchData.errors && searchData.errors.some((e: any) => e.code === 'invalid_access_token')) {
+      console.error('Invalid Asaas API key');
+      return new Response(
+        JSON.stringify({ error: 'Erro de configuração do gateway de pagamento. Entre em contato com o suporte.' }),
+        { 
+          status: 500, 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        }
+      );
+    }
 
     let customerId: string;
 
@@ -85,13 +113,21 @@ serve(async (req) => {
       });
 
       const createData = await createResponse.json();
+      console.log('Asaas customer creation response status:', createResponse.status);
       console.log('Asaas customer creation response:', createData);
 
       if (createData.errors || !createData.id) {
         console.error('Failed to create Asaas customer:', createData);
+        
+        let errorMessage = 'Erro ao criar cliente no sistema de pagamento';
+        if (createData.errors && createData.errors.length > 0) {
+          const errorDescriptions = createData.errors.map((e: any) => e.description || e.code).join(', ');
+          errorMessage = `Erro: ${errorDescriptions}`;
+        }
+        
         return new Response(
           JSON.stringify({ 
-            error: 'Erro ao criar cliente no sistema de pagamento',
+            error: errorMessage,
             details: createData.errors || createData
           }),
           { 
@@ -151,6 +187,13 @@ serve(async (req) => {
           password_hash: passwordHash,
           asaas_customer_id: customerId,
           plan_id: planData.id,
+          status: 'pending_payment',
+          asaas_payment_id: null,
+          payment_method: null,
+          pix_code: null,
+          pix_qr_code_url: null,
+          boleto_url: null,
+          invoice_url: null,
           expires_at: expiresAt.toISOString(),
           updated_at: new Date().toISOString()
         })
@@ -170,6 +213,7 @@ serve(async (req) => {
       }
 
       registrationId = updatedReg.id;
+      console.log('Updated existing pending registration:', registrationId);
     } else {
       // Create pending registration
       const { data: regData, error: regError } = await supabaseAdmin
@@ -199,6 +243,7 @@ serve(async (req) => {
       }
 
       registrationId = regData.id;
+      console.log('Created new pending registration:', registrationId);
     }
 
     console.log('Asaas customer created/found successfully:', {
@@ -228,7 +273,7 @@ serve(async (req) => {
   } catch (error) {
     console.error('Error in create-asaas-customer function:', error);
     return new Response(
-      JSON.stringify({ error: error.message }),
+      JSON.stringify({ error: 'Erro interno. Tente novamente.' }),
       { 
         status: 500, 
         headers: { ...corsHeaders, 'Content-Type': 'application/json' } 

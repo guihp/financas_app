@@ -188,13 +188,12 @@ All colors MUST be HSL.
     }
   }
 
-  /* Ensure proper spacing for mobile bottom nav */
-  /* Large padding to ensure content is never behind the fixed bottom nav */
+  /* Ensure proper spacing for mobile floating dock */
   .mobile-content {
-    padding-bottom: 180px;
+    padding-bottom: 120px;
   }
 
-  @media (min-width: 1024px) {
+  @media (min-width: 1280px) {
     .mobile-content {
       @apply pb-6;
       /* Default desktop padding */
@@ -207,8 +206,8 @@ All colors MUST be HSL.
     padding-bottom: calc(10px + 100px + env(safe-area-inset-bottom, 20px));
   }
 
-  /* Hide scrollbar on mobile but keep functionality */
-  @media (max-width: 1023px) {
+  /* Hide scrollbar on mobile/tablet but keep functionality */
+  @media (max-width: 1279px) {
     .mobile-scroll::-webkit-scrollbar {
       display: none;
     }

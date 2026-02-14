@@ -7,6 +7,10 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
+// Trial period configuration
+const TRIAL_DAYS = 7;
+const DEFAULT_PLAN_NAME = 'Plano Mensal';
+
 serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
@@ -17,7 +21,7 @@ serve(async (req) => {
     const body = await req.json();
     console.log('Received request body:', { ...body, password: '[HIDDEN]' });
     
-    const { email, password, full_name, phone, otp_code, registrationId } = body;
+    const { email, password, full_name, phone, otp_code, registrationId, planId } = body;
 
     // Validate required fields
     if (!email || !full_name || !phone) {
@@ -44,9 +48,11 @@ serve(async (req) => {
     const cleanPhone = phone.replace(/\D/g, '');
     let userPassword = password;
     let asaasCustomerId = null;
+    let selectedPlanId = planId;
+    let isTrialRegistration = true; // Default to trial
 
     // ============================================
-    // PAYMENT VERIFICATION (if registrationId provided)
+    // PAYMENT VERIFICATION (if registrationId provided - legacy flow)
     // ============================================
     if (registrationId) {
       console.log('Checking payment status for registration:', registrationId);
@@ -105,14 +111,16 @@ serve(async (req) => {
       }
 
       asaasCustomerId = registration.asaas_customer_id;
+      selectedPlanId = registration.plan_id;
+      isTrialRegistration = false; // Paid registration
       console.log('Payment verified for registration:', registrationId);
     } else {
       // ============================================
-      // LEGACY OTP VERIFICATION (for backwards compatibility)
+      // TRIAL REGISTRATION (7 days free)
       // ============================================
       if (!otp_code) {
         return new Response(
-          JSON.stringify({ error: 'Código OTP ou registrationId é obrigatório' }),
+          JSON.stringify({ error: 'Código OTP é obrigatório' }),
           { 
             status: 400, 
             headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
@@ -183,18 +191,29 @@ serve(async (req) => {
       }
     }
 
+    // Get plan info if not provided
+    if (!selectedPlanId) {
+      const { data: defaultPlan } = await supabaseAdmin
+        .from('plans')
+        .select('id')
+        .eq('interval', 'monthly')
+        .eq('is_active', true)
+        .single();
+      
+      selectedPlanId = defaultPlan?.id;
+    }
+
     // Create user in auth.users
     const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
       email,
       password: userPassword,
-      email_confirm: true, // Confirmar email automaticamente
+      email_confirm: true,
       user_metadata: { full_name }
     });
 
     if (authError) {
       console.error('Auth error:', authError);
       
-      // Tratar erros específicos
       let errorMessage = authError.message;
       if (authError.message.includes('already been registered') || 
           authError.message.includes('User already registered') ||
@@ -213,7 +232,7 @@ serve(async (req) => {
       );
     }
 
-    // Update the profile with phone number (use clean phone)
+    // Update the profile with phone number
     const { error: profileError } = await supabaseAdmin
       .from('profiles')
       .update({ phone: cleanPhone })
@@ -221,45 +240,58 @@ serve(async (req) => {
 
     if (profileError) {
       console.error('Profile update error:', profileError);
-      // Don't fail the whole operation if profile update fails
     }
 
     // ============================================
-    // CREATE SUBSCRIPTION (if payment was verified)
+    // CREATE SUBSCRIPTION
     // ============================================
-    if (registrationId && asaasCustomerId) {
-      // Get plan info from registration
-      const { data: registration } = await supabaseAdmin
-        .from('pending_registrations')
-        .select('plan_id')
-        .eq('id', registrationId)
-        .single();
+    const now = new Date();
+    let subscriptionData: any = {
+      user_id: authData.user.id,
+      plan_id: selectedPlanId,
+      status: 'active'
+    };
 
-      // Calculate subscription period (1 month)
-      const periodStart = new Date();
+    if (isTrialRegistration) {
+      // TRIAL: 7 days free
+      const trialEndsAt = new Date();
+      trialEndsAt.setDate(trialEndsAt.getDate() + TRIAL_DAYS);
+      
+      subscriptionData.is_trial = true;
+      subscriptionData.trial_ends_at = trialEndsAt.toISOString();
+      subscriptionData.current_period_start = now.toISOString().split('T')[0];
+      subscriptionData.current_period_end = trialEndsAt.toISOString().split('T')[0];
+      
+      console.log('Creating trial subscription:', { 
+        userId: authData.user.id,
+        trialDays: TRIAL_DAYS,
+        trialEndsAt: trialEndsAt.toISOString()
+      });
+    } else {
+      // PAID: 1 month subscription
       const periodEnd = new Date();
       periodEnd.setMonth(periodEnd.getMonth() + 1);
+      
+      subscriptionData.is_trial = false;
+      subscriptionData.asaas_customer_id = asaasCustomerId;
+      subscriptionData.current_period_start = now.toISOString().split('T')[0];
+      subscriptionData.current_period_end = periodEnd.toISOString().split('T')[0];
+    }
 
-      // Create subscription record
-      const { error: subError } = await supabaseAdmin
-        .from('subscriptions')
-        .insert({
-          user_id: authData.user.id,
-          asaas_customer_id: asaasCustomerId,
-          plan_id: registration?.plan_id,
-          status: 'active',
-          current_period_start: periodStart.toISOString().split('T')[0],
-          current_period_end: periodEnd.toISOString().split('T')[0]
-        });
+    const { error: subError } = await supabaseAdmin
+      .from('subscriptions')
+      .insert(subscriptionData);
 
-      if (subError) {
-        console.error('Failed to create subscription:', subError);
-        // Don't fail registration if subscription creation fails
-      } else {
-        console.log('Subscription created for user:', authData.user.id);
-      }
+    if (subError) {
+      console.error('Failed to create subscription:', subError);
+    } else {
+      console.log('Subscription created for user:', authData.user.id);
+    }
 
-      // Update pending registration status
+    // ============================================
+    // UPDATE PENDING REGISTRATION (if applicable)
+    // ============================================
+    if (registrationId) {
       await supabaseAdmin
         .from('pending_registrations')
         .update({ 
@@ -269,19 +301,68 @@ serve(async (req) => {
         .eq('id', registrationId);
     }
 
+    // ============================================
+    // SEND WELCOME EMAIL (for trial registrations)
+    // ============================================
+    if (isTrialRegistration) {
+      try {
+        const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
+        const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY') ?? '';
+        
+        // Get plan name
+        let planName = DEFAULT_PLAN_NAME;
+        if (selectedPlanId) {
+          const { data: plan } = await supabaseAdmin
+            .from('plans')
+            .select('name')
+            .eq('id', selectedPlanId)
+            .single();
+          if (plan) planName = plan.name;
+        }
+        
+        const trialEndsAt = new Date();
+        trialEndsAt.setDate(trialEndsAt.getDate() + TRIAL_DAYS);
+        
+        const emailResponse = await fetch(`${supabaseUrl}/functions/v1/send-payment-email`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${supabaseAnonKey}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            emailType: 'welcome_trial',
+            to: email,
+            userName: full_name,
+            planName: planName,
+            trialDays: TRIAL_DAYS,
+            trialEndsAt: trialEndsAt.toISOString()
+          })
+        });
+        
+        const emailResult = await emailResponse.json();
+        console.log('Welcome email result:', emailResult);
+      } catch (emailError) {
+        console.error('Failed to send welcome email:', emailError);
+        // Don't fail registration if email fails
+      }
+    }
+
     console.log('User created successfully:', { 
       user_id: authData.user.id, 
       email, 
       phone, 
       full_name,
-      hasSubscription: !!registrationId
+      isTrial: isTrialRegistration,
+      trialDays: isTrialRegistration ? TRIAL_DAYS : 0
     });
 
     return new Response(
       JSON.stringify({ 
         message: 'User created successfully',
         user_id: authData.user.id,
-        email: authData.user.email
+        email: authData.user.email,
+        isTrial: isTrialRegistration,
+        trialDays: isTrialRegistration ? TRIAL_DAYS : 0
       }),
       { 
         headers: { ...corsHeaders, 'Content-Type': 'application/json' } 

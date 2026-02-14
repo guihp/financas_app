@@ -14,6 +14,8 @@ import StatsPage from "./pages/StatsPage";
 import AgendaPage from "./pages/AgendaPage";
 import CategoriasPage from "./pages/CategoriasPage";
 import AlterarSenhaPage from "./pages/AlterarSenhaPage";
+import PagamentoPendente from "./pages/PagamentoPendente";
+import Assinatura from "./pages/Assinatura";
 
 // Components
 import { ProtectedRoute } from "./components/ProtectedRoute";
@@ -28,8 +30,9 @@ const App = () => (
       <Sonner />
       <BrowserRouter>
         <Routes>
-          {/* Rota pública de autenticação */}
+          {/* Rotas públicas */}
           <Route path="/auth" element={<Auth />} />
+          <Route path="/pagamento-pendente" element={<PagamentoPendente />} />
           
           {/* Rotas protegidas com layout compartilhado */}
           <Route
@@ -45,6 +48,7 @@ const App = () => (
             <Route path="/agenda" element={<AgendaPage />} />
             <Route path="/categorias" element={<CategoriasPage />} />
             <Route path="/alterar-senha" element={<AlterarSenhaPage />} />
+            <Route path="/assinatura" element={<Assinatura />} />
             <Route path="/super-admin" element={<SuperAdmin />} />
           </Route>
 

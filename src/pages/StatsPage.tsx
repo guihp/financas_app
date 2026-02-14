@@ -55,7 +55,7 @@ const StatsPage = () => {
   }
 
   return (
-    <div className="space-y-6 pb-32 lg:pb-6">
+    <div className="space-y-6 pb-32 xl:pb-6">
       <h1 className="text-2xl font-bold text-foreground">Estatísticas</h1>
       <Statistics transactions={transactions} />
     </div>

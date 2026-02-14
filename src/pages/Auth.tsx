@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -6,8 +6,7 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { DollarSign, Mail, Lock, User, ArrowLeft, Eye, EyeOff, QrCode, FileText, Loader2, CheckCircle2, Copy } from "lucide-react";
+import { Mail, Lock, User, Eye, EyeOff, Loader2, CheckCircle2, Gift, Sparkles } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { Logo } from "@/components/Logo";
@@ -19,27 +18,7 @@ import {
   sanitizeText 
 } from "@/utils/validation";
 
-// Payment data interface
-interface PaymentData {
-  paymentId: string;
-  status: string;
-  value: number;
-  dueDate: string;
-  invoiceUrl?: string;
-  pixCode?: string;
-  pixQrCodeBase64?: string;
-  boletoUrl?: string;
-  registrationId: string;
-  customerId: string;
-}
-
-// Plan interface
-interface Plan {
-  id: string;
-  name: string;
-  price: number;
-  interval: string;
-}
+const TRIAL_DAYS = 7;
 
 const Auth = () => {
   const [activeTab, setActiveTab] = useState<"login" | "signup" | "forgot">("login");
@@ -57,57 +36,36 @@ const Auth = () => {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
   const [resetEmailSent, setResetEmailSent] = useState(false);
-  
-  // Payment states
-  const [paymentStep, setPaymentStep] = useState(false);
-  const [paymentMethod, setPaymentMethod] = useState<"PIX" | "BOLETO">("PIX");
-  const [paymentData, setPaymentData] = useState<PaymentData | null>(null);
-  const [plan, setPlan] = useState<Plan | null>(null);
-  const [registrationId, setRegistrationId] = useState<string | null>(null);
-  const [customerId, setCustomerId] = useState<string | null>(null);
-  const [checkingPayment, setCheckingPayment] = useState(false);
-  const [paymentConfirmed, setPaymentConfirmed] = useState(false);
-  const [creatingPayment, setCreatingPayment] = useState(false);
-  const pollingRef = useRef<NodeJS.Timeout | null>(null);
+  const [registrationComplete, setRegistrationComplete] = useState(false);
   
   const navigate = useNavigate();
   const { toast } = useToast();
 
   // Format phone number to (DDD) 9 XXXX-XXXX
-  // Sempre adiciona o 9 depois do DDD automaticamente
   const formatPhone = (value: string) => {
-    // Remove all non-numeric characters
     let numbers = value.replace(/\D/g, '');
     
-    // Se tiver mais de 2 dígitos (DDD completo), garantir que o 3º dígito seja 9
     if (numbers.length > 2) {
       const ddd = numbers.slice(0, 2);
       let rest = numbers.slice(2);
       
-      // Se o primeiro dígito após o DDD não for 9, adiciona o 9
       if (rest.length > 0 && rest[0] !== '9') {
         rest = '9' + rest;
       }
       
-      // Limita o resto a 9 dígitos (9 + 8 números)
       rest = rest.slice(0, 9);
       numbers = ddd + rest;
     }
     
-    // Limit to 11 digits total (DDD + 9 + 8 dígitos)
     const limited = numbers.slice(0, 11);
     
-    // Format: (XX) 9 XXXX-XXXX
     if (limited.length <= 2) {
       return limited.length > 0 ? `(${limited}` : '';
     } else if (limited.length <= 3) {
-      // Só DDD + 9
       return `(${limited.slice(0, 2)}) ${limited.slice(2)}`;
     } else if (limited.length <= 7) {
-      // DDD + 9 + primeiros 4 dígitos
       return `(${limited.slice(0, 2)}) ${limited.slice(2, 3)} ${limited.slice(3)}`;
     } else {
-      // Completo: (XX) 9 XXXX-XXXX
       return `(${limited.slice(0, 2)}) ${limited.slice(2, 3)} ${limited.slice(3, 7)}-${limited.slice(7, 11)}`;
     }
   };
@@ -115,7 +73,6 @@ const Auth = () => {
   const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const formatted = formatPhone(e.target.value);
     setPhone(formatted);
-    // Reset OTP state when phone changes (only if OTP was already sent)
     if (otpSent) {
       setOtpSent(false);
       setOtpVerified(false);
@@ -143,214 +100,6 @@ const Auth = () => {
     }
   };
 
-  // Create Asaas customer and get payment info
-  const handleCreateCustomer = async () => {
-    setCreatingPayment(true);
-    try {
-      const cleanPhone = phone.replace(/\D/g, '');
-      const sanitizedEmail = email.trim().toLowerCase();
-      const sanitizedFullName = sanitizeText(fullName, 100);
-
-      // Create customer in Asaas
-      const { data, error } = await supabase.functions.invoke('create-asaas-customer', {
-        body: {
-          email: sanitizedEmail,
-          full_name: sanitizedFullName,
-          phone: cleanPhone,
-          password: password
-        }
-      });
-
-      if (error) {
-        throw new Error(error.message || "Erro ao criar cliente.");
-      }
-
-      if (data.error) {
-        throw new Error(data.error);
-      }
-
-      setCustomerId(data.customerId);
-      setRegistrationId(data.registrationId);
-      setPlan(data.plan);
-      
-      return { customerId: data.customerId, registrationId: data.registrationId };
-    } catch (error: any) {
-      throw error;
-    } finally {
-      setCreatingPayment(false);
-    }
-  };
-
-  // Create payment in Asaas
-  const handleCreatePayment = async (custId: string, regId: string, method: "PIX" | "BOLETO") => {
-    setCreatingPayment(true);
-    try {
-      const { data, error } = await supabase.functions.invoke('create-asaas-payment', {
-        body: {
-          customerId: custId,
-          registrationId: regId,
-          billingType: method
-        }
-      });
-
-      if (error) {
-        throw new Error(error.message || "Erro ao criar cobrança.");
-      }
-
-      if (data.error) {
-        throw new Error(data.error);
-      }
-
-      setPaymentData({
-        ...data,
-        registrationId: regId,
-        customerId: custId
-      });
-
-      // Start polling for payment status
-      startPaymentPolling(regId);
-
-      return data;
-    } catch (error: any) {
-      throw error;
-    } finally {
-      setCreatingPayment(false);
-    }
-  };
-
-  // Check payment status
-  const checkPaymentStatus = async (regId: string) => {
-    try {
-      const { data, error } = await supabase.functions.invoke('check-payment-status', {
-        body: { registrationId: regId }
-      });
-
-      if (error) {
-        console.error('Payment status check error:', error);
-        return false;
-      }
-
-      if (data.isPaid || data.registrationStatus === 'paid') {
-        setPaymentConfirmed(true);
-        stopPaymentPolling();
-        return true;
-      }
-
-      return false;
-    } catch (error) {
-      console.error('Payment status check error:', error);
-      return false;
-    }
-  };
-
-  // Start polling for payment status
-  const startPaymentPolling = (regId: string) => {
-    // Stop any existing polling
-    stopPaymentPolling();
-    
-    // Poll every 5 seconds
-    pollingRef.current = setInterval(async () => {
-      setCheckingPayment(true);
-      const isPaid = await checkPaymentStatus(regId);
-      setCheckingPayment(false);
-      
-      if (isPaid) {
-        toast({
-          title: "Pagamento confirmado!",
-          description: "Criando sua conta...",
-        });
-        // Complete registration
-        await completeRegistration(regId);
-      }
-    }, 5000);
-  };
-
-  // Stop polling
-  const stopPaymentPolling = () => {
-    if (pollingRef.current) {
-      clearInterval(pollingRef.current);
-      pollingRef.current = null;
-    }
-  };
-
-  // Complete registration after payment
-  const completeRegistration = async (regId: string) => {
-    setLoading(true);
-    try {
-      const cleanPhone = phone.replace(/\D/g, '');
-      const sanitizedEmail = email.trim().toLowerCase();
-      const sanitizedFullName = sanitizeText(fullName, 100);
-
-      const { data: registerData, error: registerError } = await supabase.functions.invoke('register-user', {
-        body: {
-          email: sanitizedEmail,
-          full_name: sanitizedFullName,
-          phone: cleanPhone,
-          registrationId: regId
-        }
-      });
-
-      let errorMessage = "";
-      if (registerError) {
-        try {
-          const errorContext = (registerError as any).context;
-          if (errorContext && typeof errorContext.json === 'function') {
-            const errorBody = await errorContext.json();
-            errorMessage = errorBody?.error || registerError.message || "Erro ao criar conta.";
-          } else {
-            errorMessage = registerError.message || "Erro ao criar conta.";
-          }
-        } catch {
-          errorMessage = registerError.message || "Erro ao criar conta.";
-        }
-      }
-
-      if (!registerError && registerData?.error) {
-        errorMessage = registerData.error;
-      }
-
-      if (errorMessage) {
-        console.error('Register error:', errorMessage);
-        setMessage(errorMessage);
-        toast({
-          title: "Erro ao criar conta",
-          description: errorMessage,
-          variant: "destructive"
-        });
-      } else if (registerData && !registerData.error) {
-        toast({
-          title: "Conta criada com sucesso!",
-          description: "Fazendo login automático...",
-        });
-        
-        // Auto login
-        const { error: signInError } = await supabase.auth.signInWithPassword({
-          email,
-          password,
-        });
-
-        if (signInError) {
-          toast({
-            title: "Conta criada!",
-            description: "Faça login manualmente.",
-          });
-          resetSignupForm();
-          setActiveTab("login");
-        } else {
-          toast({
-            title: "Login realizado!",
-            description: "Bem-vindo à IAFÉ Finanças!",
-          });
-        }
-      }
-    } catch (error: any) {
-      setMessage(error.message || "Erro inesperado. Tente novamente.");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Reset signup form
   const resetSignupForm = () => {
     setEmail("");
     setPassword("");
@@ -360,43 +109,10 @@ const Auth = () => {
     setOtpCode("");
     setOtpSent(false);
     setOtpVerified(false);
-    setPaymentStep(false);
-    setPaymentData(null);
-    setPlan(null);
-    setRegistrationId(null);
-    setCustomerId(null);
-    setPaymentConfirmed(false);
-    stopPaymentPolling();
+    setRegistrationComplete(false);
   };
 
-  // Copy PIX code to clipboard
-  const copyPixCode = async () => {
-    if (paymentData?.pixCode) {
-      try {
-        await navigator.clipboard.writeText(paymentData.pixCode);
-        toast({
-          title: "Código copiado!",
-          description: "Cole no app do seu banco para pagar.",
-        });
-      } catch (error) {
-        toast({
-          title: "Erro ao copiar",
-          description: "Copie o código manualmente.",
-          variant: "destructive"
-        });
-      }
-    }
-  };
-
-  // Cleanup on unmount
   useEffect(() => {
-    return () => {
-      stopPaymentPolling();
-    };
-  }, []);
-
-  useEffect(() => {
-    // Check if user is already logged in
     const checkUser = async () => {
       const { data: { session } } = await supabase.auth.getSession();
       if (session) {
@@ -405,7 +121,6 @@ const Auth = () => {
     };
     checkUser();
 
-    // Listen for auth state changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if (session) {
         navigate("/");
@@ -420,21 +135,18 @@ const Auth = () => {
     setLoading(true);
     setMessage("");
 
-    // Validar email
     if (!email || !isValidEmail(email)) {
       setMessage("Por favor, informe um e-mail válido.");
       setLoading(false);
       return;
     }
 
-    // Validar senha
     if (!password || password.length < 6) {
       setMessage("A senha deve ter pelo menos 6 caracteres.");
       setLoading(false);
       return;
     }
 
-    // Sanitizar email
     const sanitizedEmail = email.trim().toLowerCase();
 
     try {
@@ -466,20 +178,17 @@ const Auth = () => {
     e.preventDefault();
     setMessage("");
 
-    // Validar email
     if (!email || !isValidEmail(email)) {
       setMessage("Por favor, informe um e-mail válido.");
       return;
     }
 
-    // Validar nome completo
     const fullNameValidation = isValidFullName(fullName);
     if (!fullNameValidation.valid) {
       setMessage(fullNameValidation.message);
       return;
     }
 
-    // Validar senha
     if (password !== confirmPassword) {
       setMessage("As senhas não coincidem.");
       return;
@@ -491,18 +200,16 @@ const Auth = () => {
       return;
     }
 
-    // Validar telefone
     const cleanPhone = phone.replace(/\D/g, '');
     if (!isValidPhone(phone)) {
       setMessage("Por favor, informe um número de telefone válido com DDD (11 dígitos).");
       return;
     }
 
-    // Sanitizar dados
     const sanitizedEmail = email.trim().toLowerCase();
     const sanitizedFullName = sanitizeText(fullName, 100);
 
-    // If OTP not sent yet, generate and send it
+    // Step 1: Send OTP
     if (!otpSent) {
       setLoading(true);
       try {
@@ -522,10 +229,10 @@ const Auth = () => {
       } finally {
         setLoading(false);
       }
-      return; // Stop here, wait for user to verify OTP
+      return;
     }
 
-    // If OTP sent but not verified, verify it first
+    // Step 2: Verify OTP and create account
     if (otpSent && !otpVerified) {
       if (!otpCode || otpCode.length !== 6) {
         setMessage("Por favor, informe o código de 6 dígitos.");
@@ -534,7 +241,6 @@ const Auth = () => {
 
       setVerifyingOtp(true);
       try {
-        // Trim e garantir que o código tem 6 dígitos
         const trimmedCode = otpCode.trim();
         
         if (!trimmedCode || trimmedCode.length !== 6) {
@@ -577,33 +283,70 @@ const Auth = () => {
           return;
         }
 
-        // OTP verified successfully, proceed to payment step
+        // OTP verified! Now create account with trial
         setOtpVerified(true);
         toast({
           title: "Código verificado!",
-          description: "Preparando etapa de pagamento...",
+          description: "Criando sua conta...",
         });
 
-        // Create Asaas customer and proceed to payment
+        // Create user account with 7-day trial
         try {
-          const { customerId: custId, registrationId: regId } = await handleCreateCustomer();
-          setPaymentStep(true);
-          setVerifyingOtp(false);
-          
-          toast({
-            title: "Escolha a forma de pagamento",
-            description: "Selecione PIX ou Boleto para continuar.",
+          const { data: regData, error: regError } = await supabase.functions.invoke('register-user', {
+            body: {
+              email: sanitizedEmail,
+              password: password,
+              full_name: sanitizedFullName,
+              phone: cleanPhone,
+              otp_code: trimmedCode
+            }
           });
-        } catch (customerError: any) {
-          console.error('Customer creation error:', customerError);
-          setMessage(customerError.message || "Erro ao preparar pagamento.");
+
+          if (regError) {
+            console.error('Registration error:', regError);
+            throw new Error(regError.message || "Erro ao criar conta.");
+          }
+
+          if (regData.error) {
+            throw new Error(regData.error);
+          }
+
+          // Registration successful!
+          setRegistrationComplete(true);
+          toast({
+            title: "Conta criada com sucesso! 🎉",
+            description: `Você tem ${TRIAL_DAYS} dias grátis para explorar!`,
+          });
+
+          // Auto login after 2 seconds
+          setTimeout(async () => {
+            try {
+              await supabase.auth.signInWithPassword({
+                email: sanitizedEmail,
+                password: password,
+              });
+            } catch (loginError) {
+              console.error('Auto-login failed:', loginError);
+              setActiveTab("login");
+              toast({
+                title: "Conta criada!",
+                description: "Por favor, faça login para continuar.",
+              });
+            }
+          }, 2000);
+
+        } catch (regError: any) {
+          console.error('Registration error:', regError);
+          setMessage(regError.message || "Erro ao criar conta.");
           toast({
             title: "Erro",
-            description: customerError.message || "Erro ao preparar pagamento.",
+            description: regError.message || "Erro ao criar conta.",
             variant: "destructive"
           });
-          setVerifyingOtp(false);
+          setOtpVerified(false);
         }
+
+        setVerifyingOtp(false);
       } catch (error: any) {
         setMessage("Erro inesperado ao verificar código.");
         toast({
@@ -649,14 +392,12 @@ const Auth = () => {
     }
   };
 
-
-
   return (
     <div className="min-h-screen bg-background flex items-center justify-center p-4">
       <Card className="w-full max-w-md bg-gradient-card shadow-card border-border">
         <CardHeader className="space-y-4">
           <div className="flex justify-center">
-            <Logo variant="horizontal" size="md" />
+            <Logo variant="horizontal" size="xl" />
           </div>
           <div className="text-center">
             <CardTitle className="text-2xl">
@@ -666,7 +407,7 @@ const Auth = () => {
             </CardTitle>
             <CardDescription>
               {activeTab === "login" && "Entre na sua conta"}
-              {activeTab === "signup" && "Cadastre-se para começar"}
+              {activeTab === "signup" && "Comece grátis por 7 dias"}
               {activeTab === "forgot" && "Digite seu e-mail para recuperar"}
             </CardDescription>
           </div>
@@ -676,17 +417,10 @@ const Auth = () => {
             setActiveTab(v as "login" | "signup" | "forgot");
             setMessage("");
             setResetEmailSent(false);
-            // Reset OTP and payment state when switching tabs
             setOtpSent(false);
             setOtpVerified(false);
             setOtpCode("");
-            setPaymentStep(false);
-            setPaymentData(null);
-            setPlan(null);
-            setRegistrationId(null);
-            setCustomerId(null);
-            setPaymentConfirmed(false);
-            stopPaymentPolling();
+            setRegistrationComplete(false);
           }}>
             <TabsList className="grid w-full grid-cols-3">
               <TabsTrigger value="login">Entrar</TabsTrigger>
@@ -754,227 +488,58 @@ const Auth = () => {
 
             {/* Signup Tab */}
             <TabsContent value="signup" className="space-y-4 mt-4">
-              {/* Payment Step */}
-              {paymentStep ? (
-                <div className="space-y-4">
-                  {/* Plan Info */}
-                  {plan && (
-                    <div className="p-4 bg-primary/10 rounded-lg border border-primary/20">
-                      <h3 className="font-semibold text-lg">{plan.name}</h3>
-                      <p className="text-2xl font-bold text-primary">
-                        R$ {plan.price.toFixed(2).replace('.', ',')}
-                        <span className="text-sm font-normal text-muted-foreground">/mês</span>
-                      </p>
+              {/* Registration Complete */}
+              {registrationComplete ? (
+                <div className="text-center space-y-6 py-6">
+                  <div className="relative">
+                    <div className="w-20 h-20 bg-gradient-to-br from-green-400 to-green-600 rounded-full mx-auto flex items-center justify-center shadow-lg">
+                      <CheckCircle2 className="h-10 w-10 text-white" />
                     </div>
-                  )}
+                    <Sparkles className="h-6 w-6 text-yellow-400 absolute top-0 right-1/4 animate-pulse" />
+                    <Sparkles className="h-4 w-4 text-yellow-400 absolute bottom-0 left-1/4 animate-pulse" />
+                  </div>
+                  
+                  <div>
+                    <h3 className="text-2xl font-bold text-green-600 mb-2">Conta Criada!</h3>
+                    <p className="text-muted-foreground">Bem-vindo ao IAFÉ Finanças</p>
+                  </div>
 
-                  {/* Payment Confirmed */}
-                  {paymentConfirmed ? (
-                    <div className="text-center space-y-4">
-                      <CheckCircle2 className="h-16 w-16 text-green-500 mx-auto" />
-                      <h3 className="text-xl font-semibold text-green-600">Pagamento Confirmado!</h3>
-                      <p className="text-muted-foreground">Criando sua conta...</p>
-                      <Loader2 className="h-6 w-6 animate-spin mx-auto" />
+                  <div className="bg-gradient-to-r from-primary/10 via-primary/5 to-primary/10 rounded-xl p-6 border border-primary/20">
+                    <div className="flex items-center justify-center gap-2 mb-2">
+                      <Gift className="h-6 w-6 text-primary" />
+                      <span className="text-lg font-semibold text-primary">Período Gratuito</span>
                     </div>
-                  ) : paymentData ? (
-                    /* Show Payment Info */
-                    <div className="space-y-4">
-                      {paymentData.pixQrCodeBase64 && (
-                        <div className="space-y-4 text-center">
-                          <h3 className="font-semibold flex items-center justify-center gap-2">
-                            <QrCode className="h-5 w-5" />
-                            Pague com PIX
-                          </h3>
-                          <div className="bg-white p-4 rounded-lg inline-block mx-auto">
-                            <img 
-                              src={`data:image/png;base64,${paymentData.pixQrCodeBase64}`} 
-                              alt="QR Code PIX" 
-                              className="w-48 h-48 mx-auto"
-                            />
-                          </div>
-                          {paymentData.pixCode && (
-                            <div className="space-y-2">
-                              <p className="text-sm text-muted-foreground">Ou copie o código:</p>
-                              <div className="flex gap-2">
-                                <Input 
-                                  value={paymentData.pixCode} 
-                                  readOnly 
-                                  className="text-xs font-mono"
-                                />
-                                <Button 
-                                  type="button" 
-                                  variant="outline" 
-                                  size="icon"
-                                  onClick={copyPixCode}
-                                >
-                                  <Copy className="h-4 w-4" />
-                                </Button>
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      )}
+                    <p className="text-4xl font-bold text-primary mb-1">{TRIAL_DAYS} dias</p>
+                    <p className="text-sm text-muted-foreground">grátis para explorar</p>
+                  </div>
 
-                      {paymentData.boletoUrl && (
-                        <div className="space-y-4 text-center">
-                          <h3 className="font-semibold flex items-center justify-center gap-2">
-                            <FileText className="h-5 w-5" />
-                            Boleto Bancário
-                          </h3>
-                          <Button 
-                            type="button"
-                            onClick={() => window.open(paymentData.boletoUrl, '_blank')}
-                            className="w-full"
-                          >
-                            Abrir Boleto
-                          </Button>
-                        </div>
-                      )}
-
-                      {/* Checking Payment Status */}
-                      <div className="text-center p-4 bg-muted/50 rounded-lg">
-                        <div className="flex items-center justify-center gap-2 text-muted-foreground">
-                          {checkingPayment ? (
-                            <>
-                              <Loader2 className="h-4 w-4 animate-spin" />
-                              <span>Verificando pagamento...</span>
-                            </>
-                          ) : (
-                            <span>Aguardando confirmação do pagamento...</span>
-                          )}
-                        </div>
-                        <p className="text-xs text-muted-foreground mt-2">
-                          A página será atualizada automaticamente quando o pagamento for confirmado.
-                        </p>
-                      </div>
-
-                      {/* Manual Check Button */}
-                      <Button 
-                        type="button"
-                        variant="outline"
-                        className="w-full"
-                        onClick={async () => {
-                          if (registrationId) {
-                            setCheckingPayment(true);
-                            const isPaid = await checkPaymentStatus(registrationId);
-                            setCheckingPayment(false);
-                            if (isPaid) {
-                              toast({
-                                title: "Pagamento confirmado!",
-                                description: "Criando sua conta...",
-                              });
-                              await completeRegistration(registrationId);
-                            } else {
-                              toast({
-                                title: "Pagamento pendente",
-                                description: "Ainda não identificamos seu pagamento.",
-                              });
-                            }
-                          }
-                        }}
-                        disabled={checkingPayment}
-                      >
-                        {checkingPayment ? (
-                          <>
-                            <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                            Verificando...
-                          </>
-                        ) : (
-                          "Já paguei"
-                        )}
-                      </Button>
-                    </div>
-                  ) : (
-                    /* Payment Method Selection */
-                    <div className="space-y-4">
-                      <Label>Escolha a forma de pagamento:</Label>
-                      <RadioGroup 
-                        value={paymentMethod} 
-                        onValueChange={(v) => setPaymentMethod(v as "PIX" | "BOLETO")}
-                        className="space-y-2"
-                      >
-                        <div className="flex items-center space-x-3 p-3 border rounded-lg hover:bg-muted/50 cursor-pointer">
-                          <RadioGroupItem value="PIX" id="pix" />
-                          <Label htmlFor="pix" className="flex items-center gap-2 cursor-pointer flex-1">
-                            <QrCode className="h-5 w-5 text-primary" />
-                            <div>
-                              <p className="font-medium">PIX</p>
-                              <p className="text-xs text-muted-foreground">Pagamento instantâneo</p>
-                            </div>
-                          </Label>
-                        </div>
-                        <div className="flex items-center space-x-3 p-3 border rounded-lg hover:bg-muted/50 cursor-pointer">
-                          <RadioGroupItem value="BOLETO" id="boleto" />
-                          <Label htmlFor="boleto" className="flex items-center gap-2 cursor-pointer flex-1">
-                            <FileText className="h-5 w-5 text-primary" />
-                            <div>
-                              <p className="font-medium">Boleto</p>
-                              <p className="text-xs text-muted-foreground">Vencimento em 1 dia útil</p>
-                            </div>
-                          </Label>
-                        </div>
-                      </RadioGroup>
-
-                      <Button 
-                        type="button"
-                        className="w-full bg-primary hover:bg-primary/90"
-                        onClick={async () => {
-                          if (customerId && registrationId) {
-                            try {
-                              await handleCreatePayment(customerId, registrationId, paymentMethod);
-                            } catch (error: any) {
-                              setMessage(error.message || "Erro ao gerar pagamento.");
-                              toast({
-                                title: "Erro",
-                                description: error.message || "Erro ao gerar pagamento.",
-                                variant: "destructive"
-                              });
-                            }
-                          }
-                        }}
-                        disabled={creatingPayment}
-                      >
-                        {creatingPayment ? (
-                          <>
-                            <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                            Gerando cobrança...
-                          </>
-                        ) : (
-                          `Gerar ${paymentMethod === 'PIX' ? 'QR Code PIX' : 'Boleto'}`
-                        )}
-                      </Button>
-                    </div>
-                  )}
-
-                  {message && (
-                    <Alert>
-                      <AlertDescription>{message}</AlertDescription>
-                    </Alert>
-                  )}
-
-                  {/* Back Button */}
-                  {!paymentConfirmed && (
-                    <Button 
-                      type="button"
-                      variant="ghost"
-                      className="w-full"
-                      onClick={() => {
-                        stopPaymentPolling();
-                        setPaymentStep(false);
-                        setPaymentData(null);
-                        setOtpVerified(false);
-                        setOtpSent(false);
-                        setOtpCode("");
-                      }}
-                    >
-                      <ArrowLeft className="h-4 w-4 mr-2" />
-                      Voltar
-                    </Button>
-                  )}
+                  <div className="flex items-center justify-center gap-2 text-muted-foreground">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    <span className="text-sm">Entrando automaticamente...</span>
+                  </div>
                 </div>
               ) : (
                 /* Regular Signup Form */
                 <form onSubmit={handleSignUp} className="space-y-4">
+                  {/* Trial Banner */}
+                  {!otpSent && (
+                    <div className="bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-950/30 dark:to-emerald-950/30 rounded-xl p-4 border border-green-200 dark:border-green-800">
+                      <div className="flex items-center gap-3">
+                        <div className="w-12 h-12 bg-gradient-to-br from-green-400 to-emerald-500 rounded-full flex items-center justify-center flex-shrink-0">
+                          <Gift className="h-6 w-6 text-white" />
+                        </div>
+                        <div>
+                          <p className="font-semibold text-green-700 dark:text-green-400">
+                            {TRIAL_DAYS} dias grátis!
+                          </p>
+                          <p className="text-sm text-green-600 dark:text-green-500">
+                            Teste todas as funcionalidades sem compromisso
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
                   <div className="space-y-2">
                     <Label htmlFor="signup-name">Nome Completo *</Label>
                     <div className="relative">
@@ -987,6 +552,7 @@ const Auth = () => {
                         onChange={(e) => setFullName(e.target.value)}
                         className="pl-10"
                         required
+                        disabled={otpVerified}
                       />
                     </div>
                   </div>
@@ -1003,12 +569,13 @@ const Auth = () => {
                         onChange={(e) => setEmail(e.target.value)}
                         className="pl-10"
                         required
+                        disabled={otpVerified}
                       />
                     </div>
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="signup-phone">Telefone *</Label>
+                    <Label htmlFor="signup-phone">Telefone (WhatsApp) *</Label>
                     <div className="relative">
                       <Input
                         id="signup-phone"
@@ -1021,11 +588,11 @@ const Auth = () => {
                         disabled={otpVerified}
                       />
                     </div>
-                    {otpSent && !paymentStep && (
-                      <div className="space-y-2">
-                        <Alert>
-                          <AlertDescription>
-                            Código OTP enviado para seu WhatsApp! Digite o código abaixo para verificar.
+                    {otpSent && !otpVerified && (
+                      <div className="space-y-2 mt-4">
+                        <Alert className="bg-primary/5 border-primary/20">
+                          <AlertDescription className="text-sm">
+                            Código OTP enviado para seu WhatsApp! Digite o código abaixo.
                           </AlertDescription>
                         </Alert>
                         <Label htmlFor="signup-otp">Código de Verificação *</Label>
@@ -1039,9 +606,6 @@ const Auth = () => {
                           className="text-center text-lg font-mono tracking-widest"
                           required
                         />
-                        {otpVerified && (
-                          <p className="text-sm text-green-600">✓ Código verificado com sucesso!</p>
-                        )}
                       </div>
                     )}
                   </div>
@@ -1059,6 +623,7 @@ const Auth = () => {
                         className="pl-10 pr-10"
                         required
                         minLength={6}
+                        disabled={otpVerified}
                       />
                       <button
                         type="button"
@@ -1083,6 +648,7 @@ const Auth = () => {
                         className="pl-10 pr-10"
                         required
                         minLength={6}
+                        disabled={otpVerified}
                       />
                       <button
                         type="button"
@@ -1103,22 +669,24 @@ const Auth = () => {
                   <Button 
                     type="submit" 
                     className="w-full bg-primary hover:bg-primary/90" 
-                    disabled={loading || verifyingOtp || creatingPayment}
+                    disabled={loading || verifyingOtp}
                   >
                     {loading && !otpSent ? "Enviando código..." : 
-                     verifyingOtp ? "Verificando código..." :
-                     creatingPayment ? "Preparando pagamento..." :
-                     otpSent && !otpVerified ? "Verificar Código" :
-                     "Continuar"}
+                     verifyingOtp ? "Criando sua conta..." :
+                     otpSent && !otpVerified ? "Verificar e Criar Conta" :
+                     "Começar Grátis"}
                   </Button>
+                  
                   {otpSent && !otpVerified && (
                     <p className="text-sm text-muted-foreground text-center">
-                      Digite o código recebido no WhatsApp e clique em "Verificar Código" para prosseguir.
+                      Digite o código recebido no WhatsApp e clique em "Verificar e Criar Conta".
                     </p>
                   )}
+                  
                   {!otpSent && (
                     <p className="text-xs text-muted-foreground text-center">
-                      Ao continuar, você receberá um código de verificação no WhatsApp e será direcionado para a página de pagamento.
+                      Ao continuar, você receberá um código de verificação no WhatsApp.
+                      Sem compromisso, cancele quando quiser.
                     </p>
                   )}
                 </form>
