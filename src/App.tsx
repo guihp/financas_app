@@ -16,6 +16,7 @@ import CategoriasPage from "./pages/CategoriasPage";
 import AlterarSenhaPage from "./pages/AlterarSenhaPage";
 import PagamentoPendente from "./pages/PagamentoPendente";
 import Assinatura from "./pages/Assinatura";
+import SharingPage from "./pages/SharingPage";
 
 // Components
 import { ProtectedRoute } from "./components/ProtectedRoute";
@@ -33,7 +34,7 @@ const App = () => (
           {/* Rotas públicas */}
           <Route path="/auth" element={<Auth />} />
           <Route path="/pagamento-pendente" element={<PagamentoPendente />} />
-          
+
           {/* Rotas protegidas com layout compartilhado */}
           <Route
             element={
@@ -47,6 +48,7 @@ const App = () => (
             <Route path="/stats" element={<StatsPage />} />
             <Route path="/agenda" element={<AgendaPage />} />
             <Route path="/categorias" element={<CategoriasPage />} />
+            <Route path="/sharing" element={<SharingPage />} />
             <Route path="/alterar-senha" element={<AlterarSenhaPage />} />
             <Route path="/assinatura" element={<Assinatura />} />
             <Route path="/super-admin" element={<SuperAdmin />} />
@@ -54,7 +56,7 @@ const App = () => (
 
           {/* Redirecionar raiz para dashboard */}
           <Route path="/" element={<Navigate to="/dash" replace />} />
-          
+
           {/* Rota 404 */}
           <Route path="*" element={<NotFound />} />
         </Routes>

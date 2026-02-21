@@ -29,7 +29,7 @@ export interface Transaction {
   date: Date | string;
   created_at?: string;
   updated_at?: string;
-  user_id?: string;
+  user_id: string;
 }
 
 interface DashboardProps {
@@ -48,8 +48,8 @@ export const Dashboard = ({ user }: DashboardProps) => {
   const [isSuperAdmin, setIsSuperAdmin] = useState(false);
 
   const totalBalance = transactions.reduce((acc, transaction) => {
-    return transaction.type === "income" 
-      ? acc + transaction.amount 
+    return transaction.type === "income"
+      ? acc + transaction.amount
       : acc - transaction.amount;
   }, 0);
 
@@ -67,7 +67,7 @@ export const Dashboard = ({ user }: DashboardProps) => {
       try {
         // Verificar se usuário existe e está ativo
         const { data: { user: authUser }, error: authError } = await supabase.auth.getUser();
-        
+
         if (authError || !authUser || authUser.id !== user.id) {
           toast({
             title: "Sessão inválida",
@@ -104,7 +104,7 @@ export const Dashboard = ({ user }: DashboardProps) => {
           .from('user_roles')
           .select('role')
           .eq('user_id', user.id);
-        
+
         // Se erro, verificar se é 406 (Not Acceptable) ou outro
         if (roleError) {
           console.error("Error checking user roles:", roleError);
@@ -165,7 +165,7 @@ export const Dashboard = ({ user }: DashboardProps) => {
         } else {
           setCategories(categoriesData || []);
         }
-        
+
       } catch (error) {
         console.error("Error loading dashboard data:", error);
         toast({
@@ -263,7 +263,7 @@ export const Dashboard = ({ user }: DashboardProps) => {
     // Verificar se categoria já existe (case insensitive)
     const normalizedName = name.toLowerCase().trim();
     const exists = categories.some(idx => idx.name.toLowerCase() === normalizedName);
-    
+
     if (exists) {
       toast({
         title: "Categoria duplicada",
@@ -368,65 +368,65 @@ export const Dashboard = ({ user }: DashboardProps) => {
           </div>
 
           <nav className="space-y-2 flex-1 overflow-y-auto">
-            <Button 
+            <Button
               variant={currentView === "dashboard" ? "default" : "ghost"}
-              className="w-full justify-start text-sidebar-foreground hover:bg-sidebar-accent" 
+              className="w-full justify-start text-sidebar-foreground hover:bg-sidebar-accent"
               size="sm"
               onClick={() => setCurrentView("dashboard")}
             >
               <TrendingUp className="w-4 h-4 mr-3" />
               Início
             </Button>
-            <Button 
+            <Button
               variant={currentView === "transactions" ? "default" : "ghost"}
-              className="w-full justify-start text-sidebar-foreground hover:bg-sidebar-accent" 
+              className="w-full justify-start text-sidebar-foreground hover:bg-sidebar-accent"
               size="sm"
               onClick={() => setCurrentView("transactions")}
             >
               <CreditCard className="w-4 h-4 mr-3" />
               Transações
             </Button>
-            <Button 
+            <Button
               variant={currentView === "statistics" ? "default" : "ghost"}
-              className="w-full justify-start text-sidebar-foreground hover:bg-sidebar-accent" 
+              className="w-full justify-start text-sidebar-foreground hover:bg-sidebar-accent"
               size="sm"
               onClick={() => setCurrentView("statistics")}
             >
               <BarChart3 className="w-4 h-4 mr-3" />
               Estatísticas
             </Button>
-            <Button 
+            <Button
               variant={currentView === "categories" ? "default" : "ghost"}
-              className="w-full justify-start text-sidebar-foreground hover:bg-sidebar-accent" 
+              className="w-full justify-start text-sidebar-foreground hover:bg-sidebar-accent"
               size="sm"
               onClick={() => setCurrentView("categories")}
             >
               <Tag className="w-4 h-4 mr-3" />
               Categorias
             </Button>
-            <Button 
+            <Button
               variant={currentView === "appointments" ? "default" : "ghost"}
-              className="w-full justify-start text-sidebar-foreground hover:bg-sidebar-accent" 
+              className="w-full justify-start text-sidebar-foreground hover:bg-sidebar-accent"
               size="sm"
               onClick={() => setCurrentView("appointments")}
             >
               <Calendar className="w-4 h-4 mr-3" />
               Agendamentos
             </Button>
-            <Button 
+            <Button
               variant={currentView === "change-password" ? "default" : "ghost"}
-              className="w-full justify-start text-sidebar-foreground hover:bg-sidebar-accent" 
+              className="w-full justify-start text-sidebar-foreground hover:bg-sidebar-accent"
               size="sm"
               onClick={() => setCurrentView("change-password")}
             >
               <Settings className="w-4 h-4 mr-3" />
               Nova Senha
             </Button>
-            
+
             {isSuperAdmin && (
-              <Button 
+              <Button
                 variant="ghost"
-                className="w-full justify-start text-sidebar-foreground hover:bg-sidebar-accent border border-orange-500/20 bg-orange-500/10" 
+                className="w-full justify-start text-sidebar-foreground hover:bg-sidebar-accent border border-orange-500/20 bg-orange-500/10"
                 size="sm"
                 onClick={() => navigate("/super-admin")}
               >
@@ -440,8 +440,8 @@ export const Dashboard = ({ user }: DashboardProps) => {
             <div className="text-sm text-sidebar-foreground/60 mb-2 px-2 truncate" title={user.email}>
               {user.email}
             </div>
-            <Button 
-              variant="ghost" 
+            <Button
+              variant="ghost"
               size="sm"
               onClick={handleLogout}
               className="w-full justify-start text-sidebar-foreground hover:bg-sidebar-accent"
@@ -449,8 +449,8 @@ export const Dashboard = ({ user }: DashboardProps) => {
               <LogOut className="w-4 h-4 mr-3" />
               Sair
             </Button>
-            
-            <Button 
+
+            <Button
               onClick={() => setIsAddDialogOpen(true)}
               className="w-full bg-primary hover:bg-primary/90 text-primary-foreground"
             >
@@ -519,15 +519,15 @@ export const Dashboard = ({ user }: DashboardProps) => {
                         <div className="flex gap-2">
                           <Button
                             variant={summaryView === "expenses" ? "destructive" : "ghost"}
-                            size="sm" 
+                            size="sm"
                             className="h-7 px-3 text-xs"
                             onClick={() => setSummaryView("expenses")}
                           >
                             Despesas
                           </Button>
-                          <Button 
+                          <Button
                             variant={summaryView === "income" ? "default" : "ghost"}
-                            size="sm" 
+                            size="sm"
                             className="h-7 px-3 text-xs text-muted-foreground"
                             onClick={() => setSummaryView("income")}
                           >
@@ -562,33 +562,33 @@ export const Dashboard = ({ user }: DashboardProps) => {
                       </CardContent>
                     </Card>
 
-                  {/* Recent Transactions */}
-                  <div>
-                    <TransactionList 
-                      transactions={transactions} 
-                      onTransactionDeleted={() => {
-                        // Reload transactions after deletion
-                        const loadData = async () => {
-                          const { data: transactionsData } = await supabase
-                            .from('transactions')
-                            .select('*')
-                            .eq('user_id', user.id)
-                            .order('created_at', { ascending: false });
-                          
-                          if (transactionsData) {
-                            const mappedTransactions = transactionsData.map(t => ({
-                              ...t,
-                              amount: Number(t.amount),
-                              date: t.date || t.created_at,
-                              type: t.type as "income" | "expense"
-                            }));
-                            setTransactions(mappedTransactions);
-                          }
-                        };
-                        loadData();
-                      }}
-                    />
-                  </div>
+                    {/* Recent Transactions */}
+                    <div>
+                      <TransactionList
+                        transactions={transactions}
+                        onTransactionDeleted={() => {
+                          // Reload transactions after deletion
+                          const loadData = async () => {
+                            const { data: transactionsData } = await supabase
+                              .from('transactions')
+                              .select('*')
+                              .eq('user_id', user.id)
+                              .order('created_at', { ascending: false });
+
+                            if (transactionsData) {
+                              const mappedTransactions = transactionsData.map(t => ({
+                                ...t,
+                                amount: Number(t.amount),
+                                date: t.date || t.created_at,
+                                type: t.type as "income" | "expense"
+                              }));
+                              setTransactions(mappedTransactions);
+                            }
+                          };
+                          loadData();
+                        }}
+                      />
+                    </div>
                   </div>
 
                   <div className="mt-6">
@@ -599,30 +599,30 @@ export const Dashboard = ({ user }: DashboardProps) => {
 
               {currentView === "transactions" && (
                 <div className="min-h-[calc(100vh-120px)]">
-                  <TransactionList 
-                    transactions={transactions} 
-                    showAll={true} 
+                  <TransactionList
+                    transactions={transactions}
+                    showAll={true}
                     onTransactionDeleted={() => {
-                    // Reload transactions after deletion
-                    const loadData = async () => {
-                      const { data: transactionsData } = await supabase
-                        .from('transactions')
-                        .select('*')
-                        .eq('user_id', user.id)
-                        .order('created_at', { ascending: false });
-                      
-                      if (transactionsData) {
-                        const mappedTransactions = transactionsData.map(t => ({
-                          ...t,
-                          amount: Number(t.amount),
-                          date: t.date || t.created_at,
-                          type: t.type as "income" | "expense"
-                        }));
-                        setTransactions(mappedTransactions);
-                      }
-                    };
-                    loadData();
-                  }}
+                      // Reload transactions after deletion
+                      const loadData = async () => {
+                        const { data: transactionsData } = await supabase
+                          .from('transactions')
+                          .select('*')
+                          .eq('user_id', user.id)
+                          .order('created_at', { ascending: false });
+
+                        if (transactionsData) {
+                          const mappedTransactions = transactionsData.map(t => ({
+                            ...t,
+                            amount: Number(t.amount),
+                            date: t.date || t.created_at,
+                            type: t.type as "income" | "expense"
+                          }));
+                          setTransactions(mappedTransactions);
+                        }
+                      };
+                      loadData();
+                    }}
                   />
                 </div>
               )}
@@ -632,8 +632,8 @@ export const Dashboard = ({ user }: DashboardProps) => {
               )}
 
               {currentView === "categories" && (
-                <Categories 
-                  transactions={transactions} 
+                <Categories
+                  transactions={transactions}
                   categories={categories}
                   onAddCategory={addCategory}
                   onUpdateCategories={fetchCategories}
@@ -652,12 +652,12 @@ export const Dashboard = ({ user }: DashboardProps) => {
                     <h2 className="text-2xl font-bold mb-6">Teste API - Adicionar Transação por Telefone</h2>
                     <ApiTestForm />
                   </div>
-                  
+
                   <div>
                     <h2 className="text-2xl font-bold mb-6">Teste Webhook - Lembrete</h2>
                     <TestWebhook />
                   </div>
-                  
+
                   <div className="mt-8 p-6 bg-muted/30 rounded-lg">
                     <h3 className="text-lg font-semibold mb-4">Como usar a API:</h3>
                     <div className="space-y-4 text-sm">
@@ -679,7 +679,7 @@ export const Dashboard = ({ user }: DashboardProps) => {
                       <div>
                         <strong>Body (JSON):</strong>
                         <code className="block bg-background p-2 rounded mt-1 whitespace-pre">
-{`{
+                          {`{
   "phone": "+5511999999999",
   "type": "expense",
   "amount": 50.00,
@@ -731,7 +731,7 @@ export const Dashboard = ({ user }: DashboardProps) => {
       </div>
 
       {/* Mobile Bottom Navigation */}
-      <MobileBottomNav 
+      <MobileBottomNav
         currentView={currentView}
         setCurrentView={setCurrentView}
         onAddTransaction={() => setIsAddDialogOpen(true)}

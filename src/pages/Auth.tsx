@@ -6,10 +6,12 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Mail, Lock, User, Eye, EyeOff, Loader2, CheckCircle2, Gift, Sparkles } from "lucide-react";
+import { Mail, Lock, User, Eye, EyeOff, Loader2, CheckCircle2, Gift, Sparkles, FileText, ChevronDown } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { Logo } from "@/components/Logo";
+import { TermsOfUseContent } from "@/components/TermsOfUseContent";
+import { Checkbox } from "@/components/ui/checkbox";
 import { 
   isValidEmail, 
   isValidPhone, 
@@ -37,6 +39,9 @@ const Auth = () => {
   const [message, setMessage] = useState("");
   const [resetEmailSent, setResetEmailSent] = useState(false);
   const [registrationComplete, setRegistrationComplete] = useState(false);
+  const [termsStepDone, setTermsStepDone] = useState(false);
+  const [termsScrolledToBottom, setTermsScrolledToBottom] = useState(false);
+  const [acceptedTerms, setAcceptedTerms] = useState(false);
   
   const navigate = useNavigate();
   const { toast } = useToast();
@@ -283,64 +288,54 @@ const Auth = () => {
           return;
         }
 
-        // OTP verified! Now create account with trial
+        // OTP verified! Create Asaas customer and pending registration (no user yet)
         setOtpVerified(true);
         toast({
           title: "Código verificado!",
-          description: "Criando sua conta...",
+          description: "Redirecionando para pagamento...",
         });
 
-        // Create user account with 7-day trial
         try {
-          const { data: regData, error: regError } = await supabase.functions.invoke('register-user', {
+          const { data: customerData, error: customerError } = await supabase.functions.invoke('create-asaas-customer', {
             body: {
               email: sanitizedEmail,
-              password: password,
               full_name: sanitizedFullName,
               phone: cleanPhone,
-              otp_code: trimmedCode
+              password: password,
+              terms_accepted: acceptedTerms
             }
           });
 
-          if (regError) {
-            console.error('Registration error:', regError);
-            throw new Error(regError.message || "Erro ao criar conta.");
+          if (customerError) {
+            let errorMessage = "Erro ao iniciar cadastro.";
+            if (customerError.message) errorMessage = customerError.message;
+            else if (customerError.context?.body) {
+              try {
+                const body = typeof customerError.context.body === 'string'
+                  ? JSON.parse(customerError.context.body) : customerError.context.body;
+                if (body?.error) errorMessage = body.error;
+              } catch (_) {}
+            }
+            throw new Error(errorMessage);
           }
 
-          if (regData.error) {
-            throw new Error(regData.error);
+          if (customerData?.error) {
+            throw new Error(customerData.error);
           }
 
-          // Registration successful!
           setRegistrationComplete(true);
           toast({
-            title: "Conta criada com sucesso! 🎉",
-            description: `Você tem ${TRIAL_DAYS} dias grátis para explorar!`,
+            title: "Cadastro iniciado",
+            description: "Conclua o pagamento para ativar sua conta.",
           });
 
-          // Auto login after 2 seconds
-          setTimeout(async () => {
-            try {
-              await supabase.auth.signInWithPassword({
-                email: sanitizedEmail,
-                password: password,
-              });
-            } catch (loginError) {
-              console.error('Auto-login failed:', loginError);
-              setActiveTab("login");
-              toast({
-                title: "Conta criada!",
-                description: "Por favor, faça login para continuar.",
-              });
-            }
-          }, 2000);
-
-        } catch (regError: any) {
-          console.error('Registration error:', regError);
-          setMessage(regError.message || "Erro ao criar conta.");
+          navigate(`/pagamento-pendente?email=${encodeURIComponent(sanitizedEmail)}`);
+        } catch (err: any) {
+          console.error('create-asaas-customer error:', err);
+          setMessage(err.message || "Erro ao iniciar cadastro.");
           toast({
             title: "Erro",
-            description: regError.message || "Erro ao criar conta.",
+            description: err.message || "Erro ao iniciar cadastro.",
             variant: "destructive"
           });
           setOtpVerified(false);
@@ -421,6 +416,11 @@ const Auth = () => {
             setOtpVerified(false);
             setOtpCode("");
             setRegistrationComplete(false);
+            if (v !== "signup") {
+              setTermsStepDone(false);
+              setTermsScrolledToBottom(false);
+              setAcceptedTerms(false);
+            }
           }}>
             <TabsList className="grid w-full grid-cols-3">
               <TabsTrigger value="login">Entrar</TabsTrigger>
@@ -488,6 +488,62 @@ const Auth = () => {
 
             {/* Signup Tab */}
             <TabsContent value="signup" className="space-y-4 mt-4">
+              {/* Step 1: Accept Terms of Use */}
+              {!termsStepDone && !registrationComplete && (
+                <div className="space-y-4">
+                  <div className="flex items-center gap-2 text-muted-foreground">
+                    <FileText className="h-5 w-5 text-primary" />
+                    <p className="text-sm font-medium">
+                      Leia os Termos de Uso até o final para continuar
+                    </p>
+                  </div>
+                  <div
+                    className="rounded-xl border border-border bg-muted/30 overflow-y-auto px-4 py-3 max-h-[280px] scroll-smooth"
+                    onScroll={(e) => {
+                      const el = e.currentTarget;
+                      const threshold = 40;
+                      const isAtBottom = el.scrollHeight - el.scrollTop - el.clientHeight < threshold;
+                      if (isAtBottom) setTermsScrolledToBottom(true);
+                    }}
+                  >
+                    <TermsOfUseContent className="pr-2" />
+                  </div>
+                  {!termsScrolledToBottom && (
+                    <p className="text-xs text-amber-600 dark:text-amber-500 flex items-center gap-1">
+                      <ChevronDown className="h-3.5 w-3.5" />
+                      Role até o final dos termos para habilitar a opção abaixo
+                    </p>
+                  )}
+                  <div className="flex items-start gap-3 rounded-lg border border-border bg-card p-3">
+                    <Checkbox
+                      id="accept-terms"
+                      checked={acceptedTerms}
+                      onCheckedChange={(v) => setAcceptedTerms(v === true)}
+                      disabled={!termsScrolledToBottom}
+                      className="mt-0.5"
+                    />
+                    <label
+                      htmlFor="accept-terms"
+                      className={`text-sm cursor-pointer select-none ${
+                        termsScrolledToBottom
+                          ? "text-foreground"
+                          : "text-muted-foreground cursor-not-allowed"
+                      }`}
+                    >
+                      Li e aceito integralmente os Termos de Uso da IAFÉ Finanças
+                    </label>
+                  </div>
+                  <Button
+                    type="button"
+                    className="w-full bg-primary hover:bg-primary/90"
+                    disabled={!acceptedTerms}
+                    onClick={() => setTermsStepDone(true)}
+                  >
+                    Continuar para o cadastro
+                  </Button>
+                </div>
+              )}
+
               {/* Registration Complete */}
               {registrationComplete ? (
                 <div className="text-center space-y-6 py-6">
@@ -518,8 +574,8 @@ const Auth = () => {
                     <span className="text-sm">Entrando automaticamente...</span>
                   </div>
                 </div>
-              ) : (
-                /* Regular Signup Form */
+              ) : termsStepDone ? (
+                /* Regular Signup Form - only after accepting terms */
                 <form onSubmit={handleSignUp} className="space-y-4">
                   {/* Trial Banner */}
                   {!otpSent && (
@@ -690,7 +746,7 @@ const Auth = () => {
                     </p>
                   )}
                 </form>
-              )}
+              ) : null}
             </TabsContent>
 
             {/* Forgot Password Tab */}

@@ -74,3 +74,9 @@ verify_jwt = false
 
 [functions.get-pending-payment]
 verify_jwt = false
+
+[functions.invite-user]
+verify_jwt = false
+
+[functions.respond-invitation]
+verify_jwt = false

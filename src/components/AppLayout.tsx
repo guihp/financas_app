@@ -16,6 +16,7 @@ import {
   Shield,
   Key,
   CreditCard,
+  Users,
 } from "lucide-react";
 
 interface SubscriptionCheck {
@@ -45,17 +46,25 @@ export const AppLayout = () => {
         .single();
 
       if (error && error.code === "PGRST116") {
-        // No subscription found - give access (new user, will be assigned trial)
-        return { hasAccess: true, isExpired: false, daysExpiredAgo: 0 };
+        // No subscription found - user needs to set up payment
+        return { hasAccess: false, isExpired: false, daysExpiredAgo: 0 };
       }
 
       if (error) {
         console.error("Subscription check error:", error);
-        return { hasAccess: true, isExpired: false, daysExpiredAgo: 0 };
+        return { hasAccess: false, isExpired: false, daysExpiredAgo: 0 };
       }
 
       if (!data) {
-        return { hasAccess: true, isExpired: false, daysExpiredAgo: 0 };
+        // No subscription data - user needs to set up payment
+        return { hasAccess: false, isExpired: false, daysExpiredAgo: 0 };
+      }
+
+      // Check if user has payment method configured (asaas_customer_id)
+      // Even for trial, user must configure payment method first
+      if (!data.asaas_customer_id) {
+        // Trial without payment method - user needs to set up payment
+        return { hasAccess: false, isExpired: false, daysExpiredAgo: 0 };
       }
 
       const now = new Date();
@@ -193,6 +202,7 @@ export const AppLayout = () => {
     { path: "/stats", icon: PieChart, label: "Estatísticas" },
     { path: "/agenda", icon: Calendar, label: "Agenda" },
     { path: "/categorias", icon: Tag, label: "Categorias" },
+    { path: "/sharing", icon: Users, label: "Compartilhar" },
     { path: "/assinatura", icon: CreditCard, label: "Assinatura" },
     { path: "/alterar-senha", icon: Key, label: "Alterar Senha" },
   ];
@@ -218,18 +228,32 @@ export const AppLayout = () => {
     return null;
   }
 
-  // Show payment wall if subscription expired (skip for super admin and /assinatura route)
+  // Redirect to subscription page if no access and not already there (skip for super admin)
   if (
-    subscriptionCheck.isExpired &&
+    !subscriptionCheck.hasAccess &&
     !isSuperAdmin &&
     location.pathname !== "/assinatura"
   ) {
-    return (
-      <TrialExpiredWall
-        userEmail={user.email}
-        daysExpiredAgo={subscriptionCheck.daysExpiredAgo}
-      />
-    );
+    // If expired, show expired wall, otherwise redirect to subscription setup
+    if (subscriptionCheck.isExpired) {
+      return (
+        <TrialExpiredWall
+          userEmail={user.email}
+          daysExpiredAgo={subscriptionCheck.daysExpiredAgo}
+        />
+      );
+    } else {
+      // No subscription found - redirect to setup payment
+      navigate("/assinatura", { replace: true });
+      return (
+        <div className="min-h-screen bg-background flex items-center justify-center">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto"></div>
+            <p className="mt-4 text-muted-foreground">Redirecionando para configuração de pagamento...</p>
+          </div>
+        </div>
+      );
+    }
   }
 
   return (

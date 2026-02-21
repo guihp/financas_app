@@ -8,6 +8,12 @@ interface CreditCardInputProps {
   onCardChange: (cardData: CreditCardData) => void;
   onHolderInfoChange: (holderInfo: CardHolderInfo) => void;
   disabled?: boolean;
+  /** Telefone do cadastro (OTP) para não pedir de novo */
+  defaultPhone?: string;
+  /** CEP do endereço já preenchido na página */
+  defaultPostalCode?: string;
+  /** Número do endereço já preenchido na página */
+  defaultAddressNumber?: string;
 }
 
 export interface CreditCardData {
@@ -89,10 +95,21 @@ const brandColors: Record<string, string> = {
   unknown: 'from-gray-600 to-gray-800',
 };
 
+// Format phone for display (11 digits -> (11) 99999-9999)
+const formatPhoneDisplay = (value: string): string => {
+  const numbers = (value || '').replace(/\D/g, '').slice(0, 11);
+  if (numbers.length <= 2) return numbers.length > 0 ? `(${numbers}` : '';
+  if (numbers.length <= 7) return `(${numbers.slice(0, 2)}) ${numbers.slice(2)}`;
+  return `(${numbers.slice(0, 2)}) ${numbers.slice(2, 7)}-${numbers.slice(7, 11)}`;
+};
+
 export const CreditCardInput = ({ 
   onCardChange, 
   onHolderInfoChange,
-  disabled = false 
+  disabled = false,
+  defaultPhone = '',
+  defaultPostalCode = '',
+  defaultAddressNumber = ''
 }: CreditCardInputProps) => {
   const [cardNumber, setCardNumber] = useState('');
   const [holderName, setHolderName] = useState('');
@@ -101,13 +118,29 @@ export const CreditCardInput = ({
   const [ccv, setCcv] = useState('');
   const [isFlipped, setIsFlipped] = useState(false);
   
-  // Holder info
+  // Holder info (pré-preenchido com telefone do cadastro e endereço da página)
   const [cpfCnpj, setCpfCnpj] = useState('');
-  const [postalCode, setPostalCode] = useState('');
-  const [phone, setPhone] = useState('');
-  const [addressNumber, setAddressNumber] = useState('');
+  const [postalCode, setPostalCode] = useState(() => {
+    const raw = (defaultPostalCode || '').replace(/\D/g, '');
+    return raw.length >= 8 ? formatCep(raw) : defaultPostalCode;
+  });
+  const [phone, setPhone] = useState(() => formatPhoneDisplay(defaultPhone));
+  const [addressNumber, setAddressNumber] = useState(defaultAddressNumber || '');
 
   const cardBrand = getCardBrand(cardNumber);
+
+  // Sincronizar quando o pai passar telefone/endereço depois (ex.: após carregar pendingPayment)
+  useEffect(() => {
+    if (defaultPhone) {
+      const formatted = formatPhoneDisplay(defaultPhone);
+      if (formatted !== phone) setPhone(formatted);
+    }
+    if (defaultPostalCode && !postalCode) {
+      const raw = defaultPostalCode.replace(/\D/g, '');
+      if (raw.length >= 8) setPostalCode(formatCep(raw));
+    }
+    if (defaultAddressNumber && !addressNumber) setAddressNumber(defaultAddressNumber);
+  }, [defaultPhone, defaultPostalCode, defaultAddressNumber]);
 
   // Update parent component when card data changes
   useEffect(() => {
@@ -282,8 +315,10 @@ export const CreditCardInput = ({
               value={expiryMonth}
               onChange={(e) => {
                 const val = e.target.value.replace(/\D/g, '').slice(0, 2);
-                if (val === '' || (parseInt(val) >= 1 && parseInt(val) <= 12)) {
-                  setExpiryMonth(val);
+                if (val === '') {
+                  setExpiryMonth('');
+                } else if (parseInt(val) >= 1 && parseInt(val) <= 12) {
+                  setExpiryMonth(String(parseInt(val)).padStart(2, '0'));
                 }
               }}
               className="pl-10 font-mono"

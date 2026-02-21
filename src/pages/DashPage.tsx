@@ -5,6 +5,7 @@ import { User } from "@supabase/supabase-js";
 import { TransactionList } from "@/components/TransactionList";
 import { AddTransactionFab } from "@/components/AddTransactionFab";
 import { TransactionChart } from "@/components/TransactionChart";
+import { useConnectedUserIds } from "@/hooks/useConnectedUserIds";
 import { TransactionPieChart } from "@/components/PieChart";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -24,13 +25,15 @@ const DashPage = () => {
   const [loading, setLoading] = useState(true);
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [dateFilter, setDateFilter] = useState<DateFilterOption>("thisMonth");
+  const { allUserIds, loading: loadingConnections } = useConnectedUserIds(user?.id);
 
   const loadTransactions = async () => {
+    if (allUserIds.length === 0) return;
     try {
       const { data, error } = await supabase
         .from("transactions")
         .select("*")
-        .eq("user_id", user.id)
+        .in("user_id", allUserIds)
         .order("date", { ascending: false });
 
       if (error) throw error;
@@ -50,10 +53,10 @@ const DashPage = () => {
   };
 
   useEffect(() => {
-    if (user?.id) {
+    if (user?.id && !loadingConnections && allUserIds.length > 0) {
       loadTransactions();
     }
-  }, [user?.id]);
+  }, [user?.id, allUserIds, loadingConnections]);
 
   // Filtered transactions based on date filter
   const filteredTransactions = useMemo(() => {
@@ -230,6 +233,7 @@ const DashPage = () => {
           <TransactionList
             transactions={filteredTransactions.slice(0, 10)}
             onTransactionDeleted={loadTransactions}
+            currentUserId={user.id}
           />
         </CardContent>
       </Card>

@@ -96,11 +96,17 @@ const Assinatura = () => {
     }
   };
 
+  // Only mark as expired if:
+  // 1. Status is explicitly expired or cancelled, OR
+  // 2. Trial ended (is_trial is true AND days_remaining <= 0 AND trial_ends_at is in the past)
   const isExpired =
     subscription &&
     (subscription.status === "expired" ||
       subscription.status === "cancelled" ||
-      subscription.days_remaining <= 0);
+      (subscription.is_trial &&
+        subscription.trial_ends_at &&
+        new Date(subscription.trial_ends_at) < new Date() &&
+        subscription.days_remaining <= 0));
 
   const isTrialActive =
     subscription &&
@@ -295,48 +301,21 @@ const Assinatura = () => {
             <div className="space-y-3">
               <p className="text-sm font-medium">Escolha como pagar:</p>
 
-              <Button
-                className="w-full h-14 justify-start gap-4 bg-green-600/20 hover:bg-green-600/30 text-green-400 border border-green-600/30"
-                variant="outline"
-                onClick={() =>
-                  navigate("/pagamento-pendente?method=PIX")
-                }
-              >
-                <div className="h-9 w-9 rounded-lg bg-green-600/20 flex items-center justify-center">
-                  <QrCode className="h-5 w-5" />
-                </div>
-                <div className="text-left">
-                  <p className="font-medium">PIX</p>
-                  <p className="text-xs opacity-70">
-                    Aprovação instantânea
-                  </p>
-                </div>
-              </Button>
-
-              <Button
-                className="w-full h-14 justify-start gap-4 bg-blue-600/20 hover:bg-blue-600/30 text-blue-400 border border-blue-600/30"
-                variant="outline"
-                onClick={() =>
-                  navigate("/pagamento-pendente?method=BOLETO")
-                }
-              >
-                <div className="h-9 w-9 rounded-lg bg-blue-600/20 flex items-center justify-center">
-                  <FileText className="h-5 w-5" />
-                </div>
-                <div className="text-left">
-                  <p className="font-medium">Boleto Bancário</p>
-                  <p className="text-xs opacity-70">
-                    Até 3 dias úteis para compensar
-                  </p>
-                </div>
-              </Button>
-
+              {/* Credit Card - First */}
               <Button
                 className="w-full h-14 justify-start gap-4 bg-purple-600/20 hover:bg-purple-600/30 text-purple-400 border border-purple-600/30"
                 variant="outline"
-                onClick={() =>
-                  navigate("/pagamento-pendente?method=CREDIT_CARD")
-                }
+                onClick={async () => {
+                  // Get user email if logged in
+                  const { data: { session } } = await supabase.auth.getSession();
+                  const userEmail = session?.user?.email || "";
+                  
+                  if (userEmail) {
+                    navigate(`/pagamento-pendente?method=CREDIT_CARD&email=${encodeURIComponent(userEmail)}`);
+                  } else {
+                    navigate("/pagamento-pendente?method=CREDIT_CARD");
+                  }
+                }}
               >
                 <div className="h-9 w-9 rounded-lg bg-purple-600/20 flex items-center justify-center">
                   <CreditCard className="h-5 w-5" />
@@ -345,6 +324,33 @@ const Assinatura = () => {
                   <p className="font-medium">Cartão de Crédito</p>
                   <p className="text-xs opacity-70">
                     Aprovação imediata
+                  </p>
+                </div>
+              </Button>
+
+              {/* PIX - Second */}
+              <Button
+                className="w-full h-14 justify-start gap-4 bg-green-600/20 hover:bg-green-600/30 text-green-400 border border-green-600/30"
+                variant="outline"
+                onClick={async () => {
+                  // Get user email if logged in
+                  const { data: { session } } = await supabase.auth.getSession();
+                  const userEmail = session?.user?.email || "";
+                  
+                  if (userEmail) {
+                    navigate(`/pagamento-pendente?method=PIX&email=${encodeURIComponent(userEmail)}`);
+                  } else {
+                    navigate("/pagamento-pendente?method=PIX");
+                  }
+                }}
+              >
+                <div className="h-9 w-9 rounded-lg bg-green-600/20 flex items-center justify-center">
+                  <QrCode className="h-5 w-5" />
+                </div>
+                <div className="text-left">
+                  <p className="font-medium">PIX</p>
+                  <p className="text-xs opacity-70">
+                    Aprovação instantânea
                   </p>
                 </div>
               </Button>

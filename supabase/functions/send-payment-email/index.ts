@@ -165,9 +165,9 @@ const getPaymentEmailContent = (data: {
   expiresAt: string;
 }) => {
   const { userName, planName, planPrice, paymentMethod, pixCode, pixQrCodeUrl, boletoUrl, invoiceUrl, expiresAt } = data;
-  
+
   const firstName = userName.split(' ')[0];
-  
+
   const paymentSection = paymentMethod === 'PIX' ? `
     <tr>
       <td style="padding: 0 32px 24px;" class="mobile-padding">
@@ -490,7 +490,7 @@ const getPaymentEmailText = (data: {
 }) => {
   const { userName, planName, planPrice, paymentMethod, pixCode, boletoUrl, invoiceUrl, expiresAt } = data;
   const firstName = userName.split(' ')[0];
-  
+
   let paymentInfo = '';
   if (paymentMethod === 'PIX' && pixCode) {
     paymentInfo = `
@@ -594,6 +594,96 @@ financeiro@iafeoficial.com
   `.trim();
 };
 
+// Email template for invitation
+const getInvitationEmailContent = (data: {
+  userName: string;
+  requesterName: string;
+  invitationLink: string;
+}) => {
+  const { userName, requesterName, invitationLink } = data;
+  const firstName = userName ? userName.split(' ')[0] : 'usuário';
+  const requesterFirstName = requesterName.split(' ')[0];
+
+  return getEmailWrapper(`
+    <tr>
+      <td style="padding: 40px 32px 24px;" class="mobile-padding">
+        <h2 style="color: #1e293b; margin: 0 0 8px 0; font-size: 26px; font-weight: 700;">
+          Convite para compartilhar! 🤝
+        </h2>
+        <p style="color: #64748b; line-height: 1.7; margin: 0; font-size: 15px;">
+          Olá, ${firstName}!
+        </p>
+        <p style="color: #64748b; line-height: 1.7; margin: 16px 0 0 0; font-size: 15px;">
+          <strong style="color: #0ea5e9;">${requesterName}</strong> convidou você para compartilhar o controle financeiro no <strong style="color: #0ea5e9;">IAFÉ Finanças</strong>.
+        </p>
+        <p style="color: #64748b; line-height: 1.7; margin: 16px 0 0 0; font-size: 15px;">
+          Ao aceitar, vocês poderão visualizar e gerenciar despesas e receitas juntos, facilitando o planejamento familiar.
+        </p>
+      </td>
+    </tr>
+    
+    <!-- CTA Button -->
+    <tr>
+      <td style="padding: 0 32px 32px; text-align: center;" class="mobile-padding">
+        <a href="${invitationLink}" class="btn btn-primary" style="display: inline-block; background: linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%); color: white; padding: 16px 40px; border-radius: 10px; text-decoration: none; font-weight: 600; font-size: 16px;">
+          ✅ Aceitar Convite
+        </a>
+        <p style="margin: 16px 0 0 0; color: #64748b; font-size: 13px;">
+          Se você não conhece essa pessoa, pode ignorar este e-mail.
+        </p>
+      </td>
+    </tr>
+  `, `${requesterFirstName} convidou você para compartilhar finanças no IAFÉ.`);
+};
+
+// Email template for accepted invitation
+const getInvitationAcceptedEmailContent = (data: {
+  userName: string;
+  accepterName: string;
+}) => {
+  const { userName, accepterName } = data;
+  const firstName = userName.split(' ')[0];
+  const accepterFirstName = accepterName.split(' ')[0];
+
+  return getEmailWrapper(`
+    <tr>
+      <td style="padding: 40px 32px 24px;" class="mobile-padding">
+        <h2 style="color: #1e293b; margin: 0 0 8px 0; font-size: 26px; font-weight: 700;">
+          Convite aceito! 🎉
+        </h2>
+        <p style="color: #64748b; line-height: 1.7; margin: 0; font-size: 15px;">
+          Olá, ${firstName}!
+        </p>
+        <p style="color: #64748b; line-height: 1.7; margin: 16px 0 0 0; font-size: 15px;">
+          <strong style="color: #22c55e;">${accepterName}</strong> aceitou seu convite para compartilhar o controle financeiro.
+        </p>
+      </td>
+    </tr>
+    
+    <!-- Info Badge -->
+    <tr>
+      <td style="padding: 0 32px 24px;" class="mobile-padding">
+        <div style="background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%); border: 2px solid #22c55e; border-radius: 16px; padding: 24px; text-align: center;">
+          <div style="width: 48px; height: 48px; background: #22c55e; border-radius: 12px; margin: 0 auto 12px; display: flex; align-items: center; justify-content: center;">
+            <span style="font-size: 24px;">🔗</span>
+          </div>
+          <h3 style="color: #16a34a; margin: 0 0 8px 0; font-size: 18px; font-weight: 600;">Contas Conectadas</h3>
+          <p style="color: #15803d; margin: 0; font-size: 14px;">Agora vocês podem ver os dados um do outro.</p>
+        </div>
+      </td>
+    </tr>
+
+    <!-- CTA Button -->
+    <tr>
+      <td style="padding: 0 32px 32px; text-align: center;" class="mobile-padding">
+        <a href="https://app.iafeoficial.com/dash" class="btn btn-primary" style="display: inline-block; background: linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%); color: white; padding: 16px 40px; border-radius: 10px; text-decoration: none; font-weight: 600; font-size: 16px;">
+          🚀 Acessar Painel
+        </a>
+      </td>
+    </tr>
+  `, `${accepterFirstName} aceitou seu convite de compartilhamento.`);
+};
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -602,13 +692,16 @@ serve(async (req) => {
   try {
     const body = await req.json();
     console.log('Sending email with type:', body.emailType || 'payment');
-    
-    const { 
-      emailType = 'payment', // 'payment', 'welcome_trial', 'trial_expiring'
-      to, 
-      userName, 
-      planName, 
-      planPrice, 
+
+    const {
+      emailType = 'payment', // 'payment', 'welcome_trial', 'trial_expiring', 'invitation', 'invitation_accepted'
+      to,
+      userName,
+      requesterName,
+      accepterName,
+      invitationLink,
+      planName,
+      planPrice,
       paymentMethod,
       pixCode,
       pixQrCodeUrl,
@@ -628,7 +721,7 @@ serve(async (req) => {
       );
     }
 
-    if (!to || !userName) {
+    if (!to || (!userName && !requesterName && !accepterName)) {
       return new Response(
         JSON.stringify({ error: 'Dados incompletos para envio de email', sent: false }),
         { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -642,12 +735,31 @@ serve(async (req) => {
     // Format price if provided
     const formattedPrice = planPrice ? parseFloat(planPrice).toFixed(2).replace('.', ',') : '';
 
-    if (emailType === 'welcome_trial') {
+    if (emailType === 'invitation') {
+      // Invitation email
+      htmlContent = getInvitationEmailContent({
+        userName,
+        requesterName,
+        invitationLink
+      });
+      textContent = `Olá ${userName || ''}! ${requesterName} convidou você para compartilhar finanças no IAFÉ Finanças. Acesse ${invitationLink} para aceitar.`;
+      subject = `convite de ${requesterName} para compartilhar finanças`;
+
+    } else if (emailType === 'invitation_accepted') {
+      // Invitation accepted email
+      htmlContent = getInvitationAcceptedEmailContent({
+        userName,
+        accepterName
+      });
+      textContent = `Olá ${userName}! ${accepterName} aceitou seu convite. Agora vocês compartilham o controle financeiro.`;
+      subject = `🎉 ${accepterName} aceitou seu convite!`;
+
+    } else if (emailType === 'welcome_trial') {
       // Welcome with trial email
       const formattedTrialEnds = new Date(trialEndsAt).toLocaleDateString('pt-BR', {
         day: '2-digit', month: 'long', year: 'numeric'
       });
-      
+
       htmlContent = getWelcomeTrialEmailContent({
         userName,
         planName,
@@ -661,13 +773,13 @@ serve(async (req) => {
         trialEndsAt: formattedTrialEnds
       });
       subject = `🎉 Bem-vindo ao IAFÉ Finanças! Seus ${trialDays} dias grátis começaram`;
-      
+
     } else if (emailType === 'trial_expiring') {
       // Trial expiring email
       const formattedTrialEnds = new Date(trialEndsAt).toLocaleDateString('pt-BR', {
         day: '2-digit', month: 'long', year: 'numeric'
       });
-      
+
       htmlContent = getTrialExpiringEmailContent({
         userName,
         planName,
@@ -677,7 +789,7 @@ serve(async (req) => {
       });
       textContent = `Olá ${userName}! Seu período gratuito no IAFÉ Finanças expira em ${daysRemaining} ${daysRemaining === 1 ? 'dia' : 'dias'}. Assine agora para continuar usando.`;
       subject = `⏰ ${userName.split(' ')[0]}, faltam ${daysRemaining} ${daysRemaining === 1 ? 'dia' : 'dias'} para seu trial expirar`;
-      
+
     } else {
       // Payment email (default)
       const formattedExpires = new Date(expiresAt).toLocaleString('pt-BR', {

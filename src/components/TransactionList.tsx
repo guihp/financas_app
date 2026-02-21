@@ -1,6 +1,6 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { TrendingUp, TrendingDown, Trash2 } from "lucide-react";
+import { TrendingUp, TrendingDown, Trash2, Users } from "lucide-react";
 import { Transaction } from "./Dashboard";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
@@ -9,9 +9,10 @@ interface TransactionListProps {
   transactions: Transaction[];
   showAll?: boolean;
   onTransactionDeleted?: () => void;
+  currentUserId?: string;
 }
 
-export const TransactionList = ({ transactions, showAll = false, onTransactionDeleted }: TransactionListProps) => {
+export const TransactionList = ({ transactions, showAll = false, onTransactionDeleted, currentUserId }: TransactionListProps) => {
   const displayTransactions = showAll ? transactions : transactions.slice(0, 5);
   const { toast } = useToast();
 
@@ -74,11 +75,10 @@ export const TransactionList = ({ transactions, showAll = false, onTransactionDe
             return (
               <div key={transaction.id} className="flex items-center justify-between p-2 lg:p-0 hover:bg-muted/50 rounded-lg lg:rounded-none lg:hover:bg-transparent transition-colors group">
                 <div className="flex items-center gap-2 lg:gap-3 flex-1 min-w-0">
-                  <div className={`w-6 h-6 lg:w-8 lg:h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
-                    transaction.type === "expense" 
-                      ? "bg-destructive/20 text-destructive" 
+                  <div className={`w-6 h-6 lg:w-8 lg:h-8 rounded-full flex items-center justify-center flex-shrink-0 ${transaction.type === "expense"
+                      ? "bg-destructive/20 text-destructive"
                       : "bg-success/20 text-success"
-                  }`}>
+                    }`}>
                     {transaction.type === "expense" ? (
                       <TrendingDown className="w-3 h-3 lg:w-4 lg:h-4" />
                     ) : (
@@ -86,16 +86,23 @@ export const TransactionList = ({ transactions, showAll = false, onTransactionDe
                     )}
                   </div>
                   <div className="min-w-0 flex-1">
-                    <p className="font-medium text-sm truncate">{transaction.description}</p>
+                    <div className="flex items-center gap-1.5">
+                      <p className="font-medium text-sm truncate">{transaction.description}</p>
+                      {currentUserId && transaction.user_id && transaction.user_id !== currentUserId && (
+                        <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-blue-500/20 text-blue-400 flex-shrink-0">
+                          <Users className="w-2.5 h-2.5" />
+                          Compartilhado
+                        </span>
+                      )}
+                    </div>
                     <p className="text-xs text-muted-foreground">
                       {date.toLocaleDateString("pt-BR")} • {transaction.category}
                     </p>
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
-                  <div className={`text-xs lg:text-sm font-medium text-right flex-shrink-0 ${
-                    transaction.type === "expense" ? "text-destructive" : "text-success"
-                  }`}>
+                  <div className={`text-xs lg:text-sm font-medium text-right flex-shrink-0 ${transaction.type === "expense" ? "text-destructive" : "text-success"
+                    }`}>
                     {transaction.type === "expense" ? "-" : "+"}R$ {Number(transaction.amount).toFixed(2).replace(".", ",")}
                   </div>
                   <Button

@@ -7,6 +7,9 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
+const ASAAS_API_KEY = Deno.env.get('ASAAS_API_KEY') ?? '';
+const ASAAS_BASE_URL = Deno.env.get('ASAAS_BASE_URL') ?? 'https://api-sandbox.asaas.com/v3';
+
 serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
@@ -14,26 +17,33 @@ serve(async (req) => {
   }
 
   try {
-    const body = await req.json();
-    console.log('Received Asaas webhook:', JSON.stringify(body, null, 2));
-    
-    // Asaas webhook format
-    const { event, payment } = body;
+    const rawBody = await req.json();
+    // n8n pode enviar o payload em body.body ou no root
+    const body = rawBody?.body && typeof rawBody.body === 'object' ? rawBody.body : rawBody;
+    console.log('Received Asaas webhook (keys):', Object.keys(body || {}));
 
-    // Also support direct format from n8n
-    const paymentId = payment?.id || body.paymentId;
-    const customerId = payment?.customer || body.customerId;
-    const eventType = event || body.event;
-    const paymentStatus = payment?.status || body.status;
-    const externalReference = payment?.externalReference || body.externalReference;
+    // Asaas webhook format: { event, payment: { id, externalReference, ... } }
+    // n8n pode repassar com estrutura diferente
+    const payment = body?.payment || body?.Payment || rawBody?.payment;
+    const event = body?.event || body?.Event || rawBody?.event;
 
-    if (!paymentId && !externalReference) {
-      console.log('No paymentId or externalReference in webhook');
+    // paymentId: Asaas usa "pay_xxx"; body.id pode ser o payment quando n8n repassa
+    const paymentId = payment?.id || payment?.ID || body?.paymentId || body?.payment_id || rawBody?.paymentId || (typeof body?.id === 'string' && body.id.startsWith('pay_') ? body.id : null);
+    const customerId = payment?.customer || payment?.Customer || body?.customerId || body?.customer_id;
+    const eventType = event || body?.event || rawBody?.event;
+    const paymentStatus = payment?.status || payment?.Status || body?.status || rawBody?.status;
+    const externalReference = payment?.externalReference ?? payment?.external_reference ?? body?.externalReference ?? body?.external_reference ?? rawBody?.externalReference;
+
+    if (!paymentId && !externalReference && !customerId) {
+      console.error('Webhook sem paymentId, externalReference nem customerId. Body recebido:', JSON.stringify({ ...body, payment: body?.payment ? '[presente]' : 'ausente' }).slice(0, 500));
       return new Response(
-        JSON.stringify({ error: 'paymentId ou externalReference é obrigatório' }),
-        { 
-          status: 400, 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        JSON.stringify({
+          error: 'paymentId, externalReference ou customerId é obrigatório',
+          receivedKeys: Object.keys(body || {})
+        }),
+        {
+          status: 400,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
         }
       );
     }
@@ -45,29 +55,76 @@ serve(async (req) => {
     );
 
     // Find pending registration by payment ID or external reference (which is registration ID)
-    let query = supabaseAdmin.from('pending_registrations').select('*');
-    
+    let registration: Record<string, unknown> | null = null;
+    let regError: { message: string } | null = null;
+
     if (externalReference) {
-      query = query.eq('id', externalReference);
+      const res = await supabaseAdmin.from('pending_registrations').select('*').eq('id', externalReference).single();
+      registration = res.data;
+      regError = res.error;
     } else if (paymentId) {
-      query = query.eq('asaas_payment_id', paymentId);
+      const res = await supabaseAdmin.from('pending_registrations').select('*').eq('asaas_payment_id', paymentId).single();
+      registration = res.data;
+      regError = res.error;
     }
 
-    const { data: registration, error: regError } = await query.single();
+    // Fallback: externalReference ausente - buscar no Asaas ou por customerId
+    if ((regError || !registration) && paymentId && ASAAS_API_KEY) {
+      // 1. Buscar pagamento no Asaas para obter externalReference
+      try {
+        const payRes = await fetch(`${ASAAS_BASE_URL}/payments/${paymentId}`, {
+          headers: { 'accept': 'application/json', 'access_token': ASAAS_API_KEY }
+        });
+        const payData = await payRes.json();
+        const extRef = payData?.externalReference ?? payData?.external_reference;
+        if (extRef) {
+          const res = await supabaseAdmin.from('pending_registrations').select('*').eq('id', extRef).single();
+          if (res.data) {
+            registration = res.data;
+            regError = null;
+            console.log('Found registration by externalReference from Asaas API:', extRef);
+          }
+        }
+      } catch (e) {
+        console.warn('Failed to fetch payment from Asaas:', e);
+      }
+
+      // 2. Se ainda não encontrou e temos customerId, buscar por asaas_customer_id
+      if ((regError || !registration) && customerId) {
+        const res = await supabaseAdmin
+          .from('pending_registrations')
+          .select('*')
+          .eq('asaas_customer_id', customerId)
+          .in('status', ['pending_payment', 'paid'])
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        if (res.data) {
+          registration = res.data;
+          regError = null;
+          console.log('Found registration by asaas_customer_id fallback:', customerId);
+          // Atualizar asaas_payment_id para manter consistência
+          await supabaseAdmin
+            .from('pending_registrations')
+            .update({ asaas_payment_id: paymentId, updated_at: new Date().toISOString() })
+            .eq('id', registration.id);
+        }
+      }
+    }
 
     if (regError || !registration) {
-      console.log('Registration not found:', { paymentId, externalReference, error: regError });
-      
+      console.log('Registration not found:', { paymentId, externalReference, customerId, error: regError });
+
       // Don't fail - webhook might be for a different payment type
       return new Response(
-        JSON.stringify({ 
-          success: true, 
+        JSON.stringify({
+          success: true,
           message: 'Webhook recebido, mas registro não encontrado',
           paymentId,
           externalReference
         }),
-        { 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
         }
       );
     }
@@ -97,9 +154,9 @@ serve(async (req) => {
         console.error('Failed to update registration:', updateError);
         return new Response(
           JSON.stringify({ error: 'Erro ao atualizar registro' }),
-          { 
-            status: 500, 
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+          {
+            status: 500,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' }
           }
         );
       }
@@ -125,15 +182,65 @@ serve(async (req) => {
         // Don't fail the webhook
       }
 
+      // Create user account (register-user with registrationId only), with 1 retry on failure
+      const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
+      const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+      const invokeRegisterUser = async () => {
+        const regRes = await fetch(`${supabaseUrl}/functions/v1/register-user`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${serviceRoleKey}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ registrationId: registration.id })
+        });
+        const regResult = await regRes.json().catch(() => ({}));
+        return { ok: regRes.ok, status: regRes.status, result: regResult };
+      };
+      try {
+        let outcome = await invokeRegisterUser();
+        if (!outcome.ok && (outcome.status >= 500 || outcome.status === 408)) {
+          console.warn('register-user failed, retrying in 2s:', outcome.status, outcome.result);
+          await new Promise(r => setTimeout(r, 2000));
+          outcome = await invokeRegisterUser();
+        }
+        if (!outcome.ok) {
+          console.error('register-user failed after payment:', outcome.status, outcome.result);
+          // Return 500 to trigger Asaas retry
+          return new Response(
+            JSON.stringify({
+              error: 'Erro ao criar conta de usuário. O webhook será retentado.',
+              details: outcome.result
+            }),
+            {
+              status: 500,
+              headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+            }
+          );
+        } else {
+          console.log('User created from paid registration:', registration.id);
+        }
+      } catch (invokeError) {
+        console.error('Failed to invoke register-user:', invokeError);
+        // Return 500 to trigger Asaas retry
+        return new Response(
+          JSON.stringify({ error: 'Erro de comunicação interna ao criar usuário' }),
+          {
+            status: 500,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+          }
+        );
+      }
+
       return new Response(
-        JSON.stringify({ 
+        JSON.stringify({
           success: true,
           message: 'Pagamento confirmado e registro atualizado',
           registrationId: registration.id,
           email: registration.email
         }),
-        { 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
         }
       );
     }
@@ -164,14 +271,14 @@ serve(async (req) => {
     }
 
     return new Response(
-      JSON.stringify({ 
+      JSON.stringify({
         success: true,
         message: 'Webhook processado',
         event: eventType,
         registrationId: registration.id
       }),
-      { 
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+      {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       }
     );
 
@@ -179,9 +286,9 @@ serve(async (req) => {
     console.error('Error in process-asaas-webhook function:', error);
     return new Response(
       JSON.stringify({ error: error.message }),
-      { 
-        status: 500, 
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+      {
+        status: 500,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       }
     );
   }

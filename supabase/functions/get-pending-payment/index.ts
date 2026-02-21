@@ -40,7 +40,7 @@ serve(async (req) => {
       .from('pending_registrations')
       .select('*, plans(*)')
       .eq('email', email.toLowerCase().trim())
-      .in('status', ['pending_payment', 'paid'])
+      .in('status', ['pending_payment', 'paid', 'registered'])
       .order('created_at', { ascending: false })
       .limit(1)
       .single();
@@ -84,12 +84,13 @@ serve(async (req) => {
       );
     }
 
-    // If already paid, inform the user
-    if (registration.status === 'paid') {
+    // If already paid, inform the user (include registrationId so frontend can call check-payment-status to ensure user account exists)
+    if (registration.status === 'paid' || registration.status === 'registered') {
       return new Response(
         JSON.stringify({ 
           found: true,
           paid: true,
+          registration: { id: registration.id },
           message: 'Seu pagamento já foi confirmado! Você pode fazer login na sua conta.'
         }),
         { 
@@ -115,8 +116,10 @@ serve(async (req) => {
         paid: false,
         registration: {
           id: registration.id,
+          customerId: registration.asaas_customer_id,
           email: registration.email,
           fullName: registration.full_name,
+          phone: registration.phone,
           status: registration.status,
           paymentMethod: registration.payment_method,
           pixCode: registration.pix_code,
@@ -124,7 +127,16 @@ serve(async (req) => {
           boletoUrl: registration.boleto_url,
           invoiceUrl: registration.invoice_url,
           expiresAt: registration.expires_at,
-          createdAt: registration.created_at
+          createdAt: registration.created_at,
+          address: (registration.address_postal_code || registration.address_street) ? {
+            postalCode: registration.address_postal_code,
+            street: registration.address_street,
+            number: registration.address_number,
+            complement: registration.address_complement,
+            neighborhood: registration.address_neighborhood,
+            city: registration.address_city,
+            state: registration.address_state
+          } : null
         },
         plan: plan ? {
           id: plan.id,

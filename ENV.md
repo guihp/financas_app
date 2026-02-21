@@ -126,23 +126,76 @@ Body: { event, payment }
 - `PAYMENT_DELETED` - Pagamento excluído
 - `PAYMENT_REFUNDED` - Pagamento estornado
 
-### Fluxo de Pagamento no Cadastro
+### Fluxo de Pagamento no Cadastro (cadastro só após pagamento)
 
-1. Usuário preenche formulário e verifica OTP
-2. Sistema cria cliente no Asaas (`create-asaas-customer`)
-3. Sistema cria cobrança PIX/Boleto (`create-asaas-payment`)
-4. Usuário paga via QR Code ou boleto
-5. Asaas envia evento para webhook n8n
-6. n8n encaminha para `process-asaas-webhook`
-7. Sistema marca registro como pago
-8. Sistema cria conta do usuário (`register-user`)
+O usuário só é criado no banco **depois** de cadastrar o método de pagamento e pagar.
+
+1. Usuário preenche formulário (nome, e-mail, telefone, senha), aceita termos e verifica OTP na tela de Auth.
+2. Sistema chama `create-asaas-customer` (cria cliente no Asaas e registro em `pending_registrations`). **Nenhum usuário é criado ainda.**
+3. Redirecionamento para `/pagamento-pendente?email=...`. Usuário escolhe PIX ou Cartão de Crédito.
+4. Frontend chama `create-asaas-payment` com `registrationId` e `customerId` (retornados por `get-pending-payment`).
+5. **Cartão aprovado na hora:** `create-asaas-payment` marca o registro como pago e invoca `register-user` com `registrationId`. Conta criada em `auth.users` + `profiles` + `subscriptions`.
+6. **PIX:** usuário paga; Asaas envia evento para webhook n8n → n8n encaminha para `process-asaas-webhook` → função marca registro como pago e invoca `register-user` com `registrationId`. Conta criada.
+7. Usuário vê "Pagamento confirmado. Faça login com seu e-mail e a senha definida no cadastro." e acessa `/auth` para entrar.
+
+### Variáveis Asaas
+
+- `ASAAS_API_KEY` – Chave da API (sandbox ou produção).
+- `ASAAS_BASE_URL` – Base da API (ex.: `https://api-sandbox.asaas.com/v3`).
+- Webhook: configurar no painel Asaas para apontar para o n8n; n8n encaminha para a Edge Function `process-asaas-webhook`.
+
+### PIX no Sandbox – Confirmação manual obrigatória
+
+No **Sandbox**, o PIX **não é confirmado automaticamente**. Após gerar o PIX e simular o pagamento:
+
+1. Acesse o [Painel Asaas Sandbox](https://sandbox.asaas.com)
+2. Vá em Cobranças e localize a cobrança PIX
+3. Clique em **"Confirmar pagamento"** / **"CONFIRM PAYMENT"**
+4. O Asaas enviará o webhook `PAYMENT_RECEIVED` e o usuário será criado
+
+Ou use a API: `POST /v3/sandbox/payment/{id}/confirm` com o ID da cobrança.
+
+### Webhook e formato do payload
+
+O n8n deve repassar o webhook do Asaas **mantendo o payload original** (JSON com `event` e `payment`). O `process-asaas-webhook` espera:
+- `payment.id` ou `paymentId` – ID da cobrança (pay_xxx)
+- `payment.externalReference` ou `externalReference` – ID do registro (UUID em `pending_registrations`)
+
+Se o n8n transformar o payload, verifique se esses campos estão presentes. Logs da Edge Function mostram `receivedKeys` em caso de 400.
+
+### Eventos Asaas utilizados
+
+- `PAYMENT_CONFIRMED` – Pagamento confirmado (cartão/PIX).
+- `PAYMENT_RECEIVED` / `PAYMENT_RECEIVED_IN_CASH` – Pagamento recebido.
+- `PAYMENT_OVERDUE` – Pagamento vencido.
+- `PAYMENT_DELETED` / `PAYMENT_REFUNDED` – Cancelamento/estorno.
 
 ### Edge Functions de Pagamento
 
-- `create-asaas-customer` - Cria cliente no Asaas
-- `create-asaas-payment` - Cria cobrança (PIX/Boleto)
-- `check-payment-status` - Verifica status do pagamento
-- `process-asaas-webhook` - Processa webhooks do Asaas
+- `create-asaas-customer` – Cria cliente no Asaas e registro em `pending_registrations` (aceita `terms_accepted`).
+- `create-asaas-payment` – Cria cobrança (PIX ou Cartão). Se cartão aprovado na hora, marca como pago e chama `register-user`.
+
+### Cobrança recorrente (cartão salvo)
+
+**Estado atual:** O pagamento com cartão é **avulso** (uma única cobrança). O cartão **não** fica salvo para cobrança automática no mês seguinte. A tabela `subscriptions` armazena apenas o período (início/fim) e o `asaas_customer_id`, mas **não** usa a API de Assinaturas do Asaas.
+
+**Para cobrança automática mensal**, seria necessário:
+
+1. Usar a API de **Assinaturas** do Asaas (`POST /subscriptions`) em vez de cobrança avulsa.
+2. Criar assinatura vinculada ao cartão – o Asaas armazena o cartão e cobra automaticamente a cada ciclo.
+3. Persistir o `asaas_subscription_id` na tabela `subscriptions` e processar webhooks de renovação.
+- `get-pending-payment` – Busca pagamento pendente por e-mail.
+- `check-payment-status` – Verifica status do pagamento no Asaas (polling). **Deploy obrigatório** para polling em tempo real; se retornar 404, o front usa `get-pending-payment` como fallback (status atualizado pelo webhook).
+- `process-asaas-webhook` – Recebe webhooks do Asaas, marca registro como pago e chama `register-user` com `registrationId`.
+
+**Deploy das funções de pagamento** (no diretório do projeto):
+```bash
+supabase functions deploy create-asaas-customer
+supabase functions deploy create-asaas-payment
+supabase functions deploy get-pending-payment
+supabase functions deploy check-payment-status
+supabase functions deploy process-asaas-webhook
+```
 
 ## Configuração no Coolify
 

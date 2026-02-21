@@ -20,24 +20,8 @@ serve(async (req) => {
   try {
     const body = await req.json();
     console.log('Received request body:', { ...body, password: '[HIDDEN]' });
-    
-    const { email, password, full_name, phone, otp_code, registrationId, planId } = body;
 
-    // Validate required fields
-    if (!email || !full_name || !phone) {
-      console.error('Missing required fields:', { 
-        email: !!email, 
-        full_name: !!full_name, 
-        phone: !!phone
-      });
-      return new Response(
-        JSON.stringify({ error: 'Email, nome completo e telefone são obrigatórios' }),
-        { 
-          status: 400, 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-        }
-      );
-    }
+    const { email: bodyEmail, password, full_name: bodyFullName, phone: bodyPhone, otp_code, registrationId, planId, terms_accepted } = body;
 
     // Create Supabase client with service role key for admin operations
     const supabaseAdmin = createClient(
@@ -45,95 +29,106 @@ serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
 
-    const cleanPhone = phone.replace(/\D/g, '');
+    let email = bodyEmail;
+    let full_name = bodyFullName;
+    let cleanPhone = bodyPhone ? String(bodyPhone).replace(/\D/g, '') : '';
     let userPassword = password;
     let asaasCustomerId = null;
     let selectedPlanId = planId;
-    let isTrialRegistration = true; // Default to trial
+    let isTrialRegistration = true;
+    let registration: any = null;
+    let termsAcceptedAt: string | null = null;
 
     // ============================================
-    // PAYMENT VERIFICATION (if registrationId provided - legacy flow)
+    // PATH: registrationId only (payment confirmed - create user from pending_registrations)
     // ============================================
     if (registrationId) {
-      console.log('Checking payment status for registration:', registrationId);
-      
-      const { data: registration, error: regError } = await supabaseAdmin
+      console.log('Creating user from paid registration:', registrationId);
+
+      const { data: reg, error: regError } = await supabaseAdmin
         .from('pending_registrations')
         .select('*')
         .eq('id', registrationId)
         .single();
 
-      if (regError || !registration) {
-        console.error('Registration not found:', regError);
+      if (regError || !reg) {
+        console.error('register-user 404: Registration not found', { registrationId, error: regError?.message });
         return new Response(
           JSON.stringify({ error: 'Registro de pagamento não encontrado. Por favor, reinicie o processo de cadastro.' }),
-          { 
-            status: 404, 
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-          }
+          { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
 
-      // Verify payment status
-      if (registration.status !== 'paid') {
-        console.error('Payment not confirmed:', registration.status);
+      if (reg.status !== 'paid') {
+        console.error('register-user 402: Payment not confirmed', { registrationId, status: reg.status });
         return new Response(
-          JSON.stringify({ 
-            error: 'Pagamento ainda não confirmado. Por favor, aguarde a confirmação do pagamento.',
-            status: registration.status
-          }),
-          { 
-            status: 402, // Payment Required
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-          }
+          JSON.stringify({ error: 'Pagamento ainda não confirmado. Aguarde a confirmação do pagamento.', status: reg.status }),
+          { status: 402, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
 
-      // Check if registration already used
-      if (registration.status === 'registered') {
-        console.error('Registration already used:', registrationId);
+      if (reg.status === 'registered') {
+        console.error('register-user 400: Registration already used', { registrationId });
         return new Response(
           JSON.stringify({ error: 'Este registro já foi utilizado. Por favor, faça login.' }),
-          { 
-            status: 400, 
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-          }
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
 
-      // Use password from registration if not provided
-      if (!userPassword && registration.password_hash) {
-        try {
-          userPassword = atob(registration.password_hash);
-        } catch (e) {
-          console.error('Failed to decode password:', e);
-        }
+      registration = reg;
+      email = reg.email;
+      full_name = reg.full_name;
+      cleanPhone = String(reg.phone || '').replace(/\D/g, '');
+      selectedPlanId = reg.plan_id;
+      asaasCustomerId = reg.asaas_customer_id;
+      isTrialRegistration = false;
+      if (reg.terms_accepted_at) termsAcceptedAt = reg.terms_accepted_at;
+
+      try {
+        if (!reg.password_hash) throw new Error('Password hash missing');
+        userPassword = atob(reg.password_hash);
+      } catch (e) {
+        console.error('register-user 400: Failed to decode password_hash', { registrationId, error: e.message });
+        return new Response(
+          JSON.stringify({ error: 'Erro de segurança: Senha inválida no cadastro. Entre em contato com o suporte.' }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
       }
 
-      asaasCustomerId = registration.asaas_customer_id;
-      selectedPlanId = registration.plan_id;
-      isTrialRegistration = false; // Paid registration
       console.log('Payment verified for registration:', registrationId);
     } else {
+      // ============================================
+      // PATH: Trial/OTP (legacy - require body fields)
+      // ============================================
+      if (!bodyEmail || !bodyFullName || !bodyPhone) {
+        return new Response(
+          JSON.stringify({ error: 'Email, nome completo e telefone são obrigatórios' }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+      email = bodyEmail;
+      full_name = bodyFullName;
+      cleanPhone = String(bodyPhone).replace(/\D/g, '');
+      userPassword = password;
       // ============================================
       // TRIAL REGISTRATION (7 days free)
       // ============================================
       if (!otp_code) {
         return new Response(
           JSON.stringify({ error: 'Código OTP é obrigatório' }),
-          { 
-            status: 400, 
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+          {
+            status: 400,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' }
           }
         );
       }
 
       const cleanOtpCode = String(otp_code).trim();
       console.log('Looking for OTP:', { phone: cleanPhone, code: cleanOtpCode });
-      
+
       const oneHourAgo = new Date();
       oneHourAgo.setHours(oneHourAgo.getHours() - 1);
-      
+
       const { data: otpData, error: otpError } = await supabaseAdmin
         .from('otp_codes')
         .select('*')
@@ -146,49 +141,89 @@ serve(async (req) => {
       const matchingOtp = otpData?.find(otp => String(otp.code).trim() === cleanOtpCode);
 
       if (otpError || !matchingOtp) {
-        console.error('OTP verification failed:', { 
-          error: otpError?.message, 
+        console.error('OTP verification failed:', {
+          error: otpError?.message,
           foundCodes: otpData?.length || 0,
-          searchedCode: cleanOtpCode 
+          searchedCode: cleanOtpCode
         });
         return new Response(
           JSON.stringify({ error: 'Código OTP inválido ou não verificado. Por favor, verifique o código recebido no WhatsApp e tente novamente.' }),
-          { 
-            status: 400, 
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+          {
+            status: 400,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' }
           }
         );
       }
-      
+
       console.log('Found matching OTP:', matchingOtp.id);
     }
 
     // Validate password
     if (!userPassword) {
+      console.error('register-user 400: Password empty', { registrationId: registrationId ?? null, hasPasswordFromReg: !!registration?.password_hash });
       return new Response(
         JSON.stringify({ error: 'Senha é obrigatória' }),
-        { 
-          status: 400, 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        {
+          status: 400,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
         }
       );
     }
 
-    // Check if email already exists
+    // Check if email already exists in auth.users
+    const sanitizedEmail = email.toLowerCase().trim();
     const { data: existingUsers, error: listError } = await supabaseAdmin.auth.admin.listUsers();
-    
+
     if (!listError && existingUsers) {
-      const emailExists = existingUsers.users.some(u => u.email?.toLowerCase() === email.toLowerCase());
+      const emailExists = existingUsers.users.some(u => u.email?.toLowerCase().trim() === sanitizedEmail);
       if (emailExists) {
-        console.error('Email already exists:', email);
+        console.error('register-user 400: Email already exists in auth.users', { email: sanitizedEmail, registrationId: registrationId ?? null });
         return new Response(
           JSON.stringify({ error: 'Este e-mail já está cadastrado. Por favor, faça login ou use outro e-mail.' }),
-          { 
-            status: 400, 
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+          {
+            status: 400,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' }
           }
         );
       }
+    }
+
+    // Also check in profiles table (in case email exists there but not in auth yet)
+    const { data: existingProfileByEmail, error: emailCheckError } = await supabaseAdmin
+      .from('profiles')
+      .select('user_id')
+      .eq('email', sanitizedEmail)
+      .limit(1)
+      .maybeSingle();
+
+    if (!emailCheckError && existingProfileByEmail) {
+      console.error('register-user 400: Email already exists in profiles', { email: sanitizedEmail, registrationId: registrationId ?? null });
+      return new Response(
+        JSON.stringify({ error: 'Este e-mail já está cadastrado. Por favor, faça login ou use outro e-mail.' }),
+        {
+          status: 400,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        }
+      );
+    }
+
+    // Check if phone already exists
+    const { data: existingProfileByPhone, error: phoneCheckError } = await supabaseAdmin
+      .from('profiles')
+      .select('user_id')
+      .eq('phone', cleanPhone)
+      .limit(1)
+      .single();
+
+    if (!phoneCheckError && existingProfileByPhone) {
+      console.error('register-user 400: Phone already exists', { phone: cleanPhone, registrationId: registrationId ?? null });
+      return new Response(
+        JSON.stringify({ error: 'Este número de telefone já está cadastrado. Por favor, faça login ou use outro número.' }),
+        {
+          status: 400,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        }
+      );
     }
 
     // Get plan info if not provided
@@ -197,45 +232,52 @@ serve(async (req) => {
         .from('plans')
         .select('id')
         .eq('interval', 'monthly')
-        .eq('is_active', true)
+        .eq('active', true)
         .single();
-      
+
       selectedPlanId = defaultPlan?.id;
     }
 
     // Create user in auth.users
     const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
-      email,
+      email: sanitizedEmail,
       password: userPassword,
       email_confirm: true,
       user_metadata: { full_name }
     });
 
     if (authError) {
-      console.error('Auth error:', authError);
-      
+      console.error('register-user 400: Auth createUser failed', { email: sanitizedEmail, message: authError.message, registrationId: registrationId ?? null });
+
       let errorMessage = authError.message;
-      if (authError.message.includes('already been registered') || 
-          authError.message.includes('User already registered') ||
-          authError.message.includes('duplicate key')) {
+      if (authError.message.includes('already been registered') ||
+        authError.message.includes('User already registered') ||
+        authError.message.includes('duplicate key')) {
         errorMessage = 'Este e-mail já está cadastrado. Por favor, faça login ou use outro e-mail.';
       } else if (authError.message.includes('Password')) {
         errorMessage = 'A senha não atende aos requisitos de segurança. Use pelo menos 8 caracteres com letras e números.';
       }
-      
+
       return new Response(
         JSON.stringify({ error: errorMessage }),
-        { 
-          status: 400, 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        {
+          status: 400,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
         }
       );
     }
 
-    // Update the profile with phone number
+    // Update the profile with phone number and terms acceptance
+    const profileUpdate: any = { phone: cleanPhone };
+    if (termsAcceptedAt) {
+      profileUpdate.terms_accepted_at = termsAcceptedAt;
+    } else if (terms_accepted === true) {
+      profileUpdate.terms_accepted_at = new Date().toISOString();
+    }
+
     const { error: profileError } = await supabaseAdmin
       .from('profiles')
-      .update({ phone: cleanPhone })
+      .update(profileUpdate)
       .eq('user_id', authData.user.id);
 
     if (profileError) {
@@ -256,13 +298,13 @@ serve(async (req) => {
       // TRIAL: 7 days free
       const trialEndsAt = new Date();
       trialEndsAt.setDate(trialEndsAt.getDate() + TRIAL_DAYS);
-      
+
       subscriptionData.is_trial = true;
       subscriptionData.trial_ends_at = trialEndsAt.toISOString();
       subscriptionData.current_period_start = now.toISOString().split('T')[0];
       subscriptionData.current_period_end = trialEndsAt.toISOString().split('T')[0];
-      
-      console.log('Creating trial subscription:', { 
+
+      console.log('Creating trial subscription:', {
         userId: authData.user.id,
         trialDays: TRIAL_DAYS,
         trialEndsAt: trialEndsAt.toISOString()
@@ -271,7 +313,7 @@ serve(async (req) => {
       // PAID: 1 month subscription
       const periodEnd = new Date();
       periodEnd.setMonth(periodEnd.getMonth() + 1);
-      
+
       subscriptionData.is_trial = false;
       subscriptionData.asaas_customer_id = asaasCustomerId;
       subscriptionData.current_period_start = now.toISOString().split('T')[0];
@@ -294,7 +336,7 @@ serve(async (req) => {
     if (registrationId) {
       await supabaseAdmin
         .from('pending_registrations')
-        .update({ 
+        .update({
           status: 'registered',
           updated_at: new Date().toISOString()
         })
@@ -308,7 +350,7 @@ serve(async (req) => {
       try {
         const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
         const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY') ?? '';
-        
+
         // Get plan name
         let planName = DEFAULT_PLAN_NAME;
         if (selectedPlanId) {
@@ -319,11 +361,11 @@ serve(async (req) => {
             .single();
           if (plan) planName = plan.name;
         }
-        
+
         const trialEndsAt = new Date();
         trialEndsAt.setDate(trialEndsAt.getDate() + TRIAL_DAYS);
-        
-        const emailResponse = await fetch(`${supabaseUrl}/functions/v1/send-payment-email`, {
+
+        const emailPromise = fetch(`${supabaseUrl}/functions/v1/send-payment-email`, {
           method: 'POST',
           headers: {
             'Authorization': `Bearer ${supabaseAnonKey}`,
@@ -331,51 +373,60 @@ serve(async (req) => {
           },
           body: JSON.stringify({
             emailType: 'welcome_trial',
-            to: email,
+            to: sanitizedEmail,
             userName: full_name,
             planName: planName,
             trialDays: TRIAL_DAYS,
             trialEndsAt: trialEndsAt.toISOString()
           })
-        });
-        
-        const emailResult = await emailResponse.json();
-        console.log('Welcome email result:', emailResult);
-      } catch (emailError) {
-        console.error('Failed to send welcome email:', emailError);
-        // Don't fail registration if email fails
+        }).then(res => res.json())
+          .then(res => console.log('Welcome email result:', res))
+          .catch(err => console.error('Failed to send welcome email:', err));
+
+        // Use waitUntil if available (Edge Runtime) to not block response
+        // @ts-ignore
+        if (typeof EdgeRuntime !== 'undefined') {
+          // @ts-ignore
+          EdgeRuntime.waitUntil(emailPromise);
+        } else {
+          // Wait if not in Edge Runtime (e.g. local dev)
+          await emailPromise;
+        }
+      } catch (error) {
+        console.error('Error sending welcome email:', error);
       }
     }
 
-    console.log('User created successfully:', { 
-      user_id: authData.user.id, 
-      email, 
-      phone, 
+    console.log('User created successfully:', {
+      user_id: authData.user.id,
+      email: sanitizedEmail,
+      phone: cleanPhone,
       full_name,
       isTrial: isTrialRegistration,
       trialDays: isTrialRegistration ? TRIAL_DAYS : 0
     });
 
     return new Response(
-      JSON.stringify({ 
+      JSON.stringify({
         message: 'User created successfully',
         user_id: authData.user.id,
         email: authData.user.email,
         isTrial: isTrialRegistration,
         trialDays: isTrialRegistration ? TRIAL_DAYS : 0
       }),
-      { 
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+      {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       }
     );
 
   } catch (error) {
-    console.error('Error in register-user function:', error);
+    const errMsg = error instanceof Error ? error.message : String(error ?? 'Erro interno');
+    console.error('register-user 500: Unexpected error', { error: errMsg });
     return new Response(
-      JSON.stringify({ error: error.message }),
-      { 
-        status: 500, 
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+      JSON.stringify({ error: errMsg }),
+      {
+        status: 500,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       }
     );
   }

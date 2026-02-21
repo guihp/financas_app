@@ -3,6 +3,7 @@ import { useOutletContext } from "react-router-dom";
 import { User } from "@supabase/supabase-js";
 import { Statistics } from "@/components/Statistics";
 import { supabase } from "@/integrations/supabase/client";
+import { useConnectedUserIds } from "@/hooks/useConnectedUserIds";
 import { Transaction } from "@/components/Dashboard";
 
 interface OutletContextType {
@@ -14,14 +15,16 @@ const StatsPage = () => {
   const { user } = useOutletContext<OutletContextType>();
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
+  const { allUserIds, loading: loadingConnections } = useConnectedUserIds(user?.id);
 
   useEffect(() => {
     const fetchTransactions = async () => {
+      if (allUserIds.length === 0) return;
       try {
         const { data, error } = await supabase
           .from("transactions")
           .select("*")
-          .eq("user_id", user.id)
+          .in("user_id", allUserIds)
           .order("date", { ascending: false });
 
         if (error) throw error;
@@ -41,10 +44,10 @@ const StatsPage = () => {
       }
     };
 
-    if (user?.id) {
+    if (user?.id && !loadingConnections && allUserIds.length > 0) {
       fetchTransactions();
     }
-  }, [user?.id]);
+  }, [user?.id, allUserIds, loadingConnections]);
 
   if (loading) {
     return (
