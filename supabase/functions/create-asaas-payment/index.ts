@@ -20,10 +20,10 @@ serve(async (req) => {
   try {
     const body = await req.json();
     console.log('Creating Asaas payment with data:', { ...body, creditCard: body.creditCard ? '[HIDDEN]' : undefined });
-    
-    const { 
-      customerId, 
-      registrationId, 
+
+    const {
+      customerId,
+      registrationId,
       billingType = 'PIX',
       // Credit card data (optional)
       creditCard,
@@ -39,9 +39,9 @@ serve(async (req) => {
       console.error('ASAAS_API_KEY not configured');
       return new Response(
         JSON.stringify({ error: 'Configuração de pagamento não encontrada. Entre em contato com o suporte.' }),
-        { 
-          status: 500, 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        {
+          status: 500,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
         }
       );
     }
@@ -50,9 +50,9 @@ serve(async (req) => {
     if (!customerId || !registrationId) {
       return new Response(
         JSON.stringify({ error: 'customerId e registrationId são obrigatórios' }),
-        { 
-          status: 400, 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        {
+          status: 400,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
         }
       );
     }
@@ -71,9 +71,9 @@ serve(async (req) => {
       const missing = addrFields ? Object.entries(addrFields).filter(([, v]) => !v).map(([k]) => k).join(', ') : 'endereço';
       return new Response(
         JSON.stringify({ error: `Endereço incompleto. Verifique: ${missing || 'CEP, logradouro, número, bairro, cidade e UF'}.` }),
-        { 
-          status: 400, 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        {
+          status: 400,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
         }
       );
     }
@@ -85,18 +85,18 @@ serve(async (req) => {
       if (!creditCard || !creditCard.number || !creditCard.holderName || !creditCard.expiryMonth || !creditCard.expiryYear || !creditCard.ccv) {
         return new Response(
           JSON.stringify({ error: 'Dados do cartão de crédito são obrigatórios' }),
-          { 
-            status: 400, 
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+          {
+            status: 400,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' }
           }
         );
       }
       if (!creditCardHolderInfo || !creditCardHolderInfo.name || !creditCardHolderInfo.cpfCnpj || !creditCardHolderInfo.postalCode || !creditCardHolderInfo.phone) {
         return new Response(
           JSON.stringify({ error: 'Dados do titular do cartão são obrigatórios' }),
-          { 
-            status: 400, 
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+          {
+            status: 400,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' }
           }
         );
       }
@@ -119,9 +119,9 @@ serve(async (req) => {
       console.error('Registration not found:', regError);
       return new Response(
         JSON.stringify({ error: 'Registro não encontrado. Tente novamente.' }),
-        { 
-          status: 404, 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        {
+          status: 404,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
         }
       );
     }
@@ -131,9 +131,9 @@ serve(async (req) => {
       console.error('Plan not found for registration:', registrationId);
       return new Response(
         JSON.stringify({ error: 'Plano não encontrado. Tente novamente.' }),
-        { 
-          status: 404, 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        {
+          status: 404,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
         }
       );
     }
@@ -164,75 +164,177 @@ serve(async (req) => {
       cpfCnpjForPix = String(cpfCnpjForPix).replace(/\D/g, '');
     }
 
-    // Calculate due date (tomorrow for PIX/BOLETO, today for credit card)
-    const dueDate = new Date();
-    if (billingType !== 'CREDIT_CARD') {
-      dueDate.setDate(dueDate.getDate() + 1);
-    }
-    const dueDateStr = dueDate.toISOString().split('T')[0]; // YYYY-MM-DD format
+    // ============================================
+    // CREDIT CARD: Create Asaas SUBSCRIPTION (trial 7 days, then monthly)
+    // ============================================
+    if (billingType === 'CREDIT_CARD') {
+      const TRIAL_DAYS = 7;
+      const nextDueDate = new Date();
+      nextDueDate.setDate(nextDueDate.getDate() + TRIAL_DAYS);
+      const nextDueDateStr = nextDueDate.toISOString().split('T')[0];
 
-    // Build payment payload
+      const cleanPhone = (creditCardHolderInfo.phone || '').replace(/\D/g, '');
+      const remoteIp = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || req.headers.get('x-real-ip') || '127.0.0.1';
+
+      const subscriptionPayload: any = {
+        customer: customerId,
+        billingType: 'CREDIT_CARD',
+        value: parseFloat(plan.price),
+        nextDueDate: nextDueDateStr,
+        cycle: 'MONTHLY',
+        description: `${plan.name} - IAFÉ Finanças`,
+        externalReference: registrationId,
+        creditCard: {
+          holderName: creditCard.holderName,
+          number: creditCard.number.replace(/\s/g, ''),
+          expiryMonth: String(creditCard.expiryMonth || '').padStart(2, '0'),
+          expiryYear: creditCard.expiryYear,
+          ccv: creditCard.ccv
+        },
+        creditCardHolderInfo: {
+          name: creditCardHolderInfo.name,
+          cpfCnpj: creditCardHolderInfo.cpfCnpj.replace(/\D/g, ''),
+          postalCode: creditCardHolderInfo.postalCode.replace(/\D/g, ''),
+          phone: cleanPhone,
+          mobilePhone: cleanPhone,
+          email: registration.email,
+          addressNumber: creditCardHolderInfo.addressNumber || '0',
+          ...(address?.complement != null && address.complement !== '' && { addressComplement: address.complement }),
+          remoteIp
+        }
+      };
+
+      console.log('Creating Asaas SUBSCRIPTION with payload:', {
+        ...subscriptionPayload,
+        creditCard: '[HIDDEN]'
+      });
+
+      const subResponse = await fetch(`${ASAAS_BASE_URL}/subscriptions`, {
+        method: 'POST',
+        headers: {
+          'accept': 'application/json',
+          'content-type': 'application/json',
+          'access_token': ASAAS_API_KEY
+        },
+        body: JSON.stringify(subscriptionPayload)
+      });
+
+      const subData = await subResponse.json();
+      console.log('Asaas subscription response status:', subResponse.status);
+      console.log('Asaas subscription response:', subData);
+
+      if (subData.errors || !subData.id) {
+        console.error('Failed to create Asaas subscription:', JSON.stringify(subData));
+        let errorMessage = 'Erro ao criar assinatura';
+        const errs = Array.isArray(subData.errors) ? subData.errors : (subData.errors ? [subData.errors] : []);
+        if (errs.length > 0) {
+          const msgs = errs.map((e: any) => e.description || e.message || e.code || String(e)).filter(Boolean);
+          errorMessage = msgs.length ? msgs.join('. ') : errorMessage;
+        }
+        return new Response(
+          JSON.stringify({ error: errorMessage, details: subData.errors ?? subData }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      // Update pending registration with subscription info
+      const subUpdateData: any = {
+        asaas_subscription_id: subData.id,
+        payment_method: 'CREDIT_CARD',
+        status: 'card_registered',
+        updated_at: new Date().toISOString()
+      };
+      if (address && typeof address === 'object') {
+        if (address.postalCode != null) subUpdateData.address_postal_code = String(address.postalCode).replace(/\D/g, '');
+        if (address.street != null) subUpdateData.address_street = address.street;
+        if (address.number != null) subUpdateData.address_number = address.number;
+        if (address.complement != null) subUpdateData.address_complement = address.complement;
+        if (address.neighborhood != null) subUpdateData.address_neighborhood = address.neighborhood;
+        if (address.city != null) subUpdateData.address_city = address.city;
+        if (address.state != null) subUpdateData.address_state = address.state;
+      }
+
+      await supabaseAdmin
+        .from('pending_registrations')
+        .update(subUpdateData)
+        .eq('id', registrationId);
+
+      // Create user account immediately with trial
+      let registerUserError: string | null = null;
+      const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
+      const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+      try {
+        const regRes = await fetch(`${supabaseUrl}/functions/v1/register-user`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${serviceRoleKey}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ registrationId })
+        });
+        const regResult = await regRes.json().catch(() => ({}));
+        if (!regRes.ok) {
+          registerUserError = regResult?.error || `Erro ao criar conta (${regRes.status})`;
+          console.error('register-user failed after subscription:', regRes.status, regResult);
+        } else {
+          console.log('User created with trial from subscription:', registrationId);
+        }
+      } catch (invokeError) {
+        registerUserError = 'Erro ao criar conta. Tente fazer login.';
+        console.error('Failed to invoke register-user:', invokeError);
+      }
+
+      return new Response(
+        JSON.stringify({
+          success: true,
+          subscriptionId: subData.id,
+          billingType: 'CREDIT_CARD',
+          isPaid: true,
+          trialDays: TRIAL_DAYS,
+          nextDueDate: nextDueDateStr,
+          ...(registerUserError ? { registerUserError } : {})
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // ============================================
+    // PIX: Create one-time payment (unchanged)
+    // ============================================
+    const dueDate = new Date();
+    dueDate.setDate(dueDate.getDate() + 1);
+    const dueDateStr = dueDate.toISOString().split('T')[0];
+
     const paymentPayload: any = {
       customer: customerId,
-      billingType: billingType,
+      billingType: 'PIX',
       value: parseFloat(plan.price),
       dueDate: dueDateStr,
       description: `${plan.name} - IAFÉ Finanças`,
       externalReference: registrationId
     };
 
-    // PIX: apenas customer, billingType, value, dueDate são obrigatórios (doc Asaas)
-    // Não enviar pixExpirationSeconds - não está no schema e pode causar 400
-
-    // Add Credit Card specific data (doc Asaas: creditCard + creditCardHolderInfo + remoteIp)
-    if (billingType === 'CREDIT_CARD') {
-      const cleanPhone = (creditCardHolderInfo.phone || '').replace(/\D/g, '');
-      const remoteIp = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || req.headers.get('x-real-ip') || '127.0.0.1';
-      paymentPayload.creditCard = {
-        holderName: creditCard.holderName,
-        number: creditCard.number.replace(/\s/g, ''),
-        expiryMonth: String(creditCard.expiryMonth || '').padStart(2, '0'),
-        expiryYear: creditCard.expiryYear,
-        ccv: creditCard.ccv
-      };
-      paymentPayload.creditCardHolderInfo = {
-        name: creditCardHolderInfo.name,
-        cpfCnpj: creditCardHolderInfo.cpfCnpj.replace(/\D/g, ''),
-        postalCode: creditCardHolderInfo.postalCode.replace(/\D/g, ''),
-        phone: cleanPhone,
-        mobilePhone: cleanPhone,
-        email: registration.email,
-        addressNumber: creditCardHolderInfo.addressNumber || '0',
-        ...(address?.complement != null && address.complement !== '' && { addressComplement: address.complement }),
-        remoteIp
-      };
-    }
-
-    // PIX: update customer with CPF/CNPJ before creating payment (Asaas requires it on the customer)
-    if (billingType === 'PIX' && cpfCnpjForPix) {
+    // PIX: update customer with CPF/CNPJ before creating payment
+    if (cpfCnpjForPix) {
       const cleanCpf = cpfCnpjForPix;
       const updateRes = await fetch(`${ASAAS_BASE_URL}/customers/${customerId}`, {
         method: 'PUT',
         headers: { 'accept': 'application/json', 'content-type': 'application/json', 'access_token': ASAAS_API_KEY },
         body: JSON.stringify({ cpfCnpj: cleanCpf })
       });
-      const updateData = await updateRes.json();
-      if (updateData.errors && !updateRes.ok) {
-        console.error('Failed to update customer with CPF:', updateData);
-        const errDesc = Array.isArray(updateData.errors) ? updateData.errors[0]?.description : updateData.errors?.description;
+      const custUpdateData = await updateRes.json();
+      if (custUpdateData.errors && !updateRes.ok) {
+        console.error('Failed to update customer with CPF:', custUpdateData);
+        const errDesc = Array.isArray(custUpdateData.errors) ? custUpdateData.errors[0]?.description : custUpdateData.errors?.description;
         return new Response(
-          JSON.stringify({ error: errDesc || 'Erro ao atualizar CPF/CNPJ do cliente. Verifique os dados informados.' }),
+          JSON.stringify({ error: errDesc || 'Erro ao atualizar CPF/CNPJ do cliente.' }),
           { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
       console.log('Customer updated with CPF/CNPJ for PIX');
     }
 
-    console.log('Creating Asaas payment with payload:', { 
-      ...paymentPayload, 
-      creditCard: paymentPayload.creditCard ? '[HIDDEN]' : undefined 
-    });
-    console.log('Using API URL:', ASAAS_BASE_URL);
+    console.log('Creating Asaas PIX payment with payload:', paymentPayload);
 
     const paymentResponse = await fetch(`${ASAAS_BASE_URL}/payments`, {
       method: 'POST',
@@ -250,59 +352,16 @@ serve(async (req) => {
 
     if (paymentData.errors || !paymentData.id) {
       console.error('Failed to create Asaas payment:', JSON.stringify(paymentData));
-      
-      // Parse Asaas error messages (array or single object)
       let errorMessage = 'Erro ao criar cobrança';
       const errs = Array.isArray(paymentData.errors) ? paymentData.errors : (paymentData.errors ? [paymentData.errors] : []);
       if (errs.length > 0) {
         const msgs = errs.map((e: any) => e.description || e.message || e.code || String(e)).filter(Boolean);
         errorMessage = msgs.length ? msgs.join('. ') : errorMessage;
       }
-
-      // Cliente removido no Asaas? Limpar e criar novo para permitir novo cadastro
-      const isCustomerRemoved = /removido|removed|cliente.*inválido/i.test(errorMessage);
-      if (isCustomerRemoved) {
-        console.log('Cliente removido no Asaas, recriando...');
-        await supabaseAdmin.from('pending_registrations').update({ asaas_customer_id: null, updated_at: new Date().toISOString() }).eq('id', registrationId);
-        const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
-        const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
-        const custRes = await fetch(`${supabaseUrl}/functions/v1/create-asaas-customer`, {
-          method: 'POST',
-          headers: { 'Authorization': `Bearer ${serviceRoleKey}`, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ registrationId })
-        });
-        const custData = await custRes.json().catch(() => ({}));
-        const newCustomerId = custData?.customerId;
-        if (newCustomerId) {
-          console.log('Novo cliente criado:', newCustomerId, '- retentando pagamento');
-          // Rebuild payload com novo customerId e retentar
-          const retryPayload = { ...paymentPayload, customer: newCustomerId };
-          const retryRes = await fetch(`${ASAAS_BASE_URL}/payments`, {
-            method: 'POST',
-            headers: { 'accept': 'application/json', 'content-type': 'application/json', 'access_token': ASAAS_API_KEY },
-            body: JSON.stringify(retryPayload)
-          });
-          const retryData = await retryRes.json();
-          if (!retryData.errors && retryData.id) {
-            // Sucesso no retry - continuar fluxo normal (pixData, update DB, etc.)
-            Object.assign(paymentData, retryData);
-          } else {
-            const retryErr = Array.isArray(retryData.errors) ? retryData.errors : (retryData.errors ? [retryData.errors] : []);
-            const retryMsgs = retryErr.map((e: any) => e.description || e.message || e.code).filter(Boolean);
-            return new Response(JSON.stringify({ error: retryMsgs.length ? retryMsgs.join('. ') : errorMessage, details: retryData }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
-          }
-        } else {
-          return new Response(JSON.stringify({ error: 'Não foi possível vincular um novo cliente. Tente iniciar um novo cadastro.', details: custData }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
-        }
-      } else {
-        return new Response(
-          JSON.stringify({ 
-            error: errorMessage,
-            details: paymentData.errors ?? paymentData
-          }),
-          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
-      }
+      return new Response(
+        JSON.stringify({ error: errorMessage, details: paymentData.errors ?? paymentData }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     }
 
     let pixData: { payload?: string; encodedImage?: string; expirationDate?: string } | null = null;
@@ -379,8 +438,8 @@ serve(async (req) => {
       if (address.state != null) updateData.address_state = address.state;
     }
 
-    // If credit card payment was approved immediately, mark as paid
-    if (billingType === 'CREDIT_CARD' && ['CONFIRMED', 'RECEIVED'].includes(paymentData.status)) {
+    // PIX only: if somehow confirmed immediately
+    if (['CONFIRMED', 'RECEIVED'].includes(paymentData.status)) {
       updateData.status = 'paid';
       updateData.paid_at = new Date().toISOString();
     }
@@ -405,65 +464,37 @@ serve(async (req) => {
       console.error('Failed to update pending registration:', updateError);
     }
 
-    // If credit card was approved immediately, create user account
+    // PIX payments are not auto-registered; handled by webhook
     let registerUserError: string | null = null;
-    if (billingType === 'CREDIT_CARD' && ['CONFIRMED', 'RECEIVED'].includes(paymentData.status)) {
-      const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
-      const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
-      try {
-        const regRes = await fetch(`${supabaseUrl}/functions/v1/register-user`, {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${serviceRoleKey}`,
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({ registrationId })
-        });
-        const regResult = await regRes.json().catch(() => ({}));
-        if (!regRes.ok) {
-          registerUserError = regResult?.error || regResult?.message || `Erro ao criar conta (${regRes.status})`;
-          console.error('register-user failed after card payment:', regRes.status, regResult);
-        } else {
-          console.log('User created from card payment:', registrationId);
-        }
-      } catch (invokeError) {
-        registerUserError = 'Erro ao criar conta. Tente fazer login ou entre em contato com o suporte.';
-        console.error('Failed to invoke register-user:', invokeError);
-      }
-    }
 
-    // Send payment email (for PIX and BOLETO only)
-    if (billingType !== 'CREDIT_CARD') {
-      try {
-        const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
-        const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY') ?? '';
-        
-        const emailResponse = await fetch(`${supabaseUrl}/functions/v1/send-payment-email`, {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${supabaseAnonKey}`,
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            to: registration.email,
-            userName: registration.full_name,
-            planName: plan.name,
-            planPrice: plan.price,
-            paymentMethod: billingType,
-            pixCode: pixData?.payload ?? null,
-            pixQrCodeUrl: pixData?.encodedImage ? `data:image/png;base64,${pixData.encodedImage}` : null,
-            boletoUrl: boletoData?.bankSlipUrl,
-            invoiceUrl: paymentData.invoiceUrl,
-            expiresAt: registration.expires_at
-          })
-        });
-        
-        const emailResult = await emailResponse.json();
-        console.log('Payment email result:', emailResult);
-      } catch (emailError) {
-        console.error('Failed to send payment email:', emailError);
-        // Don't fail the whole operation if email fails
-      }
+    // Send payment email for PIX
+    try {
+      const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
+      const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY') ?? '';
+
+      const emailResponse = await fetch(`${supabaseUrl}/functions/v1/send-payment-email`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${supabaseAnonKey}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          to: registration.email,
+          userName: registration.full_name,
+          planName: plan.name,
+          planPrice: plan.price,
+          paymentMethod: 'PIX',
+          pixCode: pixData?.payload ?? null,
+          pixQrCodeUrl: pixData?.encodedImage ? `data:image/png;base64,${pixData.encodedImage}` : null,
+          invoiceUrl: paymentData.invoiceUrl,
+          expiresAt: registration.expires_at
+        })
+      });
+
+      const emailResult = await emailResponse.json();
+      console.log('Payment email result:', emailResult);
+    } catch (emailError) {
+      console.error('Failed to send payment email:', emailError);
     }
 
     console.log('Payment created successfully:', {
@@ -473,7 +504,7 @@ serve(async (req) => {
     });
 
     return new Response(
-      JSON.stringify({ 
+      JSON.stringify({
         success: true,
         paymentId: paymentData.id,
         status: paymentData.status,
@@ -491,14 +522,11 @@ serve(async (req) => {
         ...(boletoData && {
           boletoUrl: boletoData.bankSlipUrl
         }),
-        // Credit card - check if already paid
-        ...(billingType === 'CREDIT_CARD' && {
-          isPaid: ['CONFIRMED', 'RECEIVED'].includes(paymentData.status),
-          ...(registerUserError ? { registerUserError } : {})
-        })
+        // PIX status
+        isPaid: ['CONFIRMED', 'RECEIVED'].includes(paymentData.status)
       }),
-      { 
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+      {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       }
     );
 
@@ -506,9 +534,9 @@ serve(async (req) => {
     console.error('Error in create-asaas-payment function:', error);
     return new Response(
       JSON.stringify({ error: 'Erro interno. Tente novamente.' }),
-      { 
-        status: 500, 
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+      {
+        status: 500,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       }
     );
   }

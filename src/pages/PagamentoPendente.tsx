@@ -5,17 +5,16 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { 
-  Mail, 
-  ArrowLeft, 
-  QrCode, 
-  FileText, 
-  Loader2, 
-  CheckCircle2, 
-  Copy, 
+import {
+  Mail,
+  ArrowLeft,
+  FileText,
+  Loader2,
+  CheckCircle2,
   Clock,
   AlertCircle,
-  ExternalLink
+  ExternalLink,
+  Shield
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
@@ -68,19 +67,15 @@ const PagamentoPendente = () => {
   const [checkingPayment, setCheckingPayment] = useState(false);
   const [creatingPayment, setCreatingPayment] = useState(false);
   const [showCardForm, setShowCardForm] = useState(false);
-  const [showPixCpfForm, setShowPixCpfForm] = useState(false);
-  const [pixCpfCnpj, setPixCpfCnpj] = useState("");
   const [cardData, setCardData] = useState<CreditCardData | null>(null);
   const [holderInfo, setHolderInfo] = useState<CardHolderInfo | null>(null);
   const [address, setAddress] = useState<PaymentAddress | null>(null);
   const hasAutoSearched = useRef(false);
-  const pixCpfCnpjRef = useRef("");
-  pixCpfCnpjRef.current = pixCpfCnpj;
-  
+
   const navigate = useNavigate();
   const { toast } = useToast();
 
-  const createPayment = async (billingType: 'PIX' | 'CREDIT_CARD', creditCard?: CreditCardData, creditCardHolderInfo?: CardHolderInfo, cpfCnpjForPix?: string) => {
+  const createPayment = async (billingType: 'CREDIT_CARD', creditCard?: CreditCardData, creditCardHolderInfo?: CardHolderInfo) => {
     console.log('createPayment called', { billingType, hasCard: !!creditCard, hasHolderInfo: !!creditCardHolderInfo, hasAddress: !!address, pendingPaymentId: pendingPayment?.id, customerId: pendingPayment?.customerId });
     if (!pendingPayment?.id) {
       setMessage("Dados do pagamento incompletos. Busque pelo e-mail novamente.");
@@ -125,14 +120,9 @@ const PagamentoPendente = () => {
       toast({ title: "Endereço obrigatório", description: "Preencha todos os campos do endereço.", variant: "destructive" });
       return;
     }
-    if (billingType === 'CREDIT_CARD' && (!creditCard || !creditCardHolderInfo)) {
+    if (!creditCard || !creditCardHolderInfo) {
       setCreatingPayment(false);
       setShowCardForm(true);
-      return;
-    }
-    if (billingType === 'PIX' && !cpfCnpjForPix?.replace(/\D/g, '').match(/^(\d{11}|\d{14})$/)) {
-      setCreatingPayment(false);
-      toast({ title: "CPF/CNPJ obrigatório", description: "Informe um CPF (11 dígitos) ou CNPJ (14 dígitos) válido.", variant: "destructive" });
       return;
     }
     setCreatingPayment(true);
@@ -141,7 +131,7 @@ const PagamentoPendente = () => {
       const body: any = {
         customerId,
         registrationId: pendingPayment.id,
-        billingType,
+        billingType: 'CREDIT_CARD',
         address: address ? {
           postalCode: address.postalCode,
           street: address.street,
@@ -152,16 +142,8 @@ const PagamentoPendente = () => {
           state: address.state
         } : undefined
       };
-      if (billingType === 'PIX') {
-        const cpfVal = cpfCnpjForPix ?? pixCpfCnpjRef.current;
-        const cleanCpf = cpfVal ? String(cpfVal).replace(/\D/g, '') : '';
-        if (cleanCpf && (cleanCpf.length === 11 || cleanCpf.length === 14)) {
-          body.cpfCnpj = cleanCpf;
-        }
-      }
-      if (billingType === 'CREDIT_CARD' && creditCard && creditCardHolderInfo) {
+      if (creditCard && creditCardHolderInfo) {
         body.creditCard = creditCard;
-        // Usar endereço já preenchido na página e telefone do cadastro (OTP) quando existirem
         const postalCode = (creditCardHolderInfo.postalCode || address?.postalCode || '').replace(/\D/g, '');
         const addressNumber = creditCardHolderInfo.addressNumber || address?.number || '0';
         const phone = (pendingPayment.phone || creditCardHolderInfo.phone || '').replace(/\D/g, '');
@@ -175,7 +157,7 @@ const PagamentoPendente = () => {
           phone: phone || creditCardHolderInfo.phone.replace(/\D/g, '')
         };
       }
-      console.log('Calling create-asaas-payment', { billingType, registrationId: pendingPayment.id, customerId, hasAddress: !!address, hasCpfCnpj: !!body.cpfCnpj });
+      console.log('Calling create-asaas-payment', { billingType: 'CREDIT_CARD', registrationId: pendingPayment.id, customerId, hasAddress: !!address });
       // Usar fetch para capturar o body em respostas 4xx (Supabase invoke não retorna o body no erro)
       const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || "https://dlbiwguzbiosaoyrcvay.supabase.co";
       const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
@@ -191,50 +173,33 @@ const PagamentoPendente = () => {
         throw new Error(errMsg);
       }
       if (data?.error) throw new Error(data.error);
-      if (billingType === 'PIX' && !data?.pixCode && !data?.pixQrCodeBase64) {
-        console.warn('create-asaas-payment: resposta sem PIX', data);
-      }
       if (data?.isPaid) {
         setPaymentStatus('paid');
         const hasRegisterError = !!data?.registerUserError;
+        const isTrialStart = !!data?.trialDays;
         setMessage(
           hasRegisterError
-            ? `Pagamento confirmado. ${data.registerUserError}`
-            : "Pagamento confirmado. Faça login com seu e-mail e a senha definida no cadastro."
+            ? `Cartão validado. ${data.registerUserError}`
+            : isTrialStart
+              ? `Cartão validado! Seus ${data.trialDays} dias gratuitos começaram. Faça login com seu e-mail e senha.`
+              : "Pagamento confirmado. Faça login com seu e-mail e a senha definida no cadastro."
         );
         setCreatingPayment(false);
         setShowCardForm(false);
         toast({
-          title: "Pagamento confirmado!",
+          title: isTrialStart ? "Cartão validado!" : "Pagamento confirmado!",
           description: hasRegisterError ? data.registerUserError : "Redirecionando para login..."
         });
         setTimeout(() => navigate('/auth'), hasRegisterError ? 4000 : 1500);
         return;
       }
-      // Sempre refetch após criar cobrança para ter pix_code/pix_qr_code_url do banco e exibir PIX/estado correto
       const { data: refetch } = await supabase.functions.invoke('get-pending-payment', {
         body: { email: email.trim().toLowerCase() }
       });
       if (refetch?.found && refetch.registration) {
-        const reg = refetch.registration;
-        const hasPixFromRefetch = reg.pixCode || reg.pixQrCodeUrl;
-        const hasPixFromResponse = data?.pixCode || data?.pixQrCodeBase64;
         setPlan(refetch.plan ?? null);
-        if (reg.address) setAddress(reg.address);
-        if (billingType === 'PIX') {
-          const merged = {
-            ...reg,
-            paymentMethod: 'PIX' as const,
-            pixCode: reg.pixCode ?? data?.pixCode ?? undefined,
-            pixQrCodeUrl: reg.pixQrCodeUrl ?? (data?.pixQrCodeBase64 ? `data:image/png;base64,${data.pixQrCodeBase64}` : undefined)
-          };
-          setPendingPayment(merged);
-          if (hasPixFromRefetch || hasPixFromResponse) {
-            toast({ title: "Cobrança PIX gerada", description: "Pague com o QR Code ou copie o código." });
-          }
-        } else {
-          setPendingPayment(reg);
-        }
+        if (refetch.registration.address) setAddress(refetch.registration.address);
+        setPendingPayment(refetch.registration);
       }
       setShowCardForm(false);
     } catch (err: any) {
@@ -248,11 +213,11 @@ const PagamentoPendente = () => {
   // Check if user is logged in and get email, then auto-search once
   useEffect(() => {
     if (hasAutoSearched.current) return;
-    
+
     const checkAndSearch = async () => {
       const emailParam = searchParams.get('email');
       let emailToUse = emailParam;
-      
+
       // If no email in URL, check if user is logged in
       if (!emailToUse) {
         const { data: { session } } = await supabase.auth.getSession();
@@ -260,7 +225,7 @@ const PagamentoPendente = () => {
           emailToUse = session.user.email;
         }
       }
-      
+
       if (emailToUse && isValidEmail(emailToUse)) {
         setEmail(emailToUse);
         hasAutoSearched.current = true;
@@ -270,7 +235,7 @@ const PagamentoPendente = () => {
         }, 200);
       }
     };
-    
+
     checkAndSearch();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);
@@ -281,7 +246,7 @@ const PagamentoPendente = () => {
       // Manual search - reset auto-search flag
       hasAutoSearched.current = false;
     }
-    
+
     if (!email || !isValidEmail(email)) {
       setMessage("Por favor, informe um e-mail válido.");
       return;
@@ -432,29 +397,23 @@ const PagamentoPendente = () => {
               handlePaidResponse(checkData);
             }
           }
-        } catch (_) {}
+        } catch (_) { }
       }
     } finally {
       setCheckingPayment(false);
     }
   };
 
-  const copyPixCode = async () => {
-    if (pendingPayment?.pixCode) {
-      try {
-        await navigator.clipboard.writeText(pendingPayment.pixCode);
-        toast({
-          title: "Código copiado!",
-          description: "Cole no app do seu banco para pagar.",
-        });
-      } catch (error) {
-        toast({
-          title: "Erro ao copiar",
-          description: "Copie o código manualmente.",
-          variant: "destructive"
-        });
-      }
+  const createPaymentWithCard = async () => {
+    if (!isPaymentAddressValid(address)) {
+      toast({ title: "Endereço obrigatório", description: "Preencha o endereço acima antes de pagar com cartão.", variant: "destructive" });
+      return;
     }
+    if (!cardData || !holderInfo) {
+      toast({ title: "Dados incompletos", description: "Preencha todos os dados do cartão.", variant: "destructive" });
+      return;
+    }
+    createPayment('CREDIT_CARD', cardData, holderInfo);
   };
 
   const formatExpirationDate = (dateStr: string) => {
@@ -509,9 +468,9 @@ const PagamentoPendente = () => {
                 </Alert>
               )}
 
-              <Button 
-                type="submit" 
-                className="w-full bg-primary hover:bg-primary/90" 
+              <Button
+                type="submit"
+                className="w-full bg-primary hover:bg-primary/90"
                 disabled={loading}
               >
                 {loading ? (
@@ -532,7 +491,7 @@ const PagamentoPendente = () => {
               <CheckCircle2 className="h-16 w-16 text-green-500 mx-auto" />
               <h3 className="text-xl font-semibold text-green-600">Pagamento Confirmado!</h3>
               <p className="text-muted-foreground">{message}</p>
-              <Button 
+              <Button
                 onClick={() => navigate('/auth')}
                 className="w-full"
               >
@@ -547,7 +506,7 @@ const PagamentoPendente = () => {
               <Clock className="h-16 w-16 text-yellow-500 mx-auto" />
               <h3 className="text-xl font-semibold text-yellow-600">Pagamento Expirado</h3>
               <p className="text-muted-foreground">{message}</p>
-              <Button 
+              <Button
                 onClick={() => navigate('/auth')}
                 className="w-full"
               >
@@ -562,11 +521,21 @@ const PagamentoPendente = () => {
               {/* Plan Info */}
               {plan && (
                 <div className="p-4 bg-primary/10 rounded-lg border border-primary/20">
-                  <h3 className="font-semibold text-lg">{plan.name}</h3>
-                  <p className="text-2xl font-bold text-primary">
-                    R$ {plan.price.toFixed(2).replace('.', ',')}
-                    <span className="text-sm font-normal text-muted-foreground">/mês</span>
-                  </p>
+                  <div className="flex items-center justify-between mb-1">
+                    <h3 className="font-semibold text-lg">{plan.name}</h3>
+                    <span className="px-2 py-0.5 bg-green-500/20 text-green-400 text-[10px] font-bold rounded-full uppercase tracking-wider">
+                      Promoção
+                    </span>
+                  </div>
+                  <div className="flex items-baseline gap-2">
+                    <span className="text-sm text-muted-foreground line-through">
+                      R$ 49,90
+                    </span>
+                    <p className="text-2xl font-bold text-green-500">
+                      R$ {plan.price.toFixed(2).replace('.', ',')}
+                      <span className="text-sm font-normal text-muted-foreground">/mês</span>
+                    </p>
+                  </div>
                 </div>
               )}
 
@@ -576,8 +545,8 @@ const PagamentoPendente = () => {
                 <span>Expira em: {formatExpirationDate(pendingPayment.expiresAt)}</span>
               </div>
 
-              {/* Address (required for both PIX and Cartão) */}
-              {(!pendingPayment.paymentMethod || (!pendingPayment.pixCode && !pendingPayment.boletoUrl && !pendingPayment.invoiceUrl)) && (
+              {/* Address Form */}
+              {(!pendingPayment.paymentMethod || (!pendingPayment.boletoUrl && !pendingPayment.invoiceUrl)) && (
                 <div className="space-y-2">
                   <p className="text-sm font-medium">Endereço (obrigatório)</p>
                   <AddressForm
@@ -588,82 +557,20 @@ const PagamentoPendente = () => {
                 </div>
               )}
 
-              {/* Choose payment method when no payment created yet */}
-              {(!pendingPayment.paymentMethod || (!pendingPayment.pixCode && !pendingPayment.boletoUrl && !pendingPayment.invoiceUrl)) && !showCardForm && !showPixCpfForm && (
-                <div className="space-y-3">
-                  <p className="text-sm font-medium">Escolha como pagar:</p>
-                  <Button
-                    className="w-full h-12 justify-start gap-3 bg-purple-600/20 hover:bg-purple-600/30 text-purple-400 border border-purple-600/30"
-                    variant="outline"
-                    disabled={creatingPayment}
-                    onClick={() => setShowCardForm(true)}
-                  >
-                    <FileText className="h-5 w-5" />
-                    <span>Cartão de Crédito</span>
-                  </Button>
-                  <Button
-                    className="w-full h-12 justify-start gap-3 bg-green-600/20 hover:bg-green-600/30 text-green-400 border border-green-600/30"
-                    variant="outline"
-                    disabled={creatingPayment}
-                    onClick={() => {
-                      if (!isPaymentAddressValid(address)) {
-                        toast({ title: "Endereço obrigatório", description: "Preencha CEP, Número, Logradouro, Bairro, Cidade e UF acima.", variant: "destructive" });
-                        return;
-                      }
-                      setShowPixCpfForm(true);
-                    }}
-                  >
-                    <QrCode className="h-5 w-5" />
-                    <span>PIX</span>
-                  </Button>
-                  {!isPaymentAddressValid(address) && (
-                    <p className="text-xs text-muted-foreground">Preencha CEP e Número no endereço para gerar o PIX.</p>
-                  )}
-                </div>
-              )}
-
-              {/* PIX CPF/CNPJ form - shown when user clicks PIX */}
-              {(!pendingPayment.paymentMethod || (!pendingPayment.pixCode && !pendingPayment.boletoUrl && !pendingPayment.invoiceUrl)) && showPixCpfForm && !showCardForm && (
+              {/* Credit Card Form */}
+              {(!pendingPayment.paymentMethod || (!pendingPayment.boletoUrl && !pendingPayment.invoiceUrl)) && (
                 <div className="space-y-4">
-                  <p className="text-sm font-medium">Informe seu CPF ou CNPJ para gerar o PIX</p>
-                  <div className="space-y-2">
-                    <Label htmlFor="pix-cpf-cnpj">CPF ou CNPJ</Label>
-                    <Input
-                      id="pix-cpf-cnpj"
-                      placeholder="000.000.000-00 ou 00.000.000/0000-00"
-                      value={pixCpfCnpj}
-                      onChange={(e) => setPixCpfCnpj(formatCpfCnpj(e.target.value))}
-                      disabled={creatingPayment}
-                      className="max-w-xs"
-                    />
+                  {/* Trial Info */}
+                  <div className="p-3 bg-blue-500/10 border border-blue-500/20 rounded-lg">
+                    <div className="flex items-center gap-2 mb-1">
+                      <Shield className="h-4 w-4 text-blue-400" />
+                      <p className="text-sm font-semibold text-blue-400">7 dias grátis para testar</p>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Cadastre seu cartão de crédito para começar seu período gratuito. Nenhuma cobrança será feita agora — só após os 7 dias. Cancele a qualquer momento antes.
+                    </p>
                   </div>
-                  <div className="flex gap-2">
-                    <Button variant="outline" className="flex-1" onClick={() => setShowPixCpfForm(false)} disabled={creatingPayment}>
-                      Voltar
-                    </Button>
-                    <Button
-                      type="button"
-                      className="flex-1"
-                      disabled={creatingPayment || !pixCpfCnpj.replace(/\D/g, '')}
-                      onClick={() => {
-                        const cpfToUse = pixCpfCnpjRef.current || pixCpfCnpj;
-                        const clean = cpfToUse.replace(/\D/g, '');
-                        if (clean.length !== 11 && clean.length !== 14) {
-                          toast({ title: "CPF/CNPJ inválido", description: "Informe 11 dígitos (CPF) ou 14 dígitos (CNPJ).", variant: "destructive" });
-                          return;
-                        }
-                        createPayment('PIX', undefined, undefined, clean);
-                      }}
-                    >
-                      {creatingPayment ? <Loader2 className="h-4 w-4 animate-spin" /> : "Gerar PIX"}
-                    </Button>
-                  </div>
-                </div>
-              )}
 
-              {/* Card form when user chose Cartão (endereço já preenchido acima; telefone do cadastro) */}
-              {(!pendingPayment.paymentMethod || (!pendingPayment.pixCode && !pendingPayment.boletoUrl && !pendingPayment.invoiceUrl)) && showCardForm && (
-                <div className="space-y-4">
                   {address && (
                     <p className="text-xs text-muted-foreground">
                       Endereço: {address.street}, {address.number} {address.complement ? `, ${address.complement}` : ''} – {address.neighborhood}, {address.city}/{address.state} – CEP {address.postalCode?.replace(/(\d{5})(\d{3})/, '$1-$2')}
@@ -678,77 +585,17 @@ const PagamentoPendente = () => {
                     defaultPostalCode={address?.postalCode}
                     defaultAddressNumber={address?.number}
                   />
-                  <div className="flex gap-2">
-                    <Button variant="outline" className="flex-1" onClick={() => setShowCardForm(false)} disabled={creatingPayment}>
-                      Voltar
-                    </Button>
-                    <Button
-                      className="flex-1"
-                      disabled={creatingPayment || !cardData || !holderInfo}
-                      onClick={() => {
-                        console.log('Pagar com cartão clicked', { cardData: !!cardData, holderInfo: !!holderInfo, address, isValid: isPaymentAddressValid(address), creatingPayment });
-                        if (!isPaymentAddressValid(address)) {
-                          toast({ title: "Endereço obrigatório", description: "Preencha o endereço acima antes de pagar com cartão.", variant: "destructive" });
-                          return;
-                        }
-                        if (!cardData || !holderInfo) {
-                          toast({ title: "Dados incompletos", description: "Preencha todos os dados do cartão.", variant: "destructive" });
-                          return;
-                        }
-                        console.log('Calling createPayment("CREDIT_CARD")');
-                        createPayment('CREDIT_CARD', cardData || undefined, holderInfo || undefined);
-                      }}
-                    >
-                      {creatingPayment ? <Loader2 className="h-4 w-4 animate-spin" /> : "Pagar com cartão"}
-                    </Button>
-                  </div>
-                </div>
-              )}
-
-              {/* PIX Payment: código PIX (copia e cola) + QR Code */}
-              {pendingPayment.paymentMethod === 'PIX' && !pendingPayment.pixCode && !pendingPayment.pixQrCodeUrl && (
-                <div className="text-center p-4 bg-muted/50 rounded-lg">
-                  <Loader2 className="h-8 w-8 animate-spin mx-auto text-muted-foreground mb-2" />
-                  <p className="text-sm text-muted-foreground">Gerando PIX... Aguarde ou recarregue a página.</p>
-                </div>
-              )}
-              {pendingPayment.paymentMethod === 'PIX' && (pendingPayment.pixCode || pendingPayment.pixQrCodeUrl) && (
-                <div className="space-y-4 text-center">
-                  <h3 className="font-semibold flex items-center justify-center gap-2">
-                    <QrCode className="h-5 w-5" />
-                    Pague com PIX
-                  </h3>
-                  {pendingPayment.pixQrCodeUrl && (
-                    <div className="bg-white p-4 rounded-lg inline-block mx-auto">
-                      <p className="text-xs text-muted-foreground mb-2">QR Code</p>
-                      <img 
-                        src={pendingPayment.pixQrCodeUrl} 
-                        alt="QR Code PIX" 
-                        className="w-48 h-48 mx-auto"
-                      />
-                    </div>
-                  )}
-                  {pendingPayment.pixCode && (
-                    <div className="space-y-2">
-                      <p className="text-sm text-muted-foreground">Código PIX (copia e cola)</p>
-                      <div className="flex gap-2">
-                        <Input 
-                          value={pendingPayment.pixCode} 
-                          readOnly 
-                          className="text-xs font-mono flex-1"
-                        />
-                        <Button 
-                          type="button" 
-                          variant="outline" 
-                          size="icon"
-                          onClick={copyPixCode}
-                          title="Copiar código"
-                        >
-                          <Copy className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </div>
-                  )}
+                  <Button
+                    className="w-full"
+                    disabled={creatingPayment || !cardData || !holderInfo}
+                    onClick={createPaymentWithCard}
+                  >
+                    {creatingPayment ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Shield className="h-4 w-4 mr-2" />}
+                    {creatingPayment ? "Processando..." : "Começar 7 dias grátis"}
+                  </Button>
+                  <p className="text-[10px] text-center text-muted-foreground">
+                    Ao continuar, você aceita que após o período gratuito de 7 dias, a cobrança de R$ {plan?.price.toFixed(2).replace('.', ',')}/mês será feita automaticamente no cartão cadastrado.
+                  </p>
                 </div>
               )}
 
@@ -759,7 +606,7 @@ const PagamentoPendente = () => {
                     <FileText className="h-5 w-5" />
                     Boleto Bancário
                   </h3>
-                  <Button 
+                  <Button
                     type="button"
                     onClick={() => window.open(pendingPayment.boletoUrl || pendingPayment.invoiceUrl, '_blank')}
                     className="w-full"
@@ -772,7 +619,7 @@ const PagamentoPendente = () => {
 
               {/* Invoice Link */}
               {pendingPayment.invoiceUrl && (
-                <Button 
+                <Button
                   type="button"
                   variant="outline"
                   onClick={() => window.open(pendingPayment.invoiceUrl, '_blank')}
@@ -783,14 +630,14 @@ const PagamentoPendente = () => {
                 </Button>
               )}
 
-              {/* Verificação só ao clicar em "Já paguei" */}
+              {/* Verificação */}
               <div className="text-center p-4 bg-muted/50 rounded-lg">
                 <p className="text-sm text-muted-foreground">
-                  Após pagar, clique em &quot;Já paguei&quot; para verificar a confirmação.
+                  Após cadastrar o cartão, clique em &quot;Já registrei&quot; para verificar a confirmação.
                 </p>
               </div>
 
-              <Button 
+              <Button
                 type="button"
                 variant="outline"
                 className="w-full"
@@ -803,11 +650,11 @@ const PagamentoPendente = () => {
                     Verificando...
                   </>
                 ) : (
-                  "Já paguei"
+                  "Já registrei"
                 )}
               </Button>
 
-              <Button 
+              <Button
                 type="button"
                 variant="ghost"
                 className="w-full"
@@ -825,7 +672,7 @@ const PagamentoPendente = () => {
           {/* Back to Auth */}
           {(!pendingPayment || paymentStatus === 'not_found') && (
             <div className="pt-4 border-t">
-              <Button 
+              <Button
                 type="button"
                 variant="ghost"
                 className="w-full"

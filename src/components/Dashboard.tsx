@@ -30,6 +30,12 @@ export interface Transaction {
   created_at?: string;
   updated_at?: string;
   user_id: string;
+  payment_method?: string | null;
+  credit_card_id?: string | null;
+  total_installments?: number | null;
+  installment_number?: number | null;
+  installment_group_id?: string | null;
+  bank_account_id?: string | null;
 }
 
 interface DashboardProps {

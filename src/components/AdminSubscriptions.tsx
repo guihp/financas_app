@@ -116,7 +116,7 @@ export const AdminSubscriptions = () => {
           current_period_start: sub?.current_period_start,
           current_period_end: sub?.current_period_end,
           plan_name: "Plano Mensal",
-          plan_price: 29.9,
+          plan_price: 39.9,
         };
       });
 
@@ -261,9 +261,9 @@ export const AdminSubscriptions = () => {
     if (user.is_trial) {
       const daysLeft = user.trial_ends_at
         ? Math.ceil(
-            (new Date(user.trial_ends_at).getTime() - Date.now()) /
-              (1000 * 60 * 60 * 24)
-          )
+          (new Date(user.trial_ends_at).getTime() - Date.now()) /
+          (1000 * 60 * 60 * 24)
+        )
         : 0;
 
       if (daysLeft <= 0) {
@@ -511,12 +511,12 @@ export const AdminSubscriptions = () => {
                             new Date(user.trial_ends_at) < new Date()
                               ? "text-red-400 font-medium"
                               : Math.ceil(
-                                  (new Date(user.trial_ends_at).getTime() -
-                                    Date.now()) /
-                                    (1000 * 60 * 60 * 24)
-                                ) <= 3
-                              ? "text-yellow-400 font-medium"
-                              : ""
+                                (new Date(user.trial_ends_at).getTime() -
+                                  Date.now()) /
+                                (1000 * 60 * 60 * 24)
+                              ) <= 3
+                                ? "text-yellow-400 font-medium"
+                                : ""
                           }
                         >
                           {new Date(user.trial_ends_at).toLocaleDateString(
@@ -531,8 +531,8 @@ export const AdminSubscriptions = () => {
                         </span>
                         {user.current_period_end
                           ? new Date(
-                              user.current_period_end
-                            ).toLocaleDateString("pt-BR")
+                            user.current_period_end
+                          ).toLocaleDateString("pt-BR")
                           : "N/A"}
                       </div>
                     )}
@@ -590,17 +590,16 @@ export const AdminSubscriptions = () => {
                     <TableCell>
                       {user.is_trial && user.trial_ends_at ? (
                         <span
-                          className={`text-sm font-medium ${
-                            new Date(user.trial_ends_at) < new Date()
+                          className={`text-sm font-medium ${new Date(user.trial_ends_at) < new Date()
                               ? "text-red-400"
                               : Math.ceil(
-                                  (new Date(user.trial_ends_at).getTime() -
-                                    Date.now()) /
-                                    (1000 * 60 * 60 * 24)
-                                ) <= 3
-                              ? "text-yellow-400"
-                              : "text-blue-400"
-                          }`}
+                                (new Date(user.trial_ends_at).getTime() -
+                                  Date.now()) /
+                                (1000 * 60 * 60 * 24)
+                              ) <= 3
+                                ? "text-yellow-400"
+                                : "text-blue-400"
+                            }`}
                         >
                           {new Date(user.trial_ends_at).toLocaleDateString(
                             "pt-BR"

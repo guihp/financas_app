@@ -17,6 +17,8 @@ import AlterarSenhaPage from "./pages/AlterarSenhaPage";
 import PagamentoPendente from "./pages/PagamentoPendente";
 import Assinatura from "./pages/Assinatura";
 import SharingPage from "./pages/SharingPage";
+import CartoesPage from "./pages/CartoesPage";
+import FaturasPage from "./pages/FaturasPage";
 
 // Components
 import { ProtectedRoute } from "./components/ProtectedRoute";
@@ -49,6 +51,8 @@ const App = () => (
             <Route path="/agenda" element={<AgendaPage />} />
             <Route path="/categorias" element={<CategoriasPage />} />
             <Route path="/sharing" element={<SharingPage />} />
+            <Route path="/cartoes" element={<CartoesPage />} />
+            <Route path="/faturas" element={<FaturasPage />} />
             <Route path="/alterar-senha" element={<AlterarSenhaPage />} />
             <Route path="/assinatura" element={<Assinatura />} />
             <Route path="/super-admin" element={<SuperAdmin />} />

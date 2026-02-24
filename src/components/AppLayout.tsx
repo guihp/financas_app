@@ -17,6 +17,8 @@ import {
   Key,
   CreditCard,
   Users,
+  Receipt,
+  Landmark,
 } from "lucide-react";
 
 interface SubscriptionCheck {
@@ -199,6 +201,8 @@ export const AppLayout = () => {
   const menuItems = [
     { path: "/dash", icon: LayoutDashboard, label: "Dashboard" },
     { path: "/transactions", icon: DollarSign, label: "Transações" },
+    { path: "/cartoes", icon: Landmark, label: "Cartões" },
+    { path: "/faturas", icon: Receipt, label: "Faturas" },
     { path: "/stats", icon: PieChart, label: "Estatísticas" },
     { path: "/agenda", icon: Calendar, label: "Agenda" },
     { path: "/categorias", icon: Tag, label: "Categorias" },

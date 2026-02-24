@@ -7,16 +7,29 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
+import { useToast } from "@/hooks/use-toast";
+import {
   AlertTriangle,
   Clock,
   CreditCard,
-  QrCode,
   FileText,
   CheckCircle,
   Gift,
   Sparkles,
   Crown,
   Shield,
+  XCircle,
+  Loader2,
 } from "lucide-react";
 
 interface OutletContextType {
@@ -30,6 +43,7 @@ interface SubscriptionInfo {
   trial_ends_at: string | null;
   current_period_end: string | null;
   days_remaining: number;
+  cancel_at_period_end: boolean;
 }
 
 const Assinatura = () => {
@@ -37,6 +51,8 @@ const Assinatura = () => {
   const navigate = useNavigate();
   const [subscription, setSubscription] = useState<SubscriptionInfo | null>(null);
   const [loading, setLoading] = useState(true);
+  const [cancelling, setCancelling] = useState(false);
+  const { toast } = useToast();
 
   useEffect(() => {
     if (user?.id) {
@@ -63,12 +79,12 @@ const Assinatura = () => {
         if (data.is_trial && data.trial_ends_at) {
           daysRemaining = Math.ceil(
             (new Date(data.trial_ends_at).getTime() - now.getTime()) /
-              (1000 * 60 * 60 * 24)
+            (1000 * 60 * 60 * 24)
           );
         } else if (data.current_period_end) {
           daysRemaining = Math.ceil(
             (new Date(data.current_period_end).getTime() - now.getTime()) /
-              (1000 * 60 * 60 * 24)
+            (1000 * 60 * 60 * 24)
           );
         }
 
@@ -78,6 +94,7 @@ const Assinatura = () => {
           trial_ends_at: data.trial_ends_at,
           current_period_end: data.current_period_end,
           days_remaining: daysRemaining,
+          cancel_at_period_end: data.cancel_at_period_end || false,
         });
       } else {
         // No subscription at all
@@ -87,6 +104,7 @@ const Assinatura = () => {
           trial_ends_at: null,
           current_period_end: null,
           days_remaining: 0,
+          cancel_at_period_end: false,
         });
       }
     } catch (error) {
@@ -119,6 +137,37 @@ const Assinatura = () => {
     !subscription.is_trial &&
     subscription.days_remaining > 0;
 
+  const isCancellingAtEnd =
+    subscription &&
+    subscription.cancel_at_period_end === true &&
+    subscription.status === "active";
+
+  const handleCancelSubscription = async () => {
+    setCancelling(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('cancel-subscription');
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+
+      toast({
+        title: data.cancelledImmediately ? "Trial cancelado" : "Assinatura cancelada",
+        description: data.message,
+      });
+
+      // Reload subscription data
+      await loadSubscription();
+    } catch (err: any) {
+      console.error('Cancel error:', err);
+      toast({
+        title: "Erro ao cancelar",
+        description: err.message || "Tente novamente.",
+        variant: "destructive",
+      });
+    } finally {
+      setCancelling(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -138,24 +187,22 @@ const Assinatura = () => {
 
       {/* Current Status Card */}
       <Card
-        className={`border-2 ${
-          isPaid
-            ? "border-green-500/30 bg-green-500/5"
-            : isTrialActive
+        className={`border-2 ${isPaid
+          ? "border-green-500/30 bg-green-500/5"
+          : isTrialActive
             ? "border-blue-500/30 bg-blue-500/5"
             : "border-red-500/30 bg-red-500/5"
-        }`}
+          }`}
       >
         <CardContent className="p-6">
           <div className="flex items-start gap-4">
             <div
-              className={`h-14 w-14 rounded-2xl flex items-center justify-center flex-shrink-0 ${
-                isPaid
-                  ? "bg-green-500/20"
-                  : isTrialActive
+              className={`h-14 w-14 rounded-2xl flex items-center justify-center flex-shrink-0 ${isPaid
+                ? "bg-green-500/20"
+                : isTrialActive
                   ? "bg-blue-500/20"
                   : "bg-red-500/20"
-              }`}
+                }`}
             >
               {isPaid ? (
                 <Crown className="h-7 w-7 text-green-400" />
@@ -172,23 +219,23 @@ const Assinatura = () => {
                   {isPaid
                     ? "Plano Ativo"
                     : isTrialActive
-                    ? "Período Gratuito"
-                    : "Assinatura Expirada"}
+                      ? "Período Gratuito"
+                      : "Assinatura Expirada"}
                 </h3>
                 <Badge
                   className={
                     isPaid
                       ? "bg-green-500/20 text-green-400 border-green-500/30"
                       : isTrialActive
-                      ? "bg-blue-500/20 text-blue-400 border-blue-500/30"
-                      : "bg-red-500/20 text-red-400 border-red-500/30"
+                        ? "bg-blue-500/20 text-blue-400 border-blue-500/30"
+                        : "bg-red-500/20 text-red-400 border-red-500/30"
                   }
                 >
                   {isPaid
                     ? "Pago"
                     : isTrialActive
-                    ? "Trial"
-                    : "Expirado"}
+                      ? "Trial"
+                      : "Expirado"}
                 </Badge>
               </div>
 
@@ -221,7 +268,7 @@ const Assinatura = () => {
               {isPaid && subscription && (
                 <div className="space-y-2">
                   <p className="text-sm text-muted-foreground">
-                    Plano Mensal - R$ 29,90/mês
+                    Plano Mensal - <span className="line-through text-muted-foreground/60">R$ 49,90</span>{" "}<span className="text-green-400">R$ 39,90</span>/mês{" "}<span className="text-[10px] bg-green-500/20 text-green-400 px-1.5 py-0.5 rounded-full font-bold">PROMOÇÃO</span>
                   </p>
                   {subscription.current_period_end && (
                     <p className="text-xs text-muted-foreground flex items-center gap-1">
@@ -269,9 +316,15 @@ const Assinatura = () => {
                   Popular
                 </Badge>
               </div>
-              <div className="flex items-baseline gap-1 mb-3">
-                <span className="text-3xl font-bold">R$ 29,90</span>
-                <span className="text-sm text-muted-foreground">/mês</span>
+              <div className="flex items-center gap-2 mb-3">
+                <div className="flex items-baseline gap-1">
+                  <span className="text-sm text-muted-foreground line-through">R$ 49,90</span>
+                  <span className="text-3xl font-bold text-green-400">R$ 39,90</span>
+                  <span className="text-sm text-muted-foreground">/mês</span>
+                </div>
+                <Badge className="bg-green-500/20 text-green-400 border-green-500/30 text-[10px]">
+                  PROMOÇÃO
+                </Badge>
               </div>
               <ul className="space-y-2 text-sm text-muted-foreground">
                 <li className="flex items-center gap-2">
@@ -294,22 +347,29 @@ const Assinatura = () => {
                   <CheckCircle className="h-4 w-4 text-green-400 flex-shrink-0" />
                   Suporte via WhatsApp
                 </li>
+                <li className="flex items-center gap-2">
+                  <CheckCircle className="h-4 w-4 text-green-400 flex-shrink-0" />
+                  Controle de cartões e faturas
+                </li>
+                <li className="flex items-center gap-2">
+                  <CheckCircle className="h-4 w-4 text-green-400 flex-shrink-0" />
+                  Gestão por banco (débito, PIX, boleto)
+                </li>
               </ul>
             </div>
 
             {/* Payment Methods */}
             <div className="space-y-3">
-              <p className="text-sm font-medium">Escolha como pagar:</p>
+              <p className="text-sm font-medium">Cadastre seu cartão para começar:</p>
 
-              {/* Credit Card - First */}
+              {/* Credit Card with Trial */}
               <Button
                 className="w-full h-14 justify-start gap-4 bg-purple-600/20 hover:bg-purple-600/30 text-purple-400 border border-purple-600/30"
                 variant="outline"
                 onClick={async () => {
-                  // Get user email if logged in
                   const { data: { session } } = await supabase.auth.getSession();
                   const userEmail = session?.user?.email || "";
-                  
+
                   if (userEmail) {
                     navigate(`/pagamento-pendente?method=CREDIT_CARD&email=${encodeURIComponent(userEmail)}`);
                   } else {
@@ -321,39 +381,16 @@ const Assinatura = () => {
                   <CreditCard className="h-5 w-5" />
                 </div>
                 <div className="text-left">
-                  <p className="font-medium">Cartão de Crédito</p>
+                  <p className="font-medium">Começar 7 dias grátis</p>
                   <p className="text-xs opacity-70">
-                    Aprovação imediata
+                    Cartão de crédito · Sem cobrança agora
                   </p>
                 </div>
               </Button>
 
-              {/* PIX - Second */}
-              <Button
-                className="w-full h-14 justify-start gap-4 bg-green-600/20 hover:bg-green-600/30 text-green-400 border border-green-600/30"
-                variant="outline"
-                onClick={async () => {
-                  // Get user email if logged in
-                  const { data: { session } } = await supabase.auth.getSession();
-                  const userEmail = session?.user?.email || "";
-                  
-                  if (userEmail) {
-                    navigate(`/pagamento-pendente?method=PIX&email=${encodeURIComponent(userEmail)}`);
-                  } else {
-                    navigate("/pagamento-pendente?method=PIX");
-                  }
-                }}
-              >
-                <div className="h-9 w-9 rounded-lg bg-green-600/20 flex items-center justify-center">
-                  <QrCode className="h-5 w-5" />
-                </div>
-                <div className="text-left">
-                  <p className="font-medium">PIX</p>
-                  <p className="text-xs opacity-70">
-                    Aprovação instantânea
-                  </p>
-                </div>
-              </Button>
+              <p className="text-[10px] text-center text-muted-foreground">
+                Nenhuma cobrança será feita durante os 7 dias gratuitos. Cancele a qualquer momento antes do término do trial.
+              </p>
             </div>
           </CardContent>
         </Card>
@@ -369,9 +406,92 @@ const Assinatura = () => {
               Sua assinatura está ativa. Aproveite todas as funcionalidades
               do IAFÉ Finanças.
             </p>
-            <Button variant="outline" onClick={() => navigate("/dash")}>
-              Ir para o Dashboard
-            </Button>
+            {isCancellingAtEnd && subscription?.current_period_end && (
+              <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-lg">
+                <p className="text-sm text-amber-400 font-medium">
+                  ⚠️ Cancelamento agendado
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Sua assinatura não será renovada. Acesso até{" "}
+                  <strong>{new Date(subscription.current_period_end).toLocaleDateString('pt-BR')}</strong>.
+                </p>
+              </div>
+            )}
+            <div className="flex gap-2 justify-center">
+              <Button variant="outline" onClick={() => navigate("/dash")}>
+                Ir para o Dashboard
+              </Button>
+              {!isCancellingAtEnd && (
+                <AlertDialog>
+                  <AlertDialogTrigger asChild>
+                    <Button variant="ghost" className="text-red-400 hover:text-red-300 hover:bg-red-500/10">
+                      <XCircle className="h-4 w-4 mr-1" />
+                      Cancelar assinatura
+                    </Button>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>Cancelar assinatura?</AlertDialogTitle>
+                      <AlertDialogDescription>
+                        Sua assinatura será cancelada, mas você continuará com acesso até o final do período já pago
+                        {subscription?.current_period_end && (
+                          <> (<strong>{new Date(subscription.current_period_end).toLocaleDateString('pt-BR')}</strong>)</>)}.
+                        <br /><br />
+                        <strong>Não haverá reembolso</strong> do período atual. Nenhuma cobrança futura será feita.
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel>Voltar</AlertDialogCancel>
+                      <AlertDialogAction
+                        className="bg-red-600 hover:bg-red-700"
+                        onClick={handleCancelSubscription}
+                        disabled={cancelling}
+                      >
+                        {cancelling ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : null}
+                        Confirmar cancelamento
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Cancel button for trial users */}
+      {isTrialActive && (
+        <Card className="border-border">
+          <CardContent className="p-4">
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button variant="ghost" className="w-full text-red-400 hover:text-red-300 hover:bg-red-500/10">
+                  <XCircle className="h-4 w-4 mr-1" />
+                  Cancelar período gratuito
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Cancelar período gratuito?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    Você perderá o acesso <strong>imediatamente</strong>. Nenhuma cobrança será feita.
+                    <br /><br />
+                    Tem certeza que deseja cancelar?
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Voltar</AlertDialogCancel>
+                  <AlertDialogAction
+                    className="bg-red-600 hover:bg-red-700"
+                    onClick={handleCancelSubscription}
+                    disabled={cancelling}
+                  >
+                    {cancelling ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : null}
+                    Sim, cancelar
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
           </CardContent>
         </Card>
       )}

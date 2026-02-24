@@ -59,10 +59,10 @@ serve(async (req) => {
         );
       }
 
-      if (reg.status !== 'paid') {
-        console.error('register-user 402: Payment not confirmed', { registrationId, status: reg.status });
+      if (reg.status !== 'paid' && reg.status !== 'card_registered') {
+        console.error('register-user 402: Payment/card not confirmed', { registrationId, status: reg.status });
         return new Response(
-          JSON.stringify({ error: 'Pagamento ainda não confirmado. Aguarde a confirmação do pagamento.', status: reg.status }),
+          JSON.stringify({ error: 'Pagamento ou cartão ainda não confirmado.', status: reg.status }),
           { status: 402, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
@@ -81,7 +81,8 @@ serve(async (req) => {
       cleanPhone = String(reg.phone || '').replace(/\D/g, '');
       selectedPlanId = reg.plan_id;
       asaasCustomerId = reg.asaas_customer_id;
-      isTrialRegistration = false;
+      // card_registered = trial with card saved; paid = immediate payment
+      isTrialRegistration = reg.status === 'card_registered';
       if (reg.terms_accepted_at) termsAcceptedAt = reg.terms_accepted_at;
 
       try {
@@ -295,7 +296,7 @@ serve(async (req) => {
     };
 
     if (isTrialRegistration) {
-      // TRIAL: 7 days free
+      // TRIAL: 7 days free (from OTP registration or card_registered)
       const trialEndsAt = new Date();
       trialEndsAt.setDate(trialEndsAt.getDate() + TRIAL_DAYS);
 
@@ -303,11 +304,19 @@ serve(async (req) => {
       subscriptionData.trial_ends_at = trialEndsAt.toISOString();
       subscriptionData.current_period_start = now.toISOString().split('T')[0];
       subscriptionData.current_period_end = trialEndsAt.toISOString().split('T')[0];
+      // Save Asaas subscription ID if card was registered
+      if (registration?.asaas_subscription_id) {
+        subscriptionData.asaas_subscription_id = registration.asaas_subscription_id;
+      }
+      if (asaasCustomerId) {
+        subscriptionData.asaas_customer_id = asaasCustomerId;
+      }
 
       console.log('Creating trial subscription:', {
         userId: authData.user.id,
         trialDays: TRIAL_DAYS,
-        trialEndsAt: trialEndsAt.toISOString()
+        trialEndsAt: trialEndsAt.toISOString(),
+        hasAsaasSubscription: !!registration?.asaas_subscription_id
       });
     } else {
       // PAID: 1 month subscription

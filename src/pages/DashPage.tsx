@@ -9,7 +9,7 @@ import { useConnectedUserIds } from "@/hooks/useConnectedUserIds";
 import { TransactionPieChart } from "@/components/PieChart";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { TrendingUp, TrendingDown, Wallet, Plus, Filter } from "lucide-react";
+import { TrendingUp, TrendingDown, Wallet, Plus, Filter, Receipt } from "lucide-react";
 import { Transaction } from "@/components/Dashboard";
 
 interface OutletContextType {
@@ -42,7 +42,12 @@ const DashPage = () => {
         ...t,
         amount: Number(t.amount),
         date: t.date || t.created_at,
-        type: t.type as "income" | "expense"
+        type: t.type as "income" | "expense",
+        payment_method: t.payment_method,
+        credit_card_id: t.credit_card_id,
+        total_installments: t.total_installments,
+        installment_number: t.installment_number,
+        installment_group_id: t.installment_group_id,
       }));
       setTransactions(mapped);
     } catch (error) {
@@ -88,11 +93,23 @@ const DashPage = () => {
     .filter((t) => t.type === "income")
     .reduce((sum, t) => sum + Number(t.amount), 0);
 
+  // Expenses from debit/PIX (affects balance)
+  const totalExpenseDebitPix = filteredTransactions
+    .filter((t) => t.type === "expense" && t.payment_method !== "credit")
+    .reduce((sum, t) => sum + Number(t.amount), 0);
+
+  // All expenses (for display)
   const totalExpense = filteredTransactions
     .filter((t) => t.type === "expense")
     .reduce((sum, t) => sum + Number(t.amount), 0);
 
-  const balance = totalIncome - totalExpense;
+  // Credit expenses (faturas)
+  const totalFaturas = filteredTransactions
+    .filter((t) => t.type === "expense" && t.payment_method === "credit")
+    .reduce((sum, t) => sum + Number(t.amount), 0);
+
+  // Balance: income - (debit + PIX expenses only)
+  const balance = totalIncome - totalExpenseDebitPix;
 
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat("pt-BR", {
@@ -157,7 +174,7 @@ const DashPage = () => {
       />
 
       {/* Cards de Resumo */}
-      <div className="grid grid-cols-3 gap-2 sm:gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-4">
         <Card className="bg-gradient-card border-border">
           <CardHeader className="flex flex-row items-center justify-between pb-1 sm:pb-2 p-3 sm:p-6">
             <CardTitle className="text-[10px] sm:text-sm font-medium text-muted-foreground">
@@ -197,6 +214,26 @@ const DashPage = () => {
             <div className={`text-sm sm:text-2xl font-bold ${balance >= 0 ? "text-green-500" : "text-red-500"}`}>
               {formatCurrency(balance)}
             </div>
+            <p className="text-[9px] sm:text-xs text-muted-foreground mt-0.5">
+              Débito + PIX
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card className="bg-gradient-card border-border" style={{ borderLeft: totalFaturas > 0 ? '3px solid #a855f7' : undefined }}>
+          <CardHeader className="flex flex-row items-center justify-between pb-1 sm:pb-2 p-3 sm:p-6">
+            <CardTitle className="text-[10px] sm:text-sm font-medium text-muted-foreground">
+              Faturas
+            </CardTitle>
+            <Receipt className="h-3 w-3 sm:h-4 sm:w-4 text-purple-500" />
+          </CardHeader>
+          <CardContent className="p-3 sm:p-6 pt-0">
+            <div className="text-sm sm:text-2xl font-bold text-purple-500">
+              {formatCurrency(totalFaturas)}
+            </div>
+            <p className="text-[9px] sm:text-xs text-muted-foreground mt-0.5">
+              Crédito
+            </p>
           </CardContent>
         </Card>
       </div>

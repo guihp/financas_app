@@ -232,6 +232,68 @@ serve(async (req) => {
         );
       }
 
+      // ============================================
+      // UPDATE SUBSCRIPTION (for recurring subscription payments)
+      // ============================================
+      // Check if this payment belongs to an Asaas subscription
+      const asaasSubscriptionId = payment?.subscription || body?.subscription;
+      if (asaasSubscriptionId) {
+        console.log('Payment from subscription:', asaasSubscriptionId);
+        // Find subscription by asaas_subscription_id
+        const { data: existingSub } = await supabaseAdmin
+          .from('subscriptions')
+          .select('*')
+          .eq('asaas_subscription_id', asaasSubscriptionId)
+          .maybeSingle();
+
+        if (existingSub) {
+          const periodEnd = new Date();
+          periodEnd.setMonth(periodEnd.getMonth() + 1);
+
+          await supabaseAdmin
+            .from('subscriptions')
+            .update({
+              is_trial: false,
+              status: 'active',
+              current_period_start: new Date().toISOString().split('T')[0],
+              current_period_end: periodEnd.toISOString().split('T')[0],
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', existingSub.id);
+
+          console.log('Subscription renewed:', existingSub.id, 'new period_end:', periodEnd.toISOString());
+        } else {
+          // Fallback: find by asaas_customer_id
+          if (customerId || registration.asaas_customer_id) {
+            const custId = customerId || registration.asaas_customer_id;
+            const { data: subByCust } = await supabaseAdmin
+              .from('subscriptions')
+              .select('*')
+              .eq('asaas_customer_id', custId)
+              .maybeSingle();
+
+            if (subByCust) {
+              const periodEnd = new Date();
+              periodEnd.setMonth(periodEnd.getMonth() + 1);
+
+              await supabaseAdmin
+                .from('subscriptions')
+                .update({
+                  is_trial: false,
+                  status: 'active',
+                  asaas_subscription_id: asaasSubscriptionId,
+                  current_period_start: new Date().toISOString().split('T')[0],
+                  current_period_end: periodEnd.toISOString().split('T')[0],
+                  updated_at: new Date().toISOString()
+                })
+                .eq('id', subByCust.id);
+
+              console.log('Subscription renewed (by customer fallback):', subByCust.id);
+            }
+          }
+        }
+      }
+
       return new Response(
         JSON.stringify({
           success: true,
