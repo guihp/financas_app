@@ -14,11 +14,21 @@ import { TermsOfUseContent } from "@/components/TermsOfUseContent";
 import { Checkbox } from "@/components/ui/checkbox";
 import { 
   isValidEmail, 
-  isValidPhone, 
+  isValidPhoneForCountry,
   isStrongPassword, 
   isValidFullName,
-  sanitizeText 
+  sanitizeText,
+  formatPhoneForCountry,
+  getCleanPhoneForBackend,
+  type PhoneCountry
 } from "@/utils/validation";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 const TRIAL_DAYS = 7;
 
@@ -28,6 +38,7 @@ const Auth = () => {
   const [password, setPassword] = useState("");
   const [fullName, setFullName] = useState("");
   const [phone, setPhone] = useState("");
+  const [phoneCountry, setPhoneCountry] = useState<PhoneCountry>("BR");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [otpCode, setOtpCode] = useState("");
   const [otpSent, setOtpSent] = useState(false);
@@ -46,38 +57,22 @@ const Auth = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
 
-  // Format phone number to (DDD) 9 XXXX-XXXX
-  const formatPhone = (value: string) => {
-    let numbers = value.replace(/\D/g, '');
-    
-    if (numbers.length > 2) {
-      const ddd = numbers.slice(0, 2);
-      let rest = numbers.slice(2);
-      
-      if (rest.length > 0 && rest[0] !== '9') {
-        rest = '9' + rest;
-      }
-      
-      rest = rest.slice(0, 9);
-      numbers = ddd + rest;
-    }
-    
-    const limited = numbers.slice(0, 11);
-    
-    if (limited.length <= 2) {
-      return limited.length > 0 ? `(${limited}` : '';
-    } else if (limited.length <= 3) {
-      return `(${limited.slice(0, 2)}) ${limited.slice(2)}`;
-    } else if (limited.length <= 7) {
-      return `(${limited.slice(0, 2)}) ${limited.slice(2, 3)} ${limited.slice(3)}`;
-    } else {
-      return `(${limited.slice(0, 2)}) ${limited.slice(2, 3)} ${limited.slice(3, 7)}-${limited.slice(7, 11)}`;
+  const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const formatted = formatPhoneForCountry(e.target.value, phoneCountry);
+    setPhone(formatted);
+    if (otpSent) {
+      setOtpSent(false);
+      setOtpVerified(false);
+      setOtpCode("");
     }
   };
 
-  const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const formatted = formatPhone(e.target.value);
-    setPhone(formatted);
+  const handlePhoneCountryChange = (value: string) => {
+    const country = value as PhoneCountry;
+    setPhoneCountry(country);
+    // Reformatar dígitos existentes para o novo formato do país
+    const digits = phone.replace(/\D/g, '');
+    setPhone(formatPhoneForCountry(digits, country));
     if (otpSent) {
       setOtpSent(false);
       setOtpVerified(false);
@@ -110,6 +105,7 @@ const Auth = () => {
     setPassword("");
     setFullName("");
     setPhone("");
+    setPhoneCountry("BR");
     setConfirmPassword("");
     setOtpCode("");
     setOtpSent(false);
@@ -205,9 +201,13 @@ const Auth = () => {
       return;
     }
 
-    const cleanPhone = phone.replace(/\D/g, '');
-    if (!isValidPhone(phone)) {
-      setMessage("Por favor, informe um número de telefone válido com DDD (11 dígitos).");
+    const cleanPhone = getCleanPhoneForBackend(phone, phoneCountry);
+    if (!isValidPhoneForCountry(phone, phoneCountry)) {
+      setMessage(
+        phoneCountry === "BR"
+          ? "Por favor, informe um número de telefone válido com DDD (11 dígitos)."
+          : "Por favor, informe um número de telefone válido dos EUA (10 dígitos)."
+      );
       return;
     }
 
@@ -408,7 +408,7 @@ const Auth = () => {
           </div>
         </CardHeader>
         <CardContent>
-          <Tabs value={activeTab} onValueChange={(v) => {
+          <Tabs value={activeTab}           onValueChange={(v) => {
             setActiveTab(v as "login" | "signup" | "forgot");
             setMessage("");
             setResetEmailSent(false);
@@ -420,6 +420,8 @@ const Auth = () => {
               setTermsStepDone(false);
               setTermsScrolledToBottom(false);
               setAcceptedTerms(false);
+              setPhone("");
+              setPhoneCountry("BR");
             }
           }}>
             <TabsList className="grid w-full grid-cols-3">
@@ -632,16 +634,38 @@ const Auth = () => {
 
                   <div className="space-y-2">
                     <Label htmlFor="signup-phone">Telefone (WhatsApp) *</Label>
-                    <div className="relative">
+                    <div className="flex gap-2">
+                      <Select
+                        value={phoneCountry}
+                        onValueChange={handlePhoneCountryChange}
+                        disabled={otpVerified}
+                      >
+                        <SelectTrigger className="w-[120px] shrink-0">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="BR">
+                            <span className="flex items-center gap-2">
+                              <span>🇧🇷</span> Brasil
+                            </span>
+                          </SelectItem>
+                          <SelectItem value="US">
+                            <span className="flex items-center gap-2">
+                              <span>🇺🇸</span> EUA
+                            </span>
+                          </SelectItem>
+                        </SelectContent>
+                      </Select>
                       <Input
                         id="signup-phone"
                         type="tel"
-                        placeholder="(11) 9 9999-9999"
+                        placeholder={phoneCountry === "BR" ? "(11) 9 9999-9999" : "(555) 123-4567"}
                         value={phone}
                         onChange={handlePhoneChange}
-                        maxLength={17}
+                        maxLength={phoneCountry === "BR" ? 17 : 14}
                         required
                         disabled={otpVerified}
+                        className="flex-1"
                       />
                     </div>
                     {otpSent && !otpVerified && (

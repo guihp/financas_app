@@ -18,8 +18,11 @@ export function isValidEmail(email: string): boolean {
   return emailRegex.test(email.trim());
 }
 
+export type PhoneCountry = 'BR' | 'US';
+
 /**
  * Valida formato de telefone brasileiro
+ * (Lógica original - não alterar)
  */
 export function isValidPhone(phone: string): boolean {
   if (!phone || typeof phone !== 'string') return false;
@@ -34,6 +37,79 @@ export function isValidPhone(phone: string): boolean {
   if (ddd < 11 || ddd > 99) return false;
   
   return true;
+}
+
+/**
+ * Valida formato de telefone dos EUA
+ * Formato: (XXX) XXX-XXXX - 10 dígitos, área code não pode começar com 0 ou 1
+ */
+export function isValidPhoneUS(phone: string): boolean {
+  if (!phone || typeof phone !== 'string') return false;
+  
+  const clean = phone.replace(/\D/g, '');
+  if (clean.length !== 10) return false;
+  
+  // Área code (3 primeiros dígitos) não pode começar com 0 ou 1
+  const areaCode = parseInt(clean.substring(0, 1));
+  if (areaCode < 2) return false;
+  
+  return true;
+}
+
+/**
+ * Valida telefone de acordo com o país selecionado
+ * BR: lógica brasileira (11 dígitos, DDD 11-99)
+ * US: 10 dígitos, área code válido
+ */
+export function isValidPhoneForCountry(phone: string, country: PhoneCountry): boolean {
+  if (country === 'BR') return isValidPhone(phone);
+  if (country === 'US') return isValidPhoneUS(phone);
+  return false;
+}
+
+/**
+ * Formata telefone para exibição conforme o país
+ * BR: (11) 9 9999-9999
+ * US: (555) 123-4567
+ */
+export function formatPhoneForCountry(value: string, country: PhoneCountry): string {
+  const digits = value.replace(/\D/g, '');
+  
+  if (country === 'BR') {
+    let numbers = digits.slice(0, 11);
+    if (numbers.length > 2) {
+      const ddd = numbers.slice(0, 2);
+      let rest = numbers.slice(2);
+      if (rest.length > 0 && rest[0] !== '9') rest = '9' + rest;
+      rest = rest.slice(0, 9);
+      numbers = ddd + rest;
+    }
+    if (numbers.length <= 2) return numbers.length > 0 ? `(${numbers}` : '';
+    if (numbers.length <= 3) return `(${numbers.slice(0, 2)}) ${numbers.slice(2)}`;
+    if (numbers.length <= 7) return `(${numbers.slice(0, 2)}) ${numbers.slice(2, 3)} ${numbers.slice(3)}`;
+    return `(${numbers.slice(0, 2)}) ${numbers.slice(2, 3)} ${numbers.slice(3, 7)}-${numbers.slice(7, 11)}`;
+  }
+  
+  if (country === 'US') {
+    const limited = digits.slice(0, 10);
+    if (limited.length <= 3) return limited.length > 0 ? `(${limited}` : '';
+    if (limited.length <= 6) return `(${limited.slice(0, 3)}) ${limited.slice(3)}`;
+    return `(${limited.slice(0, 3)}) ${limited.slice(3, 6)}-${limited.slice(6, 10)}`;
+  }
+  
+  return value;
+}
+
+/**
+ * Retorna o telefone no formato esperado pelo backend (apenas dígitos)
+ * BR: 11 dígitos (DDD + número)
+ * US: 1 + 10 dígitos (código país + número)
+ */
+export function getCleanPhoneForBackend(phone: string, country: PhoneCountry): string {
+  const digits = phone.replace(/\D/g, '');
+  if (country === 'BR') return digits;
+  if (country === 'US') return digits.length === 10 ? '1' + digits : digits;
+  return digits;
 }
 
 /**
