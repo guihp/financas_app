@@ -9,8 +9,8 @@ import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { isValidAmount, sanitizeDescription, sanitizeCategoryName } from "@/utils/validation";
-import { CreditCard, Banknote, Zap, FileText, Building2 } from "lucide-react";
-import { FIXED_CATEGORIES, CATEGORY_GROUPS, getCategoryLabel } from "@/constants/financialData";
+import { CreditCard, Banknote, Zap, FileText, Building2, ArrowLeftRight } from "lucide-react";
+import { FIXED_CATEGORIES, CATEGORY_GROUPS, getCategoryLabel, getCategoriesByType, getCategoryGroupsByType } from "@/constants/financialData";
 
 interface AddTransactionFabProps {
   open: boolean;
@@ -31,7 +31,8 @@ export const AddTransactionFab = ({ open, onOpenChange, onTransactionAdded }: Ad
   const { toast } = useToast();
 
   // Payment method & bank/card selection
-  const [paymentMethod, setPaymentMethod] = useState<"debit" | "pix" | "credit" | "boleto">("debit");
+  const [paymentMethod, setPaymentMethod] = useState<"debit" | "pix" | "credit" | "boleto" | "transfer">("debit");
+  const [selectedBankToId, setSelectedBankToId] = useState("");
   const [creditCards, setCreditCards] = useState<CreditCardOption[]>([]);
   const [bankAccounts, setBankAccounts] = useState<BankAccountOption[]>([]);
   const [selectedCardId, setSelectedCardId] = useState("");
@@ -116,10 +117,14 @@ export const AddTransactionFab = ({ open, onOpenChange, onTransactionAdded }: Ad
     return getCategoryLabel(cat);
   };
 
+  // Filter categories by type
+  const filteredCategories = getCategoriesByType(type);
+  const filteredGroups = getCategoryGroupsByType(type);
+
   // Whether current method requires a bank account
-  const needsBank = type === "income" || (type === "expense" && ["debit", "pix", "boleto"].includes(paymentMethod));
-  // Whether current method requires a credit card
+  const needsBank = type === "income" || (type === "expense" && ["debit", "pix", "boleto", "transfer"].includes(paymentMethod));
   const needsCreditCard = type === "expense" && paymentMethod === "credit";
+  const isTransfer = type === "expense" && paymentMethod === "transfer";
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -241,18 +246,19 @@ export const AddTransactionFab = ({ open, onOpenChange, onTransactionAdded }: Ad
           {type === "expense" && (
             <div>
               <Label className="text-sm font-medium text-white mb-2 block">Método de Pagamento</Label>
-              <div className="grid grid-cols-4 gap-2">
+              <div className="grid grid-cols-5 gap-1.5">
                 {([
-                  { key: "debit", icon: <Banknote className="h-5 w-5" />, label: "Débito", activeClass: "border-blue-500 bg-blue-500/10 text-blue-400" },
-                  { key: "pix", icon: <Zap className="h-5 w-5" />, label: "PIX", activeClass: "border-green-500 bg-green-500/10 text-green-400" },
-                  { key: "credit", icon: <CreditCard className="h-5 w-5" />, label: "Crédito", activeClass: "border-purple-500 bg-purple-500/10 text-purple-400" },
-                  { key: "boleto", icon: <FileText className="h-5 w-5" />, label: "Boleto", activeClass: "border-amber-500 bg-amber-500/10 text-amber-400" },
+                  { key: "debit", icon: <Banknote className="h-4 w-4" />, label: "Débito", activeClass: "border-blue-500 bg-blue-500/10 text-blue-400" },
+                  { key: "pix", icon: <Zap className="h-4 w-4" />, label: "PIX", activeClass: "border-green-500 bg-green-500/10 text-green-400" },
+                  { key: "credit", icon: <CreditCard className="h-4 w-4" />, label: "Crédito", activeClass: "border-purple-500 bg-purple-500/10 text-purple-400" },
+                  { key: "boleto", icon: <FileText className="h-4 w-4" />, label: "Boleto", activeClass: "border-amber-500 bg-amber-500/10 text-amber-400" },
+                  { key: "transfer", icon: <ArrowLeftRight className="h-4 w-4" />, label: "Transf.", activeClass: "border-cyan-500 bg-cyan-500/10 text-cyan-400" },
                 ] as const).map(item => (
                   <button
                     key={item.key}
                     type="button"
-                    onClick={() => { setPaymentMethod(item.key); setIsInstallment(false); }}
-                    className={`flex flex-col items-center gap-1 p-2.5 rounded-xl border-2 transition-all ${paymentMethod === item.key
+                    onClick={() => { setPaymentMethod(item.key); setIsInstallment(false); if (item.key === 'transfer') setCategory('transferencia'); }}
+                    className={`flex flex-col items-center gap-1 p-2 rounded-xl border-2 transition-all ${paymentMethod === item.key
                       ? item.activeClass
                       : "border-border bg-muted/30 text-muted-foreground hover:border-border/80"
                       }`}
@@ -265,12 +271,12 @@ export const AddTransactionFab = ({ open, onOpenChange, onTransactionAdded }: Ad
             </div>
           )}
 
-          {/* Bank Account Selection - for debit, pix, boleto, income */}
+          {/* Bank Account Selection - for debit, pix, boleto, transfer, income */}
           {needsBank && (
             <div className="p-3 rounded-lg bg-blue-500/5 border border-blue-500/20">
               <Label className="text-sm font-medium text-white flex items-center gap-1.5">
                 <Building2 className="h-3.5 w-3.5" />
-                {type === "income" ? "Banco de destino" : "Banco de origem"}
+                {isTransfer ? "Banco de origem" : type === "income" ? "Banco de destino" : "Banco"}
               </Label>
               {bankAccounts.length === 0 ? (
                 <p className="text-xs text-muted-foreground mt-1">Nenhum banco cadastrado. Vá em Bancos e Cartões para cadastrar.</p>
@@ -288,6 +294,29 @@ export const AddTransactionFab = ({ open, onOpenChange, onTransactionAdded }: Ad
                     ))}
                   </SelectContent>
                 </Select>
+              )}
+
+              {/* Bank Destination - for transfers */}
+              {isTransfer && bankAccounts.length > 0 && (
+                <div className="mt-3">
+                  <Label className="text-sm font-medium text-white flex items-center gap-1.5">
+                    <ArrowLeftRight className="h-3.5 w-3.5" />
+                    Banco de destino
+                  </Label>
+                  <Select value={selectedBankToId} onValueChange={setSelectedBankToId}>
+                    <SelectTrigger className="mt-1"><SelectValue placeholder="Selecione o banco de destino" /></SelectTrigger>
+                    <SelectContent>
+                      {bankAccounts.filter(b => b.id !== selectedBankId).map(bank => (
+                        <SelectItem key={bank.id} value={bank.id}>
+                          <div className="flex items-center gap-2">
+                            <div className="w-3 h-3 rounded-full" style={{ backgroundColor: bank.color }} />
+                            {bank.name}
+                          </div>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
               )}
             </div>
           )}
@@ -361,33 +390,35 @@ export const AddTransactionFab = ({ open, onOpenChange, onTransactionAdded }: Ad
           </div>
 
           {/* Categoria */}
-          <div>
-            <Label htmlFor="category-fab" className="text-sm font-medium text-white">Categoria</Label>
-            <Select value={category} onValueChange={setCategory}>
-              <SelectTrigger className="mt-1"><SelectValue placeholder="Selecione uma categoria" /></SelectTrigger>
-              <SelectContent className="max-h-[300px]">
-                {CATEGORY_GROUPS.map(group => (
-                  <div key={group}>
-                    <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground bg-muted/50 sticky top-0">{group}</div>
-                    {FIXED_CATEGORIES.filter(c => c.group === group).map(cat => (
-                      <SelectItem key={cat.value} value={cat.value}>
-                        {cat.emoji} {cat.label}
-                      </SelectItem>
-                    ))}
-                  </div>
-                ))}
-                {/* Custom user categories */}
-                {userCategoryValues.filter(v => !FIXED_CATEGORIES.find(fc => fc.value === v)).length > 0 && (
-                  <div>
-                    <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground bg-muted/50 sticky top-0">Minhas Categorias</div>
-                    {userCategoryValues.filter(v => !FIXED_CATEGORIES.find(fc => fc.value === v)).map(cat => (
-                      <SelectItem key={cat} value={cat}>{cat.charAt(0).toUpperCase() + cat.slice(1)}</SelectItem>
-                    ))}
-                  </div>
-                )}
-              </SelectContent>
-            </Select>
-          </div>
+          {!isTransfer && (
+            <div>
+              <Label htmlFor="category-fab" className="text-sm font-medium text-white">Categoria</Label>
+              <Select value={category} onValueChange={setCategory}>
+                <SelectTrigger className="mt-1"><SelectValue placeholder="Selecione uma categoria" /></SelectTrigger>
+                <SelectContent className="max-h-[300px]">
+                  {filteredGroups.map(group => (
+                    <div key={group}>
+                      <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground bg-muted/50 sticky top-0">{group}</div>
+                      {filteredCategories.filter(c => c.group === group).map(cat => (
+                        <SelectItem key={cat.value} value={cat.value}>
+                          {cat.emoji} {cat.label}
+                        </SelectItem>
+                      ))}
+                    </div>
+                  ))}
+                  {/* Custom user categories */}
+                  {userCategoryValues.filter(v => !FIXED_CATEGORIES.find(fc => fc.value === v)).length > 0 && (
+                    <div>
+                      <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground bg-muted/50 sticky top-0">Minhas Categorias</div>
+                      {userCategoryValues.filter(v => !FIXED_CATEGORIES.find(fc => fc.value === v)).map(cat => (
+                        <SelectItem key={cat} value={cat}>{cat.charAt(0).toUpperCase() + cat.slice(1)}</SelectItem>
+                      ))}
+                    </div>
+                  )}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
 
           {/* Buttons */}
           <div className="flex gap-3 pt-4">

@@ -177,7 +177,7 @@ const Assinatura = () => {
   }
 
   return (
-    <div className="max-w-2xl mx-auto space-y-6 pb-24 xl:pb-6">
+    <div className="max-w-2xl mx-auto space-y-6 pb-24 lg:pb-6">
       <div className="text-center space-y-2">
         <h1 className="text-2xl font-bold">Sua Assinatura</h1>
         <p className="text-muted-foreground">

@@ -262,9 +262,9 @@ export const AppLayout = () => {
 
   return (
     <div className="min-h-screen bg-background">
-      <div className="flex flex-col xl:flex-row">
-        {/* Desktop Sidebar - visible only on xl (1280px+) */}
-        <div className="hidden xl:flex w-64 flex-col bg-sidebar border-r border-sidebar-border p-6 min-h-screen sticky top-0 max-h-screen overflow-y-auto">
+      <div className="flex flex-col lg:flex-row">
+        {/* Desktop Sidebar - visible only on lg (1024px+) */}
+        <div className="hidden lg:flex w-64 flex-col bg-sidebar border-r border-sidebar-border p-6 min-h-screen sticky top-0 max-h-screen overflow-y-auto">
           <div className="mb-8">
             <Logo size="lg" />
           </div>
@@ -312,12 +312,12 @@ export const AppLayout = () => {
         </div>
 
         {/* Main Content */}
-        <div className="flex-1 p-4 xl:p-6 mobile-content xl:pb-6 mobile-scroll">
+        <div className="flex-1 p-4 lg:p-6 mobile-content lg:pb-6 mobile-scroll">
           <Outlet context={{ user, isSuperAdmin }} />
         </div>
 
-        {/* Mobile/Tablet Bottom Navigation - visible below xl (1280px) */}
-        <div className="xl:hidden">
+        {/* Mobile/Tablet Bottom Navigation - visible below lg (1024px) */}
+        <div className="lg:hidden">
           <MobileBottomNav userEmail={user.email} isSuperAdmin={isSuperAdmin} />
         </div>
       </div>

@@ -178,7 +178,7 @@ const SharingPage = () => {
     }
 
     return (
-        <div className="space-y-6 pb-32 xl:pb-6">
+        <div className="space-y-6 pb-32 lg:pb-6">
             <div className="flex items-center justify-between">
                 <div>
                     <h1 className="text-2xl font-bold text-foreground">Compartilhamento de Conta</h1>

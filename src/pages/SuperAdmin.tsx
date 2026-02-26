@@ -129,7 +129,7 @@ const SuperAdmin = () => {
   }
 
   return (
-    <div className="space-y-6 pb-24 xl:pb-6">
+    <div className="space-y-6 pb-24 lg:pb-6">
       {/* Header */}
       <div className="flex items-center gap-3">
         <div className="h-10 w-10 rounded-lg bg-primary/20 flex items-center justify-center">
