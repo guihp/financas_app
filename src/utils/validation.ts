@@ -18,7 +18,16 @@ export function isValidEmail(email: string): boolean {
   return emailRegex.test(email.trim());
 }
 
-export type PhoneCountry = 'BR' | 'US';
+export type PhoneCountry = 'BR' | 'US' | 'PT' | 'IE' | 'ES';
+
+/** Nome do país para envio ao webhook OTP */
+export const PHONE_COUNTRY_NAMES: Record<PhoneCountry, string> = {
+  BR: 'Brasil',
+  US: 'EUA',
+  PT: 'Portugal',
+  IE: 'Irlanda',
+  ES: 'Espanha',
+};
 
 /**
  * Valida formato de telefone brasileiro
@@ -56,14 +65,20 @@ export function isValidPhoneUS(phone: string): boolean {
   return true;
 }
 
+/** Portugal +351: 9 dígitos | Irlanda +353: 9 dígitos | Espanha +34: 9 dígitos */
+function isValidPhoneEuropean(phone: string, digits: number = 9): boolean {
+  if (!phone || typeof phone !== 'string') return false;
+  const clean = phone.replace(/\D/g, '');
+  return clean.length === digits;
+}
+
 /**
  * Valida telefone de acordo com o país selecionado
- * BR: lógica brasileira (11 dígitos, DDD 11-99)
- * US: 10 dígitos, área code válido
  */
 export function isValidPhoneForCountry(phone: string, country: PhoneCountry): boolean {
   if (country === 'BR') return isValidPhone(phone);
   if (country === 'US') return isValidPhoneUS(phone);
+  if (country === 'PT' || country === 'IE' || country === 'ES') return isValidPhoneEuropean(phone, 9);
   return false;
 }
 
@@ -96,6 +111,14 @@ export function formatPhoneForCountry(value: string, country: PhoneCountry): str
     if (limited.length <= 6) return `(${limited.slice(0, 3)}) ${limited.slice(3)}`;
     return `(${limited.slice(0, 3)}) ${limited.slice(3, 6)}-${limited.slice(6, 10)}`;
   }
+
+  // PT, IE, ES: XXX XXX XXX (9 dígitos)
+  if (country === 'PT' || country === 'IE' || country === 'ES') {
+    const limited = digits.slice(0, 9);
+    if (limited.length <= 3) return limited;
+    if (limited.length <= 6) return `${limited.slice(0, 3)} ${limited.slice(3)}`;
+    return `${limited.slice(0, 3)} ${limited.slice(3, 6)} ${limited.slice(6, 9)}`;
+  }
   
   return value;
 }
@@ -105,11 +128,18 @@ export function formatPhoneForCountry(value: string, country: PhoneCountry): str
  * BR: 11 dígitos (DDD + número)
  * US: 1 + 10 dígitos (código país + número)
  */
+const COUNTRY_CODE: Record<Exclude<PhoneCountry, 'BR'>, string> = {
+  US: '1',
+  PT: '351',
+  IE: '353',
+  ES: '34',
+};
+
 export function getCleanPhoneForBackend(phone: string, country: PhoneCountry): string {
   const digits = phone.replace(/\D/g, '');
-  if (country === 'BR') return digits;
-  if (country === 'US') return digits.length === 10 ? '1' + digits : digits;
-  return digits;
+  if (country === 'BR') return digits; // mantém lógica original
+  const code = COUNTRY_CODE[country];
+  return digits.length > 0 && !digits.startsWith(code) ? code + digits : digits;
 }
 
 /**

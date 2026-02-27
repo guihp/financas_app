@@ -1,9 +1,12 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { useOutletContext } from "react-router-dom";
 import { User } from "@supabase/supabase-js";
 import { Statistics } from "@/components/Statistics";
 import { supabase } from "@/integrations/supabase/client";
 import { useConnectedUserIds } from "@/hooks/useConnectedUserIds";
+import { DateRangeFilter } from "@/components/DateRangeFilter";
+import { filterTransactionsByDate } from "@/utils/dateFilter";
+import type { DateFilterOption, DateRange } from "@/utils/dateFilter";
 import { Transaction } from "@/components/Dashboard";
 
 interface OutletContextType {
@@ -15,7 +18,14 @@ const StatsPage = () => {
   const { user } = useOutletContext<OutletContextType>();
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
+  const [dateFilter, setDateFilter] = useState<DateFilterOption>("all");
+  const [dateRange, setDateRange] = useState<DateRange>({ start: null, end: null });
   const { allUserIds, loading: loadingConnections } = useConnectedUserIds(user?.id);
+
+  const filteredTransactions = useMemo(
+    () => filterTransactionsByDate(transactions, dateFilter, dateRange),
+    [transactions, dateFilter, dateRange]
+  );
 
   useEffect(() => {
     const fetchTransactions = async () => {
@@ -59,8 +69,16 @@ const StatsPage = () => {
 
   return (
     <div className="space-y-6 pb-32 lg:pb-6">
-      <h1 className="text-2xl font-bold text-foreground">Estatísticas</h1>
-      <Statistics transactions={transactions} />
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <h1 className="text-2xl font-bold text-foreground">Estatísticas</h1>
+        <DateRangeFilter
+          value={dateFilter}
+          dateRange={dateRange}
+          onValueChange={setDateFilter}
+          onDateRangeChange={setDateRange}
+        />
+      </div>
+      <Statistics transactions={filteredTransactions} />
     </div>
   );
 };

@@ -18,7 +18,7 @@ serve(async (req) => {
   }
 
   try {
-    const { phone, email, full_name } = await req.json();
+    const { phone, email, full_name, pais } = await req.json();
 
     if (!phone) {
       return new Response(
@@ -90,10 +90,11 @@ serve(async (req) => {
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
-            codigo_usuario: cleanPhone, // código do usuário (telefone)
+            codigo_usuario: cleanPhone,
             email: email || null,
             nome: full_name || null,
-            codigo_verificacao: code // código de verificação
+            codigo_verificacao: code,
+            pais: pais || null // Brasil, EUA, Portugal, Irlanda, Espanha
           })
         });
 

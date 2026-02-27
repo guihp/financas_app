@@ -20,6 +20,7 @@ import {
   sanitizeText,
   formatPhoneForCountry,
   getCleanPhoneForBackend,
+  PHONE_COUNTRY_NAMES,
   type PhoneCountry
 } from "@/utils/validation";
 import {
@@ -86,7 +87,8 @@ const Auth = () => {
         body: {
           phone: cleanPhone,
           email: email,
-          full_name: fullName
+          full_name: fullName,
+          pais: PHONE_COUNTRY_NAMES[phoneCountry]
         }
       });
 
@@ -203,11 +205,14 @@ const Auth = () => {
 
     const cleanPhone = getCleanPhoneForBackend(phone, phoneCountry);
     if (!isValidPhoneForCountry(phone, phoneCountry)) {
-      setMessage(
-        phoneCountry === "BR"
-          ? "Por favor, informe um número de telefone válido com DDD (11 dígitos)."
-          : "Por favor, informe um número de telefone válido dos EUA (10 dígitos)."
-      );
+      const messages: Record<PhoneCountry, string> = {
+        BR: "Por favor, informe um número de telefone válido com DDD (11 dígitos).",
+        US: "Por favor, informe um número de telefone válido dos EUA (10 dígitos).",
+        PT: "Por favor, informe um número de telefone válido de Portugal (9 dígitos).",
+        IE: "Por favor, informe um número de telefone válido da Irlanda (9 dígitos).",
+        ES: "Por favor, informe um número de telefone válido da Espanha (9 dígitos).",
+      };
+      setMessage(messages[phoneCountry]);
       return;
     }
 
@@ -654,15 +659,37 @@ const Auth = () => {
                               <span>🇺🇸</span> EUA
                             </span>
                           </SelectItem>
+                          <SelectItem value="PT">
+                            <span className="flex items-center gap-2">
+                              <span>🇵🇹</span> Portugal
+                            </span>
+                          </SelectItem>
+                          <SelectItem value="IE">
+                            <span className="flex items-center gap-2">
+                              <span>🇮🇪</span> Irlanda
+                            </span>
+                          </SelectItem>
+                          <SelectItem value="ES">
+                            <span className="flex items-center gap-2">
+                              <span>🇪🇸</span> Espanha
+                            </span>
+                          </SelectItem>
                         </SelectContent>
                       </Select>
                       <Input
                         id="signup-phone"
                         type="tel"
-                        placeholder={phoneCountry === "BR" ? "(11) 9 9999-9999" : "(555) 123-4567"}
+                        placeholder={
+                          phoneCountry === "BR" ? "(11) 9 9999-9999" :
+                          phoneCountry === "US" ? "(555) 123-4567" :
+                          "912 345 678"
+                        }
                         value={phone}
                         onChange={handlePhoneChange}
-                        maxLength={phoneCountry === "BR" ? 17 : 14}
+                        maxLength={
+                          phoneCountry === "BR" ? 17 :
+                          phoneCountry === "US" ? 14 : 11
+                        }
                         required
                         disabled={otpVerified}
                         className="flex-1"

@@ -7,7 +7,10 @@ import { AddTransactionFab } from "@/components/AddTransactionFab";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useConnectedUserIds } from "@/hooks/useConnectedUserIds";
 import { Button } from "@/components/ui/button";
-import { Plus, Filter } from "lucide-react";
+import { DateRangeFilter } from "@/components/DateRangeFilter";
+import { filterTransactionsByDate } from "@/utils/dateFilter";
+import type { DateFilterOption, DateRange } from "@/utils/dateFilter";
+import { Plus } from "lucide-react";
 import { Transaction } from "@/components/Dashboard";
 
 interface OutletContextType {
@@ -15,14 +18,13 @@ interface OutletContextType {
   isSuperAdmin: boolean;
 }
 
-type DateFilterOption = "thisMonth" | "lastMonth" | "all";
-
 const TransactionsPage = () => {
   const { user } = useOutletContext<OutletContextType>();
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [dateFilter, setDateFilter] = useState<DateFilterOption>("all");
+  const [dateRange, setDateRange] = useState<DateRange>({ start: null, end: null });
   const { allUserIds, loading: loadingConnections } = useConnectedUserIds(user?.id);
 
   const loadTransactions = async () => {
@@ -56,31 +58,10 @@ const TransactionsPage = () => {
     }
   }, [user?.id, allUserIds, loadingConnections]);
 
-  // Filtered transactions based on date filter
-  const filteredTransactions = useMemo(() => {
-    const now = new Date();
-    const currentMonth = now.getMonth();
-    const currentYear = now.getFullYear();
-
-    if (dateFilter === "all") {
-      return transactions;
-    }
-
-    return transactions.filter(t => {
-      const transactionDate = new Date(t.date);
-      const transactionMonth = transactionDate.getMonth();
-      const transactionYear = transactionDate.getFullYear();
-
-      if (dateFilter === "thisMonth") {
-        return transactionMonth === currentMonth && transactionYear === currentYear;
-      } else if (dateFilter === "lastMonth") {
-        const lastMonth = currentMonth === 0 ? 11 : currentMonth - 1;
-        const lastMonthYear = currentMonth === 0 ? currentYear - 1 : currentYear;
-        return transactionMonth === lastMonth && transactionYear === lastMonthYear;
-      }
-      return true;
-    });
-  }, [transactions, dateFilter]);
+  const filteredTransactions = useMemo(
+    () => filterTransactionsByDate(transactions, dateFilter, dateRange),
+    [transactions, dateFilter, dateRange]
+  );
 
   if (loading) {
     return (
@@ -95,33 +76,12 @@ const TransactionsPage = () => {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <h1 className="text-xl sm:text-2xl font-bold text-foreground">Transações</h1>
         <div className="flex items-center gap-2 flex-wrap">
-          <div className="flex items-center gap-1 bg-muted/50 rounded-lg p-1">
-            <Filter className="h-4 w-4 text-muted-foreground ml-2" />
-            <Button
-              variant={dateFilter === "thisMonth" ? "default" : "ghost"}
-              size="sm"
-              className="h-7 text-xs"
-              onClick={() => setDateFilter("thisMonth")}
-            >
-              Este Mês
-            </Button>
-            <Button
-              variant={dateFilter === "lastMonth" ? "default" : "ghost"}
-              size="sm"
-              className="h-7 text-xs"
-              onClick={() => setDateFilter("lastMonth")}
-            >
-              Mês Passado
-            </Button>
-            <Button
-              variant={dateFilter === "all" ? "default" : "ghost"}
-              size="sm"
-              className="h-7 text-xs"
-              onClick={() => setDateFilter("all")}
-            >
-              Todos
-            </Button>
-          </div>
+          <DateRangeFilter
+            value={dateFilter}
+            dateRange={dateRange}
+            onValueChange={setDateFilter}
+            onDateRangeChange={setDateRange}
+          />
           <Button onClick={() => setShowAddDialog(true)} className="gap-2 h-8 sm:h-9">
             <Plus className="h-4 w-4" />
             <span className="hidden sm:inline">Nova Transação</span>
@@ -142,6 +102,7 @@ const TransactionsPage = () => {
             {dateFilter === "thisMonth" && "Transações deste mês"}
             {dateFilter === "lastMonth" && "Transações do mês passado"}
             {dateFilter === "all" && "Todas as Transações"}
+            {dateFilter === "custom" && "Transações do período"}
             <span className="text-sm font-normal text-muted-foreground ml-2">
               ({filteredTransactions.length} {filteredTransactions.length === 1 ? "transação" : "transações"})
             </span>

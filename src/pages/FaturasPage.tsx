@@ -119,18 +119,27 @@ const FaturasPage = () => {
         return `${months[selectedMonth.month]} ${selectedMonth.year}`;
     }, [selectedMonth]);
 
-    // Filter transactions per card for the selected month
+    // Filter transactions per card by BILLING CYCLE (closing_day), not calendar month.
+    // Ex: closing_day 10 → "Fatura Fevereiro" = Jan 11 to Feb 10. Expense on Jan 27 goes to Feb invoice.
     const faturasByCard = useMemo(() => {
         const result: Record<string, FaturaTransaction[]> = {};
 
         cards.forEach((card) => {
+            const closing = card.closing_day;
+            const year = selectedMonth.year;
+            const month = selectedMonth.month;
+
+            // Cycle: from (closing+1) of previous month to closing of selected month
+            // e.g. Feb with closing 10: Jan 11 00:00 to Feb 10 23:59
+            const cycleStart = new Date(year, month - 1, closing + 1, 0, 0, 0);
+            const lastDay = new Date(year, month + 1, 0).getDate();
+            const cycleEndDay = Math.min(closing, lastDay);
+            const cycleEnd = new Date(year, month, cycleEndDay, 23, 59, 59);
+
             result[card.id] = transactions.filter((t) => {
                 if (t.credit_card_id !== card.id) return false;
                 const txDate = new Date(t.date + "T12:00:00");
-                return (
-                    txDate.getMonth() === selectedMonth.month &&
-                    txDate.getFullYear() === selectedMonth.year
-                );
+                return txDate >= cycleStart && txDate <= cycleEnd;
             });
         });
 
