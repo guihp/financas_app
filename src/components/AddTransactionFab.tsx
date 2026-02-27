@@ -224,7 +224,7 @@ export const AddTransactionFab = ({ open, onOpenChange, onTransactionAdded }: Ad
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto">
+      <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto max-sm:left-6 max-sm:right-6 max-sm:top-6 max-sm:bottom-6 max-sm:translate-x-0 max-sm:translate-y-0 max-sm:max-h-none max-sm:pb-12 max-sm:w-[calc(100vw-3rem)] max-sm:max-w-[calc(100vw-3rem)]">
         <DialogHeader><DialogTitle>Nova Transação</DialogTitle></DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
           {/* Tipo */}
@@ -246,7 +246,7 @@ export const AddTransactionFab = ({ open, onOpenChange, onTransactionAdded }: Ad
           {type === "expense" && (
             <div>
               <Label className="text-sm font-medium text-white mb-2 block">Método de Pagamento</Label>
-              <div className="grid grid-cols-5 gap-1.5">
+              <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
                 {([
                   { key: "debit", icon: <Banknote className="h-4 w-4" />, label: "Débito", activeClass: "border-blue-500 bg-blue-500/10 text-blue-400" },
                   { key: "pix", icon: <Zap className="h-4 w-4" />, label: "PIX", activeClass: "border-green-500 bg-green-500/10 text-green-400" },

@@ -178,7 +178,7 @@ export const AddTransactionDialog = ({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto max-sm:left-6 max-sm:right-6 max-sm:top-6 max-sm:bottom-6 max-sm:translate-x-0 max-sm:translate-y-0 max-sm:max-h-none max-sm:pb-12 max-sm:w-[calc(100vw-3rem)] max-sm:max-w-[calc(100vw-3rem)]">
         <DialogHeader>
           <DialogTitle>Nova Transação</DialogTitle>
         </DialogHeader>
