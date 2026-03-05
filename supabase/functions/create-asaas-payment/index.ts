@@ -9,7 +9,13 @@ const corsHeaders = {
 
 // Asaas API configuration
 const ASAAS_API_KEY = Deno.env.get('ASAAS_API_KEY') ?? '';
-const ASAAS_BASE_URL = Deno.env.get('ASAAS_BASE_URL') ?? 'https://api-sandbox.asaas.com/v3';
+let ASAAS_BASE_URL = Deno.env.get('ASAAS_BASE_URL') ?? 'https://api-sandbox.asaas.com/v3';
+
+// Force v3 if user forgot it in production URL
+if (ASAAS_BASE_URL && !ASAAS_BASE_URL.endsWith('/v3') && !ASAAS_BASE_URL.endsWith('/v3/')) {
+  // Remove traling slash if exists before appending /v3
+  ASAAS_BASE_URL = ASAAS_BASE_URL.replace(/\/$/, '') + '/v3';
+}
 
 serve(async (req) => {
   // Handle CORS preflight requests
@@ -538,10 +544,10 @@ serve(async (req) => {
       }
     );
 
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error in create-asaas-payment function:', error);
     return new Response(
-      JSON.stringify({ error: 'Erro interno. Tente novamente.' }),
+      JSON.stringify({ error: 'Erro interno. Tente novamente.', details: error.message, stack: error.stack }),
       {
         status: 500,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
