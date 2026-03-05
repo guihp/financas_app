@@ -358,7 +358,7 @@ export const Dashboard = ({ user }: DashboardProps) => {
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => navigate("/super-admin")}
+                onClick={() => navigate("/admin/supremo/iafe/financas")}
                 className="text-orange-500"
               >
                 <Shield className="w-5 h-5" />
@@ -434,7 +434,7 @@ export const Dashboard = ({ user }: DashboardProps) => {
                 variant="ghost"
                 className="w-full justify-start text-sidebar-foreground hover:bg-sidebar-accent border border-orange-500/20 bg-orange-500/10"
                 size="sm"
-                onClick={() => navigate("/super-admin")}
+                onClick={() => navigate("/admin/supremo/iafe/financas")}
               >
                 <Shield className="w-4 h-4 mr-3 text-orange-500" />
                 <span className="text-orange-500 font-medium">Super Admin</span>

@@ -12,10 +12,10 @@ import { useToast } from "@/hooks/use-toast";
 import { Logo } from "@/components/Logo";
 import { TermsOfUseContent } from "@/components/TermsOfUseContent";
 import { Checkbox } from "@/components/ui/checkbox";
-import { 
-  isValidEmail, 
+import {
+  isValidEmail,
   isValidPhoneForCountry,
-  isStrongPassword, 
+  isStrongPassword,
   isValidFullName,
   sanitizeText,
   formatPhoneForCountry,
@@ -41,6 +41,7 @@ const Auth = () => {
   const [phone, setPhone] = useState("");
   const [phoneCountry, setPhoneCountry] = useState<PhoneCountry>("BR");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [promoCode, setPromoCode] = useState("");
   const [otpCode, setOtpCode] = useState("");
   const [otpSent, setOtpSent] = useState(false);
   const [otpVerified, setOtpVerified] = useState(false);
@@ -54,7 +55,7 @@ const Auth = () => {
   const [termsStepDone, setTermsStepDone] = useState(false);
   const [termsScrolledToBottom, setTermsScrolledToBottom] = useState(false);
   const [acceptedTerms, setAcceptedTerms] = useState(false);
-  
+
   const navigate = useNavigate();
   const { toast } = useToast();
 
@@ -109,6 +110,7 @@ const Auth = () => {
     setPhone("");
     setPhoneCountry("BR");
     setConfirmPassword("");
+    setPromoCode("");
     setOtpCode("");
     setOtpSent(false);
     setOtpVerified(false);
@@ -252,7 +254,7 @@ const Auth = () => {
       setVerifyingOtp(true);
       try {
         const trimmedCode = otpCode.trim();
-        
+
         if (!trimmedCode || trimmedCode.length !== 6) {
           setMessage("Por favor, informe um código de 6 dígitos.");
           setVerifyingOtp(false);
@@ -307,7 +309,8 @@ const Auth = () => {
               full_name: sanitizedFullName,
               phone: cleanPhone,
               password: password,
-              terms_accepted: acceptedTerms
+              terms_accepted: acceptedTerms,
+              promo_code: promoCode || undefined
             }
           });
 
@@ -319,7 +322,7 @@ const Auth = () => {
                 const body = typeof customerError.context.body === 'string'
                   ? JSON.parse(customerError.context.body) : customerError.context.body;
                 if (body?.error) errorMessage = body.error;
-              } catch (_) {}
+              } catch (_) { }
             }
             throw new Error(errorMessage);
           }
@@ -413,7 +416,7 @@ const Auth = () => {
           </div>
         </CardHeader>
         <CardContent>
-          <Tabs value={activeTab}           onValueChange={(v) => {
+          <Tabs value={activeTab} onValueChange={(v) => {
             setActiveTab(v as "login" | "signup" | "forgot");
             setMessage("");
             setResetEmailSent(false);
@@ -483,9 +486,9 @@ const Auth = () => {
                   </Alert>
                 )}
 
-                <Button 
-                  type="submit" 
-                  className="w-full bg-primary hover:bg-primary/90" 
+                <Button
+                  type="submit"
+                  className="w-full bg-primary hover:bg-primary/90"
                   disabled={loading}
                 >
                   {loading ? "Entrando..." : "Entrar"}
@@ -531,11 +534,10 @@ const Auth = () => {
                     />
                     <label
                       htmlFor="accept-terms"
-                      className={`text-sm cursor-pointer select-none ${
-                        termsScrolledToBottom
+                      className={`text-sm cursor-pointer select-none ${termsScrolledToBottom
                           ? "text-foreground"
                           : "text-muted-foreground cursor-not-allowed"
-                      }`}
+                        }`}
                     >
                       Li e aceito integralmente os Termos de Uso da IAFÉ Finanças
                     </label>
@@ -561,7 +563,7 @@ const Auth = () => {
                     <Sparkles className="h-6 w-6 text-yellow-400 absolute top-0 right-1/4 animate-pulse" />
                     <Sparkles className="h-4 w-4 text-yellow-400 absolute bottom-0 left-1/4 animate-pulse" />
                   </div>
-                  
+
                   <div>
                     <h3 className="text-2xl font-bold text-green-600 mb-2">Conta Criada!</h3>
                     <p className="text-muted-foreground">Bem-vindo ao IAFÉ Finanças</p>
@@ -681,14 +683,14 @@ const Auth = () => {
                         type="tel"
                         placeholder={
                           phoneCountry === "BR" ? "(11) 9 9999-9999" :
-                          phoneCountry === "US" ? "(555) 123-4567" :
-                          "912 345 678"
+                            phoneCountry === "US" ? "(555) 123-4567" :
+                              "912 345 678"
                         }
                         value={phone}
                         onChange={handlePhoneChange}
                         maxLength={
                           phoneCountry === "BR" ? 17 :
-                          phoneCountry === "US" ? 14 : 11
+                            phoneCountry === "US" ? 14 : 11
                         }
                         required
                         disabled={otpVerified}
@@ -767,29 +769,45 @@ const Auth = () => {
                     </div>
                   </div>
 
+                  <div className="space-y-2">
+                    <Label htmlFor="signup-promo-code">Código Promocional (Opcional)</Label>
+                    <div className="relative">
+                      <Gift className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                      <Input
+                        id="signup-promo-code"
+                        type="text"
+                        placeholder="Ex: IAFERAP10"
+                        value={promoCode}
+                        onChange={(e) => setPromoCode(e.target.value.toUpperCase())}
+                        className="pl-10 uppercase"
+                        disabled={otpVerified}
+                      />
+                    </div>
+                  </div>
+
                   {message && (
                     <Alert>
                       <AlertDescription>{message}</AlertDescription>
                     </Alert>
                   )}
 
-                  <Button 
-                    type="submit" 
-                    className="w-full bg-primary hover:bg-primary/90" 
+                  <Button
+                    type="submit"
+                    className="w-full bg-primary hover:bg-primary/90"
                     disabled={loading || verifyingOtp}
                   >
-                    {loading && !otpSent ? "Enviando código..." : 
-                     verifyingOtp ? "Criando sua conta..." :
-                     otpSent && !otpVerified ? "Verificar e Criar Conta" :
-                     "Começar Grátis"}
+                    {loading && !otpSent ? "Enviando código..." :
+                      verifyingOtp ? "Criando sua conta..." :
+                        otpSent && !otpVerified ? "Verificar e Criar Conta" :
+                          "Começar Grátis"}
                   </Button>
-                  
+
                   {otpSent && !otpVerified && (
                     <p className="text-sm text-muted-foreground text-center">
                       Digite o código recebido no WhatsApp e clique em "Verificar e Criar Conta".
                     </p>
                   )}
-                  
+
                   {!otpSent && (
                     <p className="text-xs text-muted-foreground text-center">
                       Ao continuar, você receberá um código de verificação no WhatsApp.
@@ -810,7 +828,7 @@ const Auth = () => {
                       Verifique sua caixa de entrada e spam.
                     </AlertDescription>
                   </Alert>
-                  <Button 
+                  <Button
                     onClick={() => {
                       setActiveTab("login");
                       setResetEmailSent(false);
@@ -844,9 +862,9 @@ const Auth = () => {
                     </Alert>
                   )}
 
-                  <Button 
-                    type="submit" 
-                    className="w-full bg-primary hover:bg-primary/90" 
+                  <Button
+                    type="submit"
+                    className="w-full bg-primary hover:bg-primary/90"
                     disabled={loading}
                   >
                     {loading ? "Enviando..." : "Enviar E-mail de Recuperação"}

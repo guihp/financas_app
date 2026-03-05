@@ -214,5 +214,4 @@ export const BANK_PRESETS: BankPreset[] = [
     { name: "Banco Original", color: "#22C55E", initials: "OR" },
     { name: "Banrisul", color: "#2563EB", initials: "BA" },
     { name: "Safra", color: "#1E3A5F", initials: "SF" },
-    { name: "Will Bank", color: "#FACC15", initials: "WB" },
 ];

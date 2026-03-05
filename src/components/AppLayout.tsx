@@ -212,7 +212,7 @@ export const AppLayout = () => {
   ];
 
   if (isSuperAdmin) {
-    menuItems.push({ path: "/super-admin", icon: Shield, label: "Super Admin" });
+    menuItems.push({ path: "/admin/supremo/iafe/financas", icon: Shield, label: "Super Admin" });
   }
 
   const isActive = (path: string) => location.pathname === path;

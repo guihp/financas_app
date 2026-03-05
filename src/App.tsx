@@ -6,7 +6,7 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 
 // Pages
 import Auth from "./pages/Auth";
-import SuperAdmin from "./pages/SuperAdmin";
+import AdminSupremoFinancas from "./pages/AdminSupremoFinancas";
 import NotFound from "./pages/NotFound";
 import DashPage from "./pages/DashPage";
 import TransactionsPage from "./pages/TransactionsPage";
@@ -55,7 +55,7 @@ const App = () => (
             <Route path="/faturas" element={<FaturasPage />} />
             <Route path="/alterar-senha" element={<AlterarSenhaPage />} />
             <Route path="/assinatura" element={<Assinatura />} />
-            <Route path="/super-admin" element={<SuperAdmin />} />
+            <Route path="/admin/supremo/iafe/financas" element={<AdminSupremoFinancas />} />
           </Route>
 
           {/* Redirecionar raiz para dashboard */}

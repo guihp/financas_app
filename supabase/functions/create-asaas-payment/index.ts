@@ -138,6 +138,14 @@ serve(async (req) => {
       );
     }
 
+    let discountPercentage = 10; // Default 10%
+    if (registration.promotional_codes) {
+      discountPercentage = Number(registration.promotional_codes.discount_percentage);
+    }
+
+    let finalPrice = Number(plan.price) * (1 - (discountPercentage / 100));
+    finalPrice = Math.round(finalPrice * 100) / 100;
+
     // PIX: resolve CPF/CNPJ - from body or fallback to Asaas customer
     let cpfCnpjForPix = cpfCnpj ? String(cpfCnpj).replace(/\D/g, '') : '';
     if (billingType === 'PIX' && (!cpfCnpjForPix || (cpfCnpjForPix.length !== 11 && cpfCnpjForPix.length !== 14))) {
@@ -179,7 +187,7 @@ serve(async (req) => {
       const subscriptionPayload: any = {
         customer: customerId,
         billingType: 'CREDIT_CARD',
-        value: parseFloat(plan.price),
+        value: finalPrice,
         nextDueDate: nextDueDateStr,
         cycle: 'MONTHLY',
         description: `${plan.name} - IAFÉ Finanças`,
@@ -308,7 +316,7 @@ serve(async (req) => {
     const paymentPayload: any = {
       customer: customerId,
       billingType: 'PIX',
-      value: parseFloat(plan.price),
+      value: finalPrice,
       dueDate: dueDateStr,
       description: `${plan.name} - IAFÉ Finanças`,
       externalReference: registrationId

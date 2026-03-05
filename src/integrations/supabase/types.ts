@@ -366,6 +366,7 @@ export type Database = {
           pix_code: string | null
           pix_qr_code_url: string | null
           plan_id: string | null
+          promotional_code_id: string | null
           status: string
           terms_accepted_at: string | null
           updated_at: string | null
@@ -395,6 +396,7 @@ export type Database = {
           pix_code?: string | null
           pix_qr_code_url?: string | null
           plan_id?: string | null
+          promotional_code_id?: string | null
           status?: string
           terms_accepted_at?: string | null
           updated_at?: string | null
@@ -424,6 +426,7 @@ export type Database = {
           pix_code?: string | null
           pix_qr_code_url?: string | null
           plan_id?: string | null
+          promotional_code_id?: string | null
           status?: string
           terms_accepted_at?: string | null
           updated_at?: string | null
@@ -434,6 +437,13 @@ export type Database = {
             columns: ["plan_id"]
             isOneToOne: false
             referencedRelation: "plans"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pending_registrations_promotional_code_id_fkey"
+            columns: ["promotional_code_id"]
+            isOneToOne: false
+            referencedRelation: "promotional_codes"
             referencedColumns: ["id"]
           },
         ]
@@ -501,6 +511,39 @@ export type Database = {
           phone?: string | null
           updated_at?: string
           user_id?: string
+        }
+        Relationships: []
+      }
+      promotional_codes: {
+        Row: {
+          active: boolean | null
+          code: string
+          created_at: string
+          discount_percentage: number
+          id: string
+          influencer_name: string | null
+          updated_at: string
+          usage_count: number | null
+        }
+        Insert: {
+          active?: boolean | null
+          code: string
+          created_at?: string
+          discount_percentage: number
+          id?: string
+          influencer_name?: string | null
+          updated_at?: string
+          usage_count?: number | null
+        }
+        Update: {
+          active?: boolean | null
+          code?: string
+          created_at?: string
+          discount_percentage?: number
+          id?: string
+          influencer_name?: string | null
+          updated_at?: string
+          usage_count?: number | null
         }
         Relationships: []
       }
@@ -612,6 +655,7 @@ export type Database = {
           id: string
           is_trial: boolean | null
           plan_id: string | null
+          promotional_code_id: string | null
           status: string
           trial_ends_at: string | null
           updated_at: string | null
@@ -628,6 +672,7 @@ export type Database = {
           id?: string
           is_trial?: boolean | null
           plan_id?: string | null
+          promotional_code_id?: string | null
           status?: string
           trial_ends_at?: string | null
           updated_at?: string | null
@@ -644,6 +689,7 @@ export type Database = {
           id?: string
           is_trial?: boolean | null
           plan_id?: string | null
+          promotional_code_id?: string | null
           status?: string
           trial_ends_at?: string | null
           updated_at?: string | null
@@ -655,6 +701,13 @@ export type Database = {
             columns: ["plan_id"]
             isOneToOne: false
             referencedRelation: "plans"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "subscriptions_promotional_code_id_fkey"
+            columns: ["promotional_code_id"]
+            isOneToOne: false
+            referencedRelation: "promotional_codes"
             referencedColumns: ["id"]
           },
         ]
@@ -1021,3 +1074,4 @@ export const Constants = {
     },
   },
 } as const
+

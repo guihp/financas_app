@@ -21,7 +21,7 @@ serve(async (req) => {
     const body = await req.json();
     console.log('Creating Asaas customer with data:', { ...body, password: '[HIDDEN]' });
 
-    const { email, full_name, phone, cpfCnpj, password, terms_accepted, registrationId } = body;
+    const { email, full_name, phone, cpfCnpj, password, terms_accepted, registrationId, promo_code } = body;
 
     // Validate password early
     if (!password) {
@@ -202,6 +202,29 @@ serve(async (req) => {
       );
     }
 
+    // Validate promo_code and calculate discount
+    let finalPrice = Number(planData.price);
+    let appliedPromoId = null;
+    let discountPercentage = 10; // Default 10% discount
+
+    if (promo_code) {
+      const { data: promoData, error: promoError } = await supabaseAdmin
+        .from('promotional_codes')
+        .select('*')
+        .ilike('code', promo_code.trim())
+        .eq('active', true)
+        .single();
+
+      if (!promoError && promoData) {
+        discountPercentage = Number(promoData.discount_percentage);
+        appliedPromoId = promoData.id;
+      }
+    }
+
+    // Apply discount
+    finalPrice = finalPrice * (1 - (discountPercentage / 100));
+    finalPrice = Math.round(finalPrice * 100) / 100; // Round to 2 decimal places
+
     // Calculate expiration (24 hours from now)
     const expiresAt = new Date();
     expiresAt.setHours(expiresAt.getHours() + 24);
@@ -246,6 +269,7 @@ serve(async (req) => {
           password_hash: passwordHash,
           asaas_customer_id: customerId,
           plan_id: planData.id,
+          promotional_code_id: appliedPromoId,
           status: 'pending_payment',
           asaas_payment_id: null,
           payment_method: null,
@@ -285,6 +309,7 @@ serve(async (req) => {
           password_hash: passwordHash,
           asaas_customer_id: customerId,
           plan_id: planData.id,
+          promotional_code_id: appliedPromoId,
           status: 'pending_payment',
           expires_at: expiresAt.toISOString(),
           ...(termsAcceptedAt && { terms_accepted_at: termsAcceptedAt })
@@ -322,8 +347,11 @@ serve(async (req) => {
         plan: {
           id: planData.id,
           name: planData.name,
-          price: planData.price,
-          interval: planData.interval
+          original_price: planData.price,
+          price: finalPrice,
+          interval: planData.interval,
+          applied_discount: discountPercentage,
+          promo_code_id: appliedPromoId
         }
       }),
       {

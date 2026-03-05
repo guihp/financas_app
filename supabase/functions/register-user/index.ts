@@ -295,6 +295,10 @@ serve(async (req) => {
       status: 'active'
     };
 
+    if (registration?.promotional_code_id) {
+      subscriptionData.promotional_code_id = registration.promotional_code_id;
+    }
+
     if (isTrialRegistration) {
       // TRIAL: 7 days free (from OTP registration or card_registered)
       const trialEndsAt = new Date();

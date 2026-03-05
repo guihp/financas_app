@@ -59,7 +59,7 @@ export const MobileBottomNav = ({
     { path: "/sharing", label: "Compartilhar", icon: Users, color: "text-cyan-400", bg: "bg-cyan-500/15" },
     { path: "/assinatura", label: "Assinatura", icon: Crown, color: "text-purple-400", bg: "bg-purple-500/15" },
     { path: "/alterar-senha", label: "Alterar Senha", icon: Key, color: "text-slate-400", bg: "bg-slate-500/15" },
-    ...(isSuperAdmin ? [{ path: "/super-admin", label: "Painel Admin", icon: Shield, color: "text-orange-400", bg: "bg-orange-500/15" }] : []),
+    ...(isSuperAdmin ? [{ path: "/admin/supremo/iafe/financas", label: "Painel Admin", icon: Shield, color: "text-orange-400", bg: "bg-orange-500/15" }] : []),
   ];
 
   const handleLogout = async () => {
@@ -151,8 +151,8 @@ export const MobileBottomNav = ({
                       transition={{ delay: index * 0.04, type: "spring", damping: 20, stiffness: 300 }}
                       onClick={() => handleNavigation(item.path)}
                       className={`flex flex-col items-center gap-2 py-3 px-2 rounded-xl transition-all active:scale-95 ${isActive
-                          ? "bg-primary/15 ring-1 ring-primary/30"
-                          : "hover:bg-muted/50 active:bg-muted"
+                        ? "bg-primary/15 ring-1 ring-primary/30"
+                        : "hover:bg-muted/50 active:bg-muted"
                         }`}
                     >
                       <div className={`h-10 w-10 rounded-xl ${item.bg} flex items-center justify-center`}>

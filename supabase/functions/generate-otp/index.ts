@@ -23,9 +23,9 @@ serve(async (req) => {
     if (!phone) {
       return new Response(
         JSON.stringify({ error: 'Phone number is required' }),
-        { 
-          status: 400, 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        {
+          status: 400,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
         }
       );
     }
@@ -58,6 +58,7 @@ serve(async (req) => {
         phone: cleanPhone,
         code: code,
         email: email || null,
+        full_name: full_name || null,
         expires_at: expiresAt.toISOString(),
         verified: false
       })
@@ -68,9 +69,9 @@ serve(async (req) => {
       console.error('Error creating OTP:', otpError);
       return new Response(
         JSON.stringify({ error: 'Failed to generate OTP code' }),
-        { 
-          status: 500, 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        {
+          status: 500,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
         }
       );
     }
@@ -79,7 +80,7 @@ serve(async (req) => {
     // Get webhook base URL from environment variable, default to empty if not set
     const webhookBaseUrl = Deno.env.get('WEBHOOK_BASE_URL') || '';
     const webhookUrl = webhookBaseUrl ? `${webhookBaseUrl}/webhook/CODIGO-OTP` : null;
-    
+
     if (!webhookUrl) {
       console.warn('WEBHOOK_BASE_URL not configured, skipping webhook call');
     } else {
@@ -108,13 +109,13 @@ serve(async (req) => {
     }
 
     return new Response(
-      JSON.stringify({ 
+      JSON.stringify({
         success: true,
         message: 'OTP code sent to WhatsApp',
         expires_at: expiresAt.toISOString()
       }),
-      { 
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+      {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       }
     );
 
@@ -122,9 +123,9 @@ serve(async (req) => {
     console.error('Error in generate-otp function:', error);
     return new Response(
       JSON.stringify({ error: error.message }),
-      { 
-        status: 500, 
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+      {
+        status: 500,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       }
     );
   }
