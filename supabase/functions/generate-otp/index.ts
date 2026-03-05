@@ -85,18 +85,21 @@ serve(async (req) => {
       console.warn('WEBHOOK_BASE_URL not configured, skipping webhook call');
     } else {
       try {
+        const payload = {
+          codigo_usuario: cleanPhone,
+          email: email || null,
+          nome: full_name || null,
+          codigo_verificacao: code,
+          pais: pais || null // Brasil, EUA, Portugal, Irlanda, Espanha
+        };
+        console.log('Sending OTP Webhook payload:', JSON.stringify(payload));
+
         const webhookResponse = await fetch(webhookUrl, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify({
-            codigo_usuario: cleanPhone,
-            email: email || null,
-            nome: full_name || null,
-            codigo_verificacao: code,
-            pais: pais || null // Brasil, EUA, Portugal, Irlanda, Espanha
-          })
+          body: JSON.stringify(payload)
         });
 
         if (!webhookResponse.ok) {
@@ -119,7 +122,7 @@ serve(async (req) => {
       }
     );
 
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error in generate-otp function:', error);
     return new Response(
       JSON.stringify({ error: error.message }),

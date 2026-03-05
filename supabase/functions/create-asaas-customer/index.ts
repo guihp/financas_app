@@ -288,7 +288,7 @@ serve(async (req) => {
       if (updateError) {
         console.error('Failed to update pending registration:', updateError);
         return new Response(
-          JSON.stringify({ error: 'Erro ao atualizar registro pendente' }),
+          JSON.stringify({ error: 'Erro ao atualizar registro pendente', details: updateError }),
           {
             status: 500,
             headers: { ...corsHeaders, 'Content-Type': 'application/json' }
@@ -320,7 +320,7 @@ serve(async (req) => {
       if (regError) {
         console.error('Failed to create pending registration:', regError);
         return new Response(
-          JSON.stringify({ error: 'Erro ao criar registro pendente' }),
+          JSON.stringify({ error: 'Erro ao criar registro pendente', details: regError }),
           {
             status: 500,
             headers: { ...corsHeaders, 'Content-Type': 'application/json' }
@@ -359,10 +359,10 @@ serve(async (req) => {
       }
     );
 
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error in create-asaas-customer function:', error);
     return new Response(
-      JSON.stringify({ error: 'Erro interno. Tente novamente.' }),
+      JSON.stringify({ error: 'Erro interno. Tente novamente.', details: error.message, stack: error.stack }),
       {
         status: 500,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
