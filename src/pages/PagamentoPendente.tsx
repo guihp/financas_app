@@ -59,6 +59,12 @@ const formatCpfCnpj = (value: string): string => {
 const PagamentoPendente = () => {
   const [searchParams] = useSearchParams();
   const [email, setEmail] = useState(searchParams.get('email') || "");
+
+  // Custom Plan Promo Params from Auth Redirect
+  const promoCodeApplied = searchParams.get('promoCodeApplied') === 'true';
+  const discountParam = searchParams.get('discount');
+  const finalPriceParam = searchParams.get('finalPrice');
+  const originalPriceParam = searchParams.get('originalPrice');
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
   const [pendingPayment, setPendingPayment] = useState<PendingPayment | null>(null);
@@ -523,16 +529,21 @@ const PagamentoPendente = () => {
                 <div className="p-4 bg-primary/10 rounded-lg border border-primary/20">
                   <div className="flex items-center justify-between mb-1">
                     <h3 className="font-semibold text-lg">{plan.name}</h3>
-                    <span className="px-2 py-0.5 bg-green-500/20 text-green-400 text-[10px] font-bold rounded-full uppercase tracking-wider">
-                      Promoção
-                    </span>
+                    {(promoCodeApplied || (plan as any).applied_discount > 0 || discountParam) && (
+                      <span className="px-2 py-0.5 bg-green-500/20 text-green-400 text-[10px] font-bold rounded-full uppercase tracking-wider">
+                        {discountParam || (plan as any).applied_discount}% OFF
+                      </span>
+                    )}
                   </div>
                   <div className="flex items-baseline gap-2">
-                    <span className="text-sm text-muted-foreground line-through">
-                      R$ 49,90
-                    </span>
+                    {/* Only show scratched price if there is a discount */}
+                    {(promoCodeApplied || (plan as any).applied_discount > 0 || discountParam) && (
+                      <span className="text-sm text-muted-foreground line-through">
+                        R$ {originalPriceParam ? Number(originalPriceParam).toFixed(2).replace('.', ',') : '49,90'}
+                      </span>
+                    )}
                     <p className="text-2xl font-bold text-green-500">
-                      R$ {plan.price.toFixed(2).replace('.', ',')}
+                      R$ {finalPriceParam ? Number(finalPriceParam).toFixed(2).replace('.', ',') : plan.price.toFixed(2).replace('.', ',')}
                       <span className="text-sm font-normal text-muted-foreground">/mês</span>
                     </p>
                   </div>

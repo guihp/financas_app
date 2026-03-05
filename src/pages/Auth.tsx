@@ -337,7 +337,16 @@ const Auth = () => {
             description: "Conclua o pagamento para ativar sua conta.",
           });
 
-          navigate(`/pagamento-pendente?email=${encodeURIComponent(sanitizedEmail)}`);
+          // Redirecting with parsed plan data correctly injected into the route state URL
+          let checkoutUrl = `/pagamento-pendente?email=${encodeURIComponent(sanitizedEmail)}`;
+          if (customerData?.plan) {
+            checkoutUrl += `&originalPrice=${customerData.plan.original_price}&finalPrice=${customerData.plan.price}&discount=${customerData.plan.applied_discount}`;
+            if (customerData.plan.promo_code_id) {
+              checkoutUrl += `&promoCodeApplied=true`;
+            }
+          }
+
+          navigate(checkoutUrl);
         } catch (err: any) {
           console.error('create-asaas-customer error:', err);
           setMessage(err.message || "Erro ao iniciar cadastro.");
@@ -535,8 +544,8 @@ const Auth = () => {
                     <label
                       htmlFor="accept-terms"
                       className={`text-sm cursor-pointer select-none ${termsScrolledToBottom
-                          ? "text-foreground"
-                          : "text-muted-foreground cursor-not-allowed"
+                        ? "text-foreground"
+                        : "text-muted-foreground cursor-not-allowed"
                         }`}
                     >
                       Li e aceito integralmente os Termos de Uso da IAFÉ Finanças
