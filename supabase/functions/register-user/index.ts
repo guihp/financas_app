@@ -86,9 +86,12 @@ serve(async (req) => {
       if (reg.terms_accepted_at) termsAcceptedAt = reg.terms_accepted_at;
 
       try {
-        if (!reg.password_hash) throw new Error('Password hash missing');
-        userPassword = atob(reg.password_hash);
-      } catch (e) {
+        if (reg.password_hash) {
+          userPassword = atob(reg.password_hash);
+        } else if (!userPassword) {
+          throw new Error('Password missing in context');
+        }
+      } catch (e: any) {
         console.error('register-user 400: Failed to decode password_hash', { registrationId, error: e.message });
         return new Response(
           JSON.stringify({ error: 'Erro de segurança: Senha inválida no cadastro. Entre em contato com o suporte.' }),
