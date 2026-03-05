@@ -9,7 +9,13 @@ const corsHeaders = {
 
 // Asaas API configuration
 const ASAAS_API_KEY = Deno.env.get('ASAAS_API_KEY') ?? '';
-const ASAAS_BASE_URL = Deno.env.get('ASAAS_BASE_URL') ?? 'https://api-sandbox.asaas.com/v3';
+let ASAAS_BASE_URL = Deno.env.get('ASAAS_BASE_URL') ?? 'https://api-sandbox.asaas.com/v3';
+
+// Force v3 if user forgot it in production URL
+if (ASAAS_BASE_URL && !ASAAS_BASE_URL.endsWith('/v3') && !ASAAS_BASE_URL.endsWith('/v3/')) {
+  // Remove traling slash if exists before appending /v3
+  ASAAS_BASE_URL = ASAAS_BASE_URL.replace(/\/$/, '') + '/v3';
+}
 
 serve(async (req) => {
   // Handle CORS preflight requests
@@ -110,9 +116,20 @@ serve(async (req) => {
       }
     });
 
-    const searchData = await searchResponse.json();
+    const searchResponseText = await searchResponse.text();
     console.log('Asaas customer search response status:', searchResponse.status);
-    console.log('Asaas customer search result:', searchData);
+    console.log('Asaas customer search response raw text:', searchResponseText);
+
+    let searchData;
+    try {
+      searchData = JSON.parse(searchResponseText);
+    } catch (e) {
+      console.error('Failed to parse search JSON response from Asaas:', e);
+      return new Response(
+        JSON.stringify({ error: 'Falha de comunicação com gateway de pagamento. A URL Base da API do Asaas pode estar incorreta no painel Administrativo (Supabase).', details: searchResponseText.substring(0, 250) }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
 
     // Check for API key error
     if (searchData.errors && searchData.errors.some((e: any) => e.code === 'invalid_access_token')) {
