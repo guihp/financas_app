@@ -222,7 +222,7 @@ serve(async (req) => {
     // Validate promo_code and calculate discount
     let finalPrice = Number(planData.price);
     let appliedPromoId = null;
-    let discountPercentage = 10; // Default 10% discount
+    let discountPercentage = 0; // Default 0% discount
 
     if (promo_code) {
       const { data: promoData, error: promoError } = await supabaseAdmin

@@ -32,7 +32,6 @@ export const AddTransactionFab = ({ open, onOpenChange, onTransactionAdded }: Ad
 
   // Payment method & bank/card selection
   const [paymentMethod, setPaymentMethod] = useState<"debit" | "pix" | "credit" | "boleto" | "transfer">("debit");
-  const [selectedBankToId, setSelectedBankToId] = useState("");
   const [creditCards, setCreditCards] = useState<CreditCardOption[]>([]);
   const [bankAccounts, setBankAccounts] = useState<BankAccountOption[]>([]);
   const [selectedCardId, setSelectedCardId] = useState("");
@@ -276,7 +275,7 @@ export const AddTransactionFab = ({ open, onOpenChange, onTransactionAdded }: Ad
             <div className="p-3 rounded-lg bg-blue-500/5 border border-blue-500/20">
               <Label className="text-sm font-medium text-white flex items-center gap-1.5">
                 <Building2 className="h-3.5 w-3.5" />
-                {isTransfer ? "Banco de origem" : type === "income" ? "Banco de destino" : "Banco"}
+                {isTransfer ? "Banco de origem" : type === "income" ? "Banco de recebimento" : "Banco"}
               </Label>
               {bankAccounts.length === 0 ? (
                 <p className="text-xs text-muted-foreground mt-1">Nenhum banco cadastrado. Vá em Bancos e Cartões para cadastrar.</p>
@@ -294,29 +293,6 @@ export const AddTransactionFab = ({ open, onOpenChange, onTransactionAdded }: Ad
                     ))}
                   </SelectContent>
                 </Select>
-              )}
-
-              {/* Bank Destination - for transfers */}
-              {isTransfer && bankAccounts.length > 0 && (
-                <div className="mt-3">
-                  <Label className="text-sm font-medium text-white flex items-center gap-1.5">
-                    <ArrowLeftRight className="h-3.5 w-3.5" />
-                    Banco de destino
-                  </Label>
-                  <Select value={selectedBankToId} onValueChange={setSelectedBankToId}>
-                    <SelectTrigger className="mt-1"><SelectValue placeholder="Selecione o banco de destino" /></SelectTrigger>
-                    <SelectContent>
-                      {bankAccounts.filter(b => b.id !== selectedBankId).map(bank => (
-                        <SelectItem key={bank.id} value={bank.id}>
-                          <div className="flex items-center gap-2">
-                            <div className="w-3 h-3 rounded-full" style={{ backgroundColor: bank.color }} />
-                            {bank.name}
-                          </div>
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
               )}
             </div>
           )}

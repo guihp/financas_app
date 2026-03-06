@@ -60,7 +60,7 @@ const CategoriasPage = () => {
     }
   }, [user?.id]);
 
-  const addCategory = async (name: string) => {
+  const addCategory = async (name: string, parentId?: string) => {
     // Verificar se categoria já existe (case insensitive)
     const normalizedName = name.toLowerCase().trim();
     const exists = categories.some(idx => idx.name.toLowerCase() === normalizedName);
@@ -79,6 +79,7 @@ const CategoriasPage = () => {
       .insert([{
         name: normalizedName,
         user_id: user.id,
+        parent_id: parentId || null
       }])
       .select()
       .single();

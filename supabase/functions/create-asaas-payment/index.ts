@@ -117,7 +117,7 @@ serve(async (req) => {
     // Get pending registration to get plan info
     const { data: registration, error: regError } = await supabaseAdmin
       .from('pending_registrations')
-      .select('*, plans(*)')
+      .select('*, plans(*), promotional_codes(*)')
       .eq('id', registrationId)
       .single();
 
@@ -144,7 +144,7 @@ serve(async (req) => {
       );
     }
 
-    let discountPercentage = 10; // Default 10%
+    let discountPercentage = 0; // Default 0%
     if (registration.promotional_codes) {
       discountPercentage = Number(registration.promotional_codes.discount_percentage);
     }

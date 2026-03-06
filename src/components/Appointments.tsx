@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger as AlertDialogTriggerBtn } from "@/components/ui/alert-dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { supabase } from "@/integrations/supabase/client";
@@ -203,7 +204,7 @@ export const Appointments = ({ user }: AppointmentsProps) => {
 
   const handleToggleStatus = async (id: string, currentStatus: string) => {
     const newStatus = currentStatus === 'completed' ? 'pending' : 'completed';
-    
+
     try {
       // Verificar se usuário ainda está ativo
       const { data: { user: currentUser }, error: authError } = await supabase.auth.getUser();
@@ -338,9 +339,8 @@ export const Appointments = ({ user }: AppointmentsProps) => {
             {appointments.map((appointment) => (
               <div
                 key={appointment.id}
-                className={`group flex items-center justify-between p-4 rounded-lg border transition-colors hover:bg-accent/50 ${
-                  appointment.status === 'completed' ? 'opacity-70' : ''
-                }`}
+                className={`group flex items-center justify-between p-4 rounded-lg border transition-colors hover:bg-accent/50 ${appointment.status === 'completed' ? 'opacity-70' : ''
+                  }`}
               >
                 <div className="flex items-center gap-3">
                   <button
@@ -372,14 +372,31 @@ export const Appointments = ({ user }: AppointmentsProps) => {
                     </div>
                   </div>
                 </div>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => handleDeleteAppointment(appointment.id)}
-                  className="opacity-0 group-hover:opacity-100 transition-opacity text-destructive hover:text-destructive hover:bg-destructive/10"
-                >
-                  <Trash2 className="h-4 w-4" />
-                </Button>
+                <AlertDialog>
+                  <AlertDialogTriggerBtn asChild>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="opacity-0 group-hover:opacity-100 transition-opacity text-destructive hover:text-destructive hover:bg-destructive/10"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </AlertDialogTriggerBtn>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>Excluir Agendamento</AlertDialogTitle>
+                      <AlertDialogDescription>
+                        Tem certeza que deseja excluir o agendamento "{appointment.title}"? Essa ação não pode ser desfeita.
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                      <AlertDialogAction onClick={() => handleDeleteAppointment(appointment.id)} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                        Excluir
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
               </div>
             ))}
           </div>

@@ -247,7 +247,7 @@ serve(async (req) => {
       email: sanitizedEmail,
       password: userPassword,
       email_confirm: true,
-      user_metadata: { full_name }
+      user_metadata: { full_name, phone: cleanPhone }
     });
 
     if (authError) {
