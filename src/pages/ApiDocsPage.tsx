@@ -71,14 +71,46 @@ export default function ApiDocsPage() {
         },
         {
             method: "POST",
-            path: "/manage-categories",
-            description: "Cria uma nova categoria (income/expense) remotamente pelo n8n a pedido do usuário.",
+            path: "/manage-categories (Criar Categoria)",
+            description: "Cria uma nova categoria principal (income ou expense) remotamente.",
             curlCommand: `curl -X POST "https://dlbiwguzbiosaoyrcvay.supabase.co/functions/v1/manage-categories" \\
   -H "Authorization: Bearer <SUPABASE_ANON_KEY>" \\
   -H "Content-Type: application/json" \\
   -d '{
-    "action": "create",
+    "phone": "5511999999999",
+    "action": "create_category",
     "name": "Academia",
+    "type": "expense"
+  }'`
+        },
+        {
+            method: "POST",
+            path: "/manage-categories (Criar Subcategoria)",
+            description: "Cria uma subcategoria vinculada a uma categoria pai existente.",
+            curlCommand: `curl -X POST "https://dlbiwguzbiosaoyrcvay.supabase.co/functions/v1/manage-categories" \\
+  -H "Authorization: Bearer <SUPABASE_ANON_KEY>" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "phone": "5511999999999",
+    "action": "create_subcategory",
+    "name": "Mensalidade",
+    "parent_name": "Academia",
+    "type": "expense"
+  }'`
+        },
+        {
+            method: "POST",
+            path: "/manage-categories (Editar Categoria)",
+            description: "Edita o nome (e opcionalmente o pai) de uma categoria ou subcategoria existente.",
+            curlCommand: `curl -X POST "https://dlbiwguzbiosaoyrcvay.supabase.co/functions/v1/manage-categories" \\
+  -H "Authorization: Bearer <SUPABASE_ANON_KEY>" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "phone": "5511999999999",
+    "action": "edit_category",
+    "old_name": "Academia Velha",
+    "new_name": "Academia Nova",
+    "parent_name": "Saúde", 
     "type": "expense"
   }'`
         },
