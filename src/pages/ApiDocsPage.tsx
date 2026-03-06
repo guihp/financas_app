@@ -1,83 +1,278 @@
 import { ApiTestForm } from "@/components/ApiTestForm";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { ChevronLeft } from "lucide-react";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { ChevronLeft, Copy, Check } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import { useState } from "react";
+import { Badge } from "@/components/ui/badge";
+import { ScrollArea } from "@/components/ui/scroll-area";
+
+const EndpointCard = ({ method, path, description, curlCommand }: { method: string, path: string, description: string, curlCommand: string }) => {
+    const [copied, setCopied] = useState(false);
+
+    const handleCopy = () => {
+        navigator.clipboard.writeText(curlCommand);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+    };
+
+    const methodColors = {
+        GET: "bg-blue-600 hover:bg-blue-700",
+        POST: "bg-green-600 hover:bg-green-700",
+        PUT: "bg-orange-600 hover:bg-orange-700",
+        DELETE: "bg-red-600 hover:bg-red-700"
+    };
+
+    return (
+        <Card className="bg-slate-900 border-slate-800 mb-4 overflow-hidden shadow-sm">
+            <CardHeader className="p-4 bg-slate-800/30 border-b border-slate-800/50 flex flex-row items-center gap-3 space-y-0">
+                <Badge className={`${methodColors[method as keyof typeof methodColors]} text-white font-mono`}>{method}</Badge>
+                <code className="text-slate-200 font-semibold font-mono">{path}</code>
+            </CardHeader>
+            <CardContent className="p-4 space-y-4">
+                <p className="text-sm text-slate-300">{description}</p>
+                <div className="relative group rounded-md overflow-hidden bg-slate-950 border border-slate-800/50">
+                    <pre className="p-4 text-xs font-mono text-slate-400 overflow-x-auto whitespace-pre-wrap break-all">
+                        {curlCommand}
+                    </pre>
+                    <Button
+                        size="icon"
+                        variant="ghost"
+                        className="absolute top-2 right-2 h-8 w-8 text-slate-400 opacity-0 group-hover:opacity-100 transition-opacity bg-slate-900 hover:bg-slate-800 hover:text-white"
+                        onClick={handleCopy}
+                    >
+                        {copied ? <Check className="h-4 w-4 text-green-500" /> : <Copy className="h-4 w-4" />}
+                    </Button>
+                </div>
+            </CardContent>
+        </Card>
+    );
+};
 
 export default function ApiDocsPage() {
     const navigate = useNavigate();
 
+    const endpoints = [
+        {
+            method: "GET",
+            path: "/get-user-by-phone",
+            description: "Busca o perfil do usuário, status, bancos e cartões vinculados usando o número de telefone. Deve ser o primeiro passo em novos fluxos.",
+            curlCommand: `curl -X GET "https://dlbiwguzbiosaoyrcvay.supabase.co/functions/v1/get-user-by-phone?phone=5511999999999" \\
+  -H "Authorization: Bearer <SUPABASE_ANON_KEY>" \\
+  -H "Content-Type: application/json"`
+        },
+        {
+            method: "GET",
+            path: "/get-categories",
+            description: "Listar árvore de categorias (Receitas/Despesas). Usado para mostrar à IA quais categorias existem na plataforma para efetuar transações.",
+            curlCommand: `curl -X GET "https://dlbiwguzbiosaoyrcvay.supabase.co/functions/v1/get-categories" \\
+  -H "Authorization: Bearer <SUPABASE_ANON_KEY>" \\
+  -H "Content-Type: application/json"`
+        },
+        {
+            method: "POST",
+            path: "/manage-categories",
+            description: "Cria uma nova categoria (income/expense) remotamente pelo n8n a pedido do usuário.",
+            curlCommand: `curl -X POST "https://dlbiwguzbiosaoyrcvay.supabase.co/functions/v1/manage-categories" \\
+  -H "Authorization: Bearer <SUPABASE_ANON_KEY>" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "action": "create",
+    "name": "Academia",
+    "type": "expense"
+  }'`
+        },
+        {
+            method: "GET",
+            path: "/manage-accounts-by-phone",
+            description: "Lista as contas bancárias e cartões de crédito configurados pelo usuário.",
+            curlCommand: `curl -X GET "https://dlbiwguzbiosaoyrcvay.supabase.co/functions/v1/manage-accounts-by-phone?phone=5511999999999" \\
+  -H "Authorization: Bearer <SUPABASE_ANON_KEY>" \\
+  -H "Content-Type: application/json"`
+        },
+        {
+            method: "POST",
+            path: "/manage-accounts-by-phone",
+            description: "Cria um novo Banco Institucional para o usuário no sistema.",
+            curlCommand: `curl -X POST "https://dlbiwguzbiosaoyrcvay.supabase.co/functions/v1/manage-accounts-by-phone" \\
+  -H "Authorization: Bearer <SUPABASE_ANON_KEY>" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "phone": "5511999999999",
+    "action": "create_bank",
+    "name": "Nubank",
+    "balance": 500.00
+  }'`
+        },
+        {
+            method: "POST",
+            path: "/add-transaction-by-phone",
+            description: "Cria nova transação (Receita, Despesa ou Transferência). Data é opcional (padrão: hoje). Para Despesas Fixas, enviar requisições iterativas (looping de datas).",
+            curlCommand: `curl -X POST "https://dlbiwguzbiosaoyrcvay.supabase.co/functions/v1/add-transaction-by-phone" \\
+  -H "Authorization: Bearer <SUPABASE_ANON_KEY>" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "phone": "5511999999999",
+    "type": "expense",
+    "amount": 150.80,
+    "category": "supermercado",
+    "payment_method": "debit",
+    "description": "Compra do churrasco",
+    "date": "2024-03-01",
+    "bank_account_id": "uuid-da-conta"
+  }'`
+        },
+        {
+            method: "GET",
+            path: "/get-transactions-by-phone",
+            description: "Gera o extrato de transações do mês e o saldo geral da conta.",
+            curlCommand: `curl -X GET "https://dlbiwguzbiosaoyrcvay.supabase.co/functions/v1/get-transactions-by-phone?phone=5511999999999" \\
+  -H "Authorization: Bearer <SUPABASE_ANON_KEY>" \\
+  -H "Content-Type: application/json"`
+        },
+        {
+            method: "PUT",
+            path: "/update-transaction-by-phone",
+            description: "Atualiza ou corrige o valor, data ou detalhes de uma transação enviada por engano.",
+            curlCommand: `curl -X PUT "https://dlbiwguzbiosaoyrcvay.supabase.co/functions/v1/update-transaction-by-phone" \\
+  -H "Authorization: Bearer <SUPABASE_ANON_KEY>" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "phone": "5511999999999",
+    "transaction_id": "uuid-da-transacao",
+    "amount": 180.50
+  }'`
+        },
+        {
+            method: "DELETE",
+            path: "/cancel-transaction-by-phone",
+            description: "Remove permanentemente (estorna) uma transação do histórico.",
+            curlCommand: `curl -X DELETE "https://dlbiwguzbiosaoyrcvay.supabase.co/functions/v1/cancel-transaction-by-phone" \\
+  -H "Authorization: Bearer <SUPABASE_ANON_KEY>" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "phone": "5511999999999",
+    "transaction_id": "uuid-da-transacao"
+  }'`
+        },
+        {
+            method: "POST",
+            path: "/add-appointment",
+            description: "Adiciona um agendamento / lembrete de conta a pagar ou receber vinculada ao telefone.",
+            curlCommand: `curl -X POST "https://dlbiwguzbiosaoyrcvay.supabase.co/functions/v1/add-appointment" \\
+  -H "Authorization: Bearer <SUPABASE_ANON_KEY>" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "phone": "5511999999999",
+    "title": "Pagar aluguel",
+    "amount": 1200.00,
+    "date": "2024-04-10",
+    "type": "payment",
+    "description": "Lembrete mensal do aluguel"
+  }'`
+        },
+        {
+            method: "GET",
+            path: "/get-appointments-by-phone",
+            description: "Lista todos os agendamentos ou lembretes, facilitando saber o que está pendente no futuro do usuário.",
+            curlCommand: `curl -X GET "https://dlbiwguzbiosaoyrcvay.supabase.co/functions/v1/get-appointments-by-phone?phone=5511999999999" \\
+  -H "Authorization: Bearer <SUPABASE_ANON_KEY>" \\
+  -H "Content-Type: application/json"`
+        },
+        {
+            method: "PUT",
+            path: "/update-appointment-by-phone",
+            description: "Muda o status do agendamento (ex: de pendente para concluído).",
+            curlCommand: `curl -X PUT "https://dlbiwguzbiosaoyrcvay.supabase.co/functions/v1/update-appointment-by-phone" \\
+  -H "Authorization: Bearer <SUPABASE_ANON_KEY>" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "phone": "5511999999999",
+    "appointment_id": "uuid-do-agendamento",
+    "status": "completed"
+  }'`
+        },
+        {
+            method: "DELETE",
+            path: "/delete-appointment",
+            description: "Cancela / apaga de vez um agendamento do usuário.",
+            curlCommand: `curl -X DELETE "https://dlbiwguzbiosaoyrcvay.supabase.co/functions/v1/delete-appointment" \\
+  -H "Authorization: Bearer <SUPABASE_ANON_KEY>" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "phone": "5511999999999",
+    "appointment_id": "uuid-do-agendamento"
+  }'`
+        }
+    ];
+
     return (
         <div className="min-h-screen bg-slate-950 text-slate-50 p-6 flex flex-col items-center">
-            <div className="w-full max-w-5xl mb-6">
+            <div className="w-full max-w-7xl mb-6">
                 <Button variant="outline" onClick={() => navigate(-1)} className="mb-4 text-slate-900">
                     <ChevronLeft className="mr-2 h-4 w-4" /> Voltar
                 </Button>
-                <h1 className="text-3xl font-bold mb-2">Documentação da API (n8n / IA)</h1>
-                <p className="text-slate-400">Página independente para consulta e testes da API do IAFÉ Finanças.</p>
+                <div className="flex flex-col md:flex-row md:items-end justify-between border-b border-slate-800 pb-4">
+                    <div>
+                        <h1 className="text-3xl font-bold mb-2">Painel da API <span className="text-blue-500">n8n / IA</span></h1>
+                        <p className="text-slate-400">Documentação interativa com construtor cURL para testar e guiar as IAs.</p>
+                    </div>
+                </div>
             </div>
 
-            <div className="w-full max-w-5xl grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">
-                <div className="space-y-6">
-                    <Card className="bg-slate-900 border-slate-800 text-slate-200">
-                        <CardHeader>
-                            <CardTitle className="text-xl text-white">Regras de Negócio e I.A.</CardTitle>
+            <div className="w-full max-w-7xl grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+                {/* Coluna da Esquerda: Lógica de IA e Testador */}
+                <div className="lg:col-span-5 space-y-6 lg:sticky lg:top-6">
+                    <Card className="bg-slate-900 border-slate-800 text-slate-200 shadow-md">
+                        <CardHeader className="bg-slate-800/20 border-b border-slate-800/50 pb-4">
+                            <CardTitle className="text-xl text-white">Guia de Intenções para IA</CardTitle>
+                            <CardDescription className="text-slate-400">Como a IA deve processar os comandos</CardDescription>
                         </CardHeader>
-                        <CardContent className="space-y-4 text-sm leading-relaxed">
-                            <div>
-                                <h3 className="font-semibold text-white mb-1">1. Transferências</h3>
-                                <p>O sistema não possui um endpoint separado para transferências. Uma transferência é registrada enviando uma despesa (<code className="bg-slate-800 px-1 rounded">expense</code>) com a categoria definida rigidamente como <code className="bg-slate-800 px-1 rounded">"transferencia"</code> e o método de pagamento <code className="bg-slate-800 px-1 rounded">"transfer"</code>. O ID do banco informado é a origem debitada.</p>
+                        <CardContent className="space-y-4 pt-4 text-sm leading-relaxed">
+                            <div className="bg-slate-950 p-3 rounded-md border border-slate-800">
+                                <h3 className="font-semibold text-blue-400 mb-1 flex items-center gap-2">🔁 Transferências</h3>
+                                <p className="text-slate-300">Sempre são faturadas como <code className="text-orange-400">expense</code>. O campo obrigatório da categoria é <code className="text-green-400">"transferencia"</code> e método de pagamento <code className="text-blue-400">"transfer"</code>.</p>
                             </div>
 
-                            <div>
-                                <h3 className="font-semibold text-white mb-1">2. Categorias vs Grupos</h3>
-                                <p>Para a IA, não fale em "Grupos". A IA deve extrair apenas o <code className="bg-slate-800 px-1 rounded">value</code> da categoria. Exemplo: O usuário fala "Mercado", a IA envia a categoria <code className="bg-slate-800 px-1 rounded">"supermercado"</code> na requisição.</p>
+                            <div className="bg-slate-950 p-3 rounded-md border border-slate-800">
+                                <h3 className="font-semibold text-blue-400 mb-1 flex items-center gap-2">📅 Despesas/Receitas Fixas</h3>
+                                <p className="text-slate-300">Faça chamadas múltiplas ("loops") na API <code className="text-slate-100">/add-transaction</code>, variando iterativamente o payload no campo <code className="text-purple-400">date</code> (1 vez para cada mês desejado).</p>
                             </div>
 
-                            <div>
-                                <h3 className="font-semibold text-white mb-1">3. Cartão vs Conta Bancária</h3>
-                                <p>Regra de ouro: Se o método for <code className="bg-slate-800 px-1 rounded">"credit"</code>, <b>NUNCA</b> envie <code className="bg-slate-800 px-1 rounded">bank_account_id</code>, use <code className="bg-slate-800 px-1 rounded">credit_card_id</code>. Opcionalmente envie <code className="bg-slate-800 px-1 rounded">total_installments</code> maior que 1 para compras parceladas.</p>
+                            <div className="bg-slate-950 p-3 rounded-md border border-slate-800">
+                                <h3 className="font-semibold text-blue-400 mb-1 flex items-center gap-2">💳 Cartão vs Banco</h3>
+                                <p className="text-slate-300">Para cartão, use sempre <code className="text-orange-400">credit_card_id</code>. Para Pix/Débito/Boleto, use <code className="text-blue-400">bank_account_id</code>. Não envie os dois simultaneamente.</p>
                             </div>
                         </CardContent>
                     </Card>
 
-                    <Card className="bg-slate-900 border-slate-800 text-slate-200">
-                        <CardHeader>
-                            <CardTitle className="text-xl text-white">Endpoints Disponíveis</CardTitle>
+                    <Card className="bg-slate-900 border-slate-800 shadow-md">
+                        <CardHeader className="bg-slate-800/20 border-b border-slate-800/50 pb-4">
+                            <CardTitle className="text-xl text-white">Console de Teste</CardTitle>
                         </CardHeader>
-                        <CardContent className="space-y-4 p-0">
-                            <div className="divide-y divide-slate-800">
-                                <div className="p-4 flex flex-col gap-1">
-                                    <div className="flex items-center gap-2">
-                                        <span className="bg-blue-600 text-white text-xs px-2 py-0.5 rounded font-bold">GET</span>
-                                        <code className="text-sm font-semibold">/get-user-by-phone</code>
-                                    </div>
-                                    <p className="text-xs text-slate-400">Verifica se o usuário existe usando o telefone. Retorna IDs de bancos e cartões. Faça isso antes das transações se não os tiver em cache.</p>
-                                </div>
-
-                                <div className="p-4 flex flex-col gap-1">
-                                    <div className="flex items-center gap-2">
-                                        <span className="bg-blue-600 text-white text-xs px-2 py-0.5 rounded font-bold">GET</span>
-                                        <code className="text-sm font-semibold">/get-transactions-by-phone</code>
-                                    </div>
-                                    <p className="text-xs text-slate-400">Retorna um extrato. O objeto <code className="bg-slate-800 px-1 rounded">summary.balance</code> traz o saldo total líquido do usuário.</p>
-                                </div>
-
-                                <div className="p-4 flex flex-col gap-1">
-                                    <div className="flex items-center gap-2">
-                                        <span className="bg-green-600 text-white text-xs px-2 py-0.5 rounded font-bold">POST</span>
-                                        <code className="text-sm font-semibold">/add-transaction-by-phone</code>
-                                    </div>
-                                    <p className="text-xs text-slate-400">Gera nova movimentação. Exige phone, type, amount e category.</p>
-                                </div>
-                            </div>
+                        <CardContent className="pt-4">
+                            <ApiTestForm />
                         </CardContent>
                     </Card>
                 </div>
 
-                <div>
-                    {/* Formulário Interativo que já existia na aplicação */}
-                    <ApiTestForm />
+                {/* Coluna da Direita: Lista Interativa de Endpoints */}
+                <div className="lg:col-span-7">
+                    <div className="mb-4 flex items-center justify-between">
+                        <h2 className="text-xl font-bold">Referência de API (Endpoints)</h2>
+                        <Badge variant="outline" className="text-slate-400 border-slate-700">{endpoints.length} Endpoints Mapeados</Badge>
+                    </div>
+                    <div className="space-y-4">
+                        {endpoints.map((ep, idx) => (
+                            <EndpointCard
+                                key={idx}
+                                method={ep.method}
+                                path={ep.path}
+                                description={ep.description}
+                                curlCommand={ep.curlCommand}
+                            />
+                        ))}
+                    </div>
                 </div>
             </div>
         </div>
