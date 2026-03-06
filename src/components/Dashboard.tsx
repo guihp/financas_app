@@ -29,7 +29,7 @@ export interface Transaction {
   date: Date | string;
   created_at?: string;
   updated_at?: string;
-  user_id: string;
+  user_id?: string;
   payment_method?: string | null;
   credit_card_id?: string | null;
   total_installments?: number | null;
@@ -209,7 +209,7 @@ export const Dashboard = ({ user }: DashboardProps) => {
     };
   }, [user.id, toast, navigate]);
 
-  const addTransaction = async (transaction: Omit<Transaction, "id">) => {
+  const addTransaction = async (transactionOrTransactions: Omit<Transaction, "id"> | Omit<Transaction, "id">[]) => {
     // Buscar o phone do usuário na tabela profiles
     const { data: profileData } = await supabase
       .from('profiles')
@@ -227,19 +227,28 @@ export const Dashboard = ({ user }: DashboardProps) => {
       formattedPhone = `${phoneWithCountry}@s.whatsapp.net`;
     }
 
+    const transactionsArray = Array.isArray(transactionOrTransactions)
+      ? transactionOrTransactions
+      : [transactionOrTransactions];
+
+    const inserts = transactionsArray.map(transaction => ({
+      type: transaction.type,
+      amount: transaction.amount,
+      description: transaction.description,
+      category: transaction.category,
+      date: transaction.date instanceof Date ? transaction.date.toISOString().split('T')[0] : transaction.date,
+      transaction_date: transaction.date instanceof Date ? transaction.date.toISOString().split('T')[0] : transaction.date,
+      user_id: user.id,
+      phone: formattedPhone,
+      installment_group_id: transaction.installment_group_id,
+      total_installments: transaction.total_installments,
+      installment_number: transaction.installment_number,
+    }));
+
     const { data, error } = await supabase
       .from('transactions')
-      .insert([{
-        type: transaction.type,
-        amount: transaction.amount,
-        description: transaction.description,
-        category: transaction.category,
-        date: transaction.date instanceof Date ? transaction.date.toISOString().split('T')[0] : transaction.date,
-        user_id: user.id,
-        phone: formattedPhone,
-      }])
-      .select()
-      .single();
+      .insert(inserts)
+      .select();
 
     if (error) {
       toast({
@@ -250,17 +259,17 @@ export const Dashboard = ({ user }: DashboardProps) => {
       return;
     }
 
-    if (data) {
-      const mappedTransaction = {
-        ...data,
-        amount: Number(data.amount),
-        date: data.date || data.created_at,
-        type: data.type as "income" | "expense"
-      };
-      setTransactions(prev => [mappedTransaction, ...prev]);
+    if (data && data.length > 0) {
+      const mappedTransactions = data.map(d => ({
+        ...d,
+        amount: Number(d.amount),
+        date: d.date || d.created_at,
+        type: d.type as "income" | "expense"
+      }));
+      setTransactions(prev => [...mappedTransactions, ...prev].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
       toast({
         title: "Sucesso",
-        description: `${transaction.type === "income" ? "Receita" : "Despesa"} adicionada com sucesso!`,
+        description: `${transactionsArray.length > 1 ? transactionsArray.length + " Lançamentos" : (transactionsArray[0].type === "income" ? "Receita" : "Despesa")} adicionada com sucesso!`,
       });
     }
   };

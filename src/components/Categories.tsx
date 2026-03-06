@@ -40,6 +40,7 @@ export const Categories = ({ transactions, categories, onAddCategory, onUpdateCa
   const [editingCategory, setEditingCategory] = useState<any>(null);
   const [editCategoryName, setEditCategoryName] = useState("");
   const [editCategoryParentId, setEditCategoryParentId] = useState<string>("none");
+  const [editNewSubcategory, setEditNewSubcategory] = useState("");
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
@@ -106,6 +107,8 @@ export const Categories = ({ transactions, categories, onAddCategory, onUpdateCa
       return;
     }
 
+    const sanitizedName = sanitizeCategoryName(editCategoryName);
+
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
@@ -117,13 +120,21 @@ export const Categories = ({ transactions, categories, onAddCategory, onUpdateCa
       const { error } = await supabase
         .from('categories')
         .update({
-          name: editCategoryName.trim(),
+          name: sanitizedName,
           parent_id: editCategoryParentId !== "none" ? editCategoryParentId : null
-        })
+        } as any)
         .eq('id', editingCategory.id)
         .eq('user_id', user.id);
 
       if (error) throw error;
+
+      if (!editingCategory.parent_id && sanitizedName !== editingCategory.name) {
+        await supabase
+          .from('categories')
+          .update({ parent_id: sanitizedName } as any)
+          .ilike('parent_id', editingCategory.name)
+          .eq('user_id', user.id);
+      }
 
       setEditingCategory(null);
       setEditCategoryName("");
@@ -135,6 +146,26 @@ export const Categories = ({ transactions, categories, onAddCategory, onUpdateCa
       console.error('Erro ao atualizar categoria:', error);
       toast.error("Erro ao atualizar categoria");
     }
+  };
+
+  const handleAddSubcategoryFromEdit = async () => {
+    if (!editNewSubcategory.trim()) return;
+
+    const sanitizedSub = sanitizeCategoryName(editNewSubcategory);
+    if (!sanitizedSub || sanitizedSub.length < 2) {
+      toast.error("Nome inválido para subcategoria.");
+      return;
+    }
+
+    setIsSubmitting(true);
+    const success = await onAddCategory(sanitizedSub, editingCategory.name);
+
+    if (success) {
+      setEditNewSubcategory("");
+      onUpdateCategories();
+      toast.success("Subcategoria adicionada!");
+    }
+    setIsSubmitting(false);
   };
 
   const handleDeleteCategory = async (category: any) => {
@@ -384,7 +415,7 @@ export const Categories = ({ transactions, categories, onAddCategory, onUpdateCa
             {/* 1. Grupos Fixos */}
             {filteredGroups.map(group => {
               const nativas = filteredCategories.filter(c => c.group === group && !hiddenFixedSubcats.includes(c.value));
-              const customizadas = categories.filter(c => c.parent_id === group);
+              const customizadas = categories.filter(c => c.parent_id?.toLowerCase() === group.toLowerCase());
 
               const subcategories = [
                 ...nativas.map(n => ({ id: n.value, name: n.label, value: n.value, isFixed: true, originalCat: null })),
@@ -463,7 +494,7 @@ export const Categories = ({ transactions, categories, onAddCategory, onUpdateCa
 
             {/* 2. Customizadas Principais */}
             {categories.filter(c => !c.parent_id).map(category => {
-              const customizadas = categories.filter(c => c.parent_id === category.name);
+              const customizadas = categories.filter(c => c.parent_id?.toLowerCase() === category.name.toLowerCase());
               const subcategories = customizadas.map(c => ({ id: c.id, name: c.name.charAt(0).toUpperCase() + c.name.slice(1), value: c.name, isFixed: false, originalCat: c }));
 
               let mainCount = 0; let mainIncome = 0; let mainExpenses = 0;
@@ -549,45 +580,97 @@ export const Categories = ({ transactions, categories, onAddCategory, onUpdateCa
       <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Editar Categoria</DialogTitle>
+            <DialogTitle>{editingCategory?.parent_id ? "Editar Subcategoria" : "Editar Categoria e Subcategorias"}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
-            <Input
-              placeholder="Nome da categoria"
-              value={editCategoryName}
-              onChange={(e) => setEditCategoryName(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && handleEditCategory()}
-            />
-            <Select value={editCategoryParentId} onValueChange={setEditCategoryParentId}>
-              <SelectTrigger>
-                <SelectValue placeholder="Categoria Pai (Opcional)" />
-              </SelectTrigger>
-              <SelectContent className="max-h-[250px]">
-                <SelectItem value="none">Nenhuma (Categoria Principal)</SelectItem>
-                <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground bg-muted/50 sticky top-0">Categorias Nativas</div>
-                {filteredGroups.map(group => (
-                  <SelectItem key={group} value={group}>
-                    {group}
-                  </SelectItem>
-                ))}
-                {categories.filter(c => !c.parent_id && c.id !== editingCategory?.id).length > 0 && (
-                  <div>
-                    <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground bg-muted/50 sticky top-0">Minhas Categorias Principais</div>
-                    {categories.filter(c => !c.parent_id && c.id !== editingCategory?.id).map(cat => (
-                      <SelectItem key={cat.id} value={cat.name}>
-                        {cat.name.charAt(0).toUpperCase() + cat.name.slice(1)}
-                      </SelectItem>
+            <div>
+              <label className="text-sm font-medium mb-1 block">Nome da {editingCategory?.parent_id ? "Subcategoria" : "Categoria"}</label>
+              <Input
+                placeholder="Nome"
+                value={editCategoryName}
+                onChange={(e) => setEditCategoryName(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && handleEditCategory()}
+              />
+            </div>
+
+            {/* SE FOR UMA CATEGORIA PRINCIPAL: MOSTRAR SUBCATEGORIAS EM VEZ DO PARENT SELECTOR */}
+            {!editingCategory?.parent_id ? (
+              <div className="pt-4 border-t border-border mt-4">
+                <p className="text-sm font-medium mb-3">Subcategorias</p>
+                <div className="space-y-2 max-h-[200px] overflow-y-auto pr-2 mb-3">
+                  {categories.filter(c => c.parent_id?.toLowerCase() === editingCategory?.name.toLowerCase()).length === 0 ? (
+                    <p className="text-xs text-muted-foreground p-2 bg-muted/20 rounded border border-dashed">Nenhuma subcategoria criada.</p>
+                  ) : (
+                    categories.filter(c => c.parent_id?.toLowerCase() === editingCategory?.name.toLowerCase()).map(sub => (
+                      <div key={sub.id} className="flex items-center justify-between p-2 rounded-md bg-muted/40 border border-border/50">
+                        <span className="text-sm font-medium">{sub.name}</span>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleDeleteCategory(sub)}
+                          className="h-6 w-6 p-0 text-destructive/80 hover:text-destructive hover:bg-destructive/10"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </Button>
+                      </div>
+                    ))
+                  )}
+                </div>
+
+                <div className="flex gap-2">
+                  <Input
+                    placeholder="Nova subcategoria..."
+                    value={editNewSubcategory}
+                    onChange={(e) => setEditNewSubcategory(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && handleAddSubcategoryFromEdit()}
+                    disabled={isSubmitting}
+                    className="flex-1"
+                  />
+                  <Button
+                    type="button"
+                    onClick={handleAddSubcategoryFromEdit}
+                    disabled={isSubmitting || !editNewSubcategory.trim()}
+                    variant="secondary"
+                  >
+                    Adicionar
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              /* SE FOR UMA SUBCATEGORIA: MOSTRAR O SELETOR DE PAI CASO QUEIRA MOVER */
+              <div>
+                <label className="text-sm font-medium mb-1 block">Mover para outra Categoria Pai (Opcional)</label>
+                <Select value={editCategoryParentId} onValueChange={setEditCategoryParentId}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Categoria Pai" />
+                  </SelectTrigger>
+                  <SelectContent className="max-h-[250px]">
+                    <SelectItem value="none">Tornar Categoria Principal (Remover Pai)</SelectItem>
+                    <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground bg-muted/50 sticky top-0">Categorias Nativas</div>
+                    {filteredGroups.map(group => (
+                      <SelectItem key={group} value={group}>{group}</SelectItem>
                     ))}
-                  </div>
-                )}
-              </SelectContent>
-            </Select>
-            <div className="flex gap-2 justify-end">
+                    {categories.filter(c => !c.parent_id && c.id !== editingCategory?.id).length > 0 && (
+                      <div>
+                        <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground bg-muted/50 sticky top-0">Minhas Categorias Principais</div>
+                        {categories.filter(c => !c.parent_id && c.id !== editingCategory?.id).map(cat => (
+                          <SelectItem key={cat.id} value={cat.name}>
+                            {cat.name.charAt(0).toUpperCase() + cat.name.slice(1)}
+                          </SelectItem>
+                        ))}
+                      </div>
+                    )}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
+            <div className="flex gap-2 justify-end pt-4 border-t border-border mt-2">
               <Button variant="outline" onClick={() => setIsEditDialogOpen(false)}>
                 Cancelar
               </Button>
-              <Button onClick={handleEditCategory}>
-                Salvar
+              <Button onClick={handleEditCategory} disabled={isSubmitting}>
+                Salvar Alterações
               </Button>
             </div>
           </div>

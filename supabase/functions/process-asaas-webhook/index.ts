@@ -288,10 +288,47 @@ serve(async (req) => {
                 })
                 .eq('id', subByCust.id);
 
-              console.log('Subscription renewed (by customer fallback):', subByCust.id);
             }
           }
         }
+      }
+
+      // ============================================
+      // INJECT PLATFORM FEE EXPENSE
+      // ============================================
+      try {
+        if (registration.email) {
+          const { data: profile } = await supabaseAdmin
+            .from('profiles')
+            .select('user_id, phone')
+            .eq('email', registration.email)
+            .maybeSingle();
+
+          if (profile && profile.user_id) {
+            // Formatar o phone no padrão WhatsApp se ele existir
+            let formattedPhone = profile.phone;
+            if (formattedPhone && !formattedPhone.includes('@s.whatsapp.net')) {
+              const cleanPhone = formattedPhone.replace(/\D/g, '');
+              const phoneWithCountry = cleanPhone.startsWith('55') ? cleanPhone : `55${cleanPhone}`;
+              formattedPhone = `${phoneWithCountry}@s.whatsapp.net`;
+            }
+
+            await supabaseAdmin.from('transactions').insert({
+              user_id: profile.user_id,
+              type: 'expense',
+              amount: payment?.value || 0,
+              description: 'Assinatura Sistema',
+              category: 'assinatura',
+              date: new Date().toISOString().split('T')[0],
+              transaction_date: new Date().toISOString().split('T')[0],
+              payment_method: payment?.billingType || registration.payment_method || 'other',
+              phone: formattedPhone
+            });
+            console.log('Automated expense (Platform fee) inserted for user:', profile.user_id);
+          }
+        }
+      } catch (e) {
+        console.error('Failed to inject platform fee transaction:', e);
       }
 
       return new Response(
@@ -347,7 +384,7 @@ serve(async (req) => {
   } catch (error) {
     console.error('Error in process-asaas-webhook function:', error);
     return new Response(
-      JSON.stringify({ error: error.message }),
+      JSON.stringify({ error: (error as any).message }),
       {
         status: 500,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }

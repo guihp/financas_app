@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
 import { isValidAmount, sanitizeDescription, sanitizeCategoryName } from "@/utils/validation";
 
@@ -18,12 +19,15 @@ export interface Transaction {
   created_at?: string;
   updated_at?: string;
   user_id?: string;
+  total_installments?: number | null;
+  installment_number?: number | null;
+  installment_group_id?: string | null;
 }
 
 interface AddTransactionDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onAddTransaction: (transaction: Omit<Transaction, "id">) => void;
+  onAddTransaction: (transaction: Omit<Transaction, "id"> | Omit<Transaction, "id">[]) => void;
   categories: any[];
   onAddCategory: (name: string) => Promise<boolean>;
 }
@@ -39,6 +43,9 @@ export const AddTransactionDialog = ({
   const [amount, setAmount] = useState("");
   const [description, setDescription] = useState("");
   const [category, setCategory] = useState("");
+  const [transactionDate, setTransactionDate] = useState(() => new Date().toISOString().split('T')[0]);
+  const [isFixed, setIsFixed] = useState(false);
+  const [fixedMonths, setFixedMonths] = useState("12");
   const [newCategoryName, setNewCategoryName] = useState("");
   const [showNewCategoryInput, setShowNewCategoryInput] = useState(false);
   const { toast } = useToast();
@@ -47,13 +54,13 @@ export const AddTransactionDialog = ({
   const formatCurrency = (value: string) => {
     // Remove tudo que não é número
     let numbers = value.replace(/\D/g, '');
-    
+
     // Se não há números, retorna vazio
     if (!numbers) return '';
-    
+
     // Converte para número e divide por 100 para ter 2 casas decimais
     const numValue = parseInt(numbers, 10) / 100;
-    
+
     // Formata com separador de milhar e decimal brasileiro
     return numValue.toLocaleString('pt-BR', {
       minimumFractionDigits: 2,
@@ -68,7 +75,7 @@ export const AddTransactionDialog = ({
 
   const defaultCategories = [
     "alimentacao",
-    "transporte", 
+    "transporte",
     "saude",
     "lazer",
     "educacao",
@@ -86,7 +93,7 @@ export const AddTransactionDialog = ({
     const names: Record<string, string> = {
       alimentacao: "Alimentação",
       transporte: "Transporte",
-      saude: "Saúde", 
+      saude: "Saúde",
       lazer: "Lazer",
       educacao: "Educação",
       casa: "Casa",
@@ -116,7 +123,7 @@ export const AddTransactionDialog = ({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (!amount || !description || !category) {
       toast({
         title: "Erro",
@@ -159,18 +166,47 @@ export const AddTransactionDialog = ({
       return;
     }
 
-    onAddTransaction({
-      type,
-      amount: amountValidation.value!,
-      description: sanitizedDescription,
-      category: sanitizedCategory,
-      date: new Date(),
-    });
+    if (isFixed) {
+      const totalMonths = parseInt(fixedMonths) || 12;
+      const fixedTransactions = [];
+      const groupId = crypto.randomUUID();
+
+      for (let i = 0; i < totalMonths; i++) {
+        const fixedDate = new Date(transactionDate);
+        fixedDate.setMonth(fixedDate.getMonth() + i);
+        const dateStr = fixedDate.toISOString().split('T')[0];
+
+        fixedTransactions.push({
+          type,
+          amount: amountValidation.value!,
+          description: i > 0 ? `${sanitizedDescription} (Fixa ${i + 1}/${totalMonths})` : sanitizedDescription,
+          category: sanitizedCategory,
+          date: dateStr,
+          installment_group_id: groupId,
+          total_installments: 1,
+          installment_number: 1,
+        });
+      }
+      onAddTransaction(fixedTransactions);
+    } else {
+      onAddTransaction({
+        type,
+        amount: amountValidation.value!,
+        description: sanitizedDescription,
+        category: sanitizedCategory,
+        date: transactionDate,
+        total_installments: 1,
+        installment_number: 1,
+      });
+    }
 
     // Reset form
     setAmount("");
     setDescription("");
     setCategory("");
+    setTransactionDate(new Date().toISOString().split('T')[0]);
+    setIsFixed(false);
+    setFixedMonths("12");
     setNewCategoryName("");
     setShowNewCategoryInput(false);
     onOpenChange(false);
@@ -197,19 +233,32 @@ export const AddTransactionDialog = ({
             </RadioGroup>
           </div>
 
-          <div>
-            <Label htmlFor="amount" className="text-sm font-medium text-white">Valor (R$)</Label>
-            <div className="relative mt-1">
-              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-white/70 font-medium">R$</span>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <Label htmlFor="date-dialog" className="text-sm font-medium text-white mb-1.5 block">Data</Label>
               <Input
-                id="amount"
-                type="text"
-                inputMode="numeric"
-                placeholder="0,00"
-                value={amount}
-                onChange={handleAmountChange}
-                className="pl-10 text-white text-right font-semibold text-lg"
+                id="date-dialog"
+                type="date"
+                value={transactionDate}
+                onChange={(e) => setTransactionDate(e.target.value)}
+                className="text-white w-full h-10"
               />
+            </div>
+
+            <div>
+              <Label htmlFor="amount" className="text-sm font-medium text-white mb-1.5 block">Valor (R$)</Label>
+              <div className="relative">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-white/70 font-medium">R$</span>
+                <Input
+                  id="amount"
+                  type="text"
+                  inputMode="numeric"
+                  placeholder="0,00"
+                  value={amount}
+                  onChange={handleAmountChange}
+                  className="pl-10 text-white text-right font-semibold text-lg h-10"
+                />
+              </div>
             </div>
           </div>
 
@@ -223,6 +272,33 @@ export const AddTransactionDialog = ({
               onChange={(e) => setDescription(e.target.value)}
               className="mt-1 text-white"
             />
+          </div>
+
+          <div className={`p-3 rounded-lg border transition-colors ${type === 'income' ? 'bg-green-500/5 border-green-500/20' : 'bg-red-500/5 border-red-500/20'}`}>
+            <div className="flex items-center justify-between">
+              <div>
+                <Label className="text-sm font-medium text-white block">{type === 'income' ? 'Receita Fixa/Mensal' : 'Despesa Fixa/Mensal'}</Label>
+                <p className="text-[10px] text-muted-foreground mt-0.5 max-w-[200px]">Lançar {type === 'income' ? 'essa receita' : 'essa despesa'} com o valor integral para os meses seguintes.</p>
+              </div>
+              <Switch checked={isFixed} onCheckedChange={setIsFixed} />
+            </div>
+
+            {isFixed && (
+              <div className="mt-3 pt-3 border-t border-border/50">
+                <Label className="text-sm font-medium text-white">Quantos meses futuros deseja lançar?</Label>
+                <Select value={fixedMonths} onValueChange={setFixedMonths}>
+                  <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="2">2 meses</SelectItem>
+                    <SelectItem value="3">3 meses</SelectItem>
+                    <SelectItem value="6">6 meses</SelectItem>
+                    <SelectItem value="12">1 ano (12 meses)</SelectItem>
+                    <SelectItem value="24">2 anos (24 meses)</SelectItem>
+                    <SelectItem value="60">Tempo indeterminado (5 anos)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
           </div>
 
           <div>

@@ -77,9 +77,9 @@ const CategoriasPage = () => {
     const { data, error } = await supabase
       .from('categories')
       .insert([{
-        name: normalizedName,
+        name: name.trim(),
         user_id: user.id,
-        parent_id: parentId || null
+        parent_id: parentId ? parentId.trim() : null
       }])
       .select()
       .single();

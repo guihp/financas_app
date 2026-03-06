@@ -19,6 +19,7 @@ import Assinatura from "./pages/Assinatura";
 import SharingPage from "./pages/SharingPage";
 import CartoesPage from "./pages/CartoesPage";
 import FaturasPage from "./pages/FaturasPage";
+import ApiDocsPage from "./pages/ApiDocsPage";
 
 // Components
 import { ProtectedRoute } from "./components/ProtectedRoute";
@@ -36,6 +37,7 @@ const App = () => (
           {/* Rotas públicas */}
           <Route path="/auth" element={<Auth />} />
           <Route path="/pagamento-pendente" element={<PagamentoPendente />} />
+          <Route path="/api-docs" element={<ApiDocsPage />} />
 
           {/* Rotas protegidas com layout compartilhado */}
           <Route

@@ -26,6 +26,7 @@ export const AddTransactionFab = ({ open, onOpenChange, onTransactionAdded }: Ad
   const [amount, setAmount] = useState("");
   const [description, setDescription] = useState("");
   const [category, setCategory] = useState("");
+  const [transactionDate, setTransactionDate] = useState(() => new Date().toISOString().split('T')[0]);
   const [categories, setCategories] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const { toast } = useToast();
@@ -38,6 +39,8 @@ export const AddTransactionFab = ({ open, onOpenChange, onTransactionAdded }: Ad
   const [selectedBankId, setSelectedBankId] = useState("");
   const [isInstallment, setIsInstallment] = useState(false);
   const [installmentCount, setInstallmentCount] = useState("2");
+  const [isFixed, setIsFixed] = useState(false);
+  const [fixedMonths, setFixedMonths] = useState("12");
 
   useEffect(() => {
     if (open) {
@@ -163,7 +166,7 @@ export const AddTransactionFab = ({ open, onOpenChange, onTransactionAdded }: Ad
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Usuário não autenticado");
 
-      const today = new Date().toISOString().split('T')[0];
+      const selectedDate = transactionDate || new Date().toISOString().split('T')[0];
       const effectivePaymentMethod = type === "expense" ? paymentMethod : null;
 
       if (effectivePaymentMethod === "credit" && isInstallment) {
@@ -173,7 +176,7 @@ export const AddTransactionFab = ({ open, onOpenChange, onTransactionAdded }: Ad
 
         const installments = [];
         for (let i = 0; i < totalInstallments; i++) {
-          const installmentDate = new Date();
+          const installmentDate = new Date(selectedDate);
           installmentDate.setMonth(installmentDate.getMonth() + i);
           const dateStr = installmentDate.toISOString().split('T')[0];
           let currentAmount = installmentAmount;
@@ -193,11 +196,37 @@ export const AddTransactionFab = ({ open, onOpenChange, onTransactionAdded }: Ad
         const { error } = await supabase.from("transactions").insert(installments);
         if (error) throw error;
         toast({ title: "Sucesso", description: `Compra parcelada em ${totalInstallments}x adicionada!` });
+      } else if (isFixed) {
+        const totalMonths = parseInt(fixedMonths) || 12;
+        const fixedTransactions = [];
+        const groupId = crypto.randomUUID();
+
+        for (let i = 0; i < totalMonths; i++) {
+          const fixedDate = new Date(selectedDate);
+          fixedDate.setMonth(fixedDate.getMonth() + i);
+          const dateStr = fixedDate.toISOString().split('T')[0];
+
+          fixedTransactions.push({
+            user_id: user.id, type, amount: amountValidation.value,
+            description: i > 0 ? `${sanitizedDescription} (Fixa ${i + 1}/${totalMonths})` : sanitizedDescription,
+            category: sanitizedCategory,
+            date: dateStr, transaction_date: dateStr,
+            payment_method: effectivePaymentMethod,
+            credit_card_id: needsCreditCard ? selectedCardId : null,
+            bank_account_id: needsBank ? selectedBankId : null,
+            total_installments: 1, installment_number: 1,
+            installment_group_id: groupId,
+          });
+        }
+
+        const { error } = await supabase.from("transactions").insert(fixedTransactions);
+        if (error) throw error;
+        toast({ title: "Sucesso", description: `${totalMonths} lançamentos fixos adicionados!` });
       } else {
         const { error } = await supabase.from("transactions").insert({
           user_id: user.id, type, amount: amountValidation.value,
           description: sanitizedDescription, category: sanitizedCategory,
-          date: today, transaction_date: today,
+          date: selectedDate, transaction_date: selectedDate,
           payment_method: effectivePaymentMethod,
           credit_card_id: needsCreditCard ? selectedCardId : null,
           bank_account_id: needsBank ? selectedBankId : null,
@@ -209,8 +238,10 @@ export const AddTransactionFab = ({ open, onOpenChange, onTransactionAdded }: Ad
 
       // Reset
       setAmount(""); setDescription(""); setCategory("");
+      setTransactionDate(new Date().toISOString().split('T')[0]);
       setPaymentMethod("debit"); setSelectedCardId(""); setSelectedBankId("");
       setIsInstallment(false); setInstallmentCount("2");
+      setIsFixed(false); setFixedMonths("12");
       onOpenChange(false);
       onTransactionAdded?.();
     } catch (error: any) {
@@ -343,27 +374,79 @@ export const AddTransactionFab = ({ open, onOpenChange, onTransactionAdded }: Ad
             </div>
           )}
 
-          {/* Valor */}
-          <div>
-            <Label htmlFor="amount-fab" className="text-sm font-medium text-white">Valor (R$)</Label>
-            <div className="relative mt-1">
-              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-white/70 font-medium">R$</span>
-              <Input id="amount-fab" type="text" inputMode="numeric" placeholder="0,00" value={amount} onChange={handleAmountChange} className="pl-10 text-white text-right font-semibold text-lg" />
+          {/* Data e Valor (Lado a Lado) */}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <Label htmlFor="date-fab" className="text-sm font-medium text-white mb-1.5 block">Data</Label>
+              <Input
+                id="date-fab"
+                type="date"
+                value={transactionDate}
+                onChange={(e) => setTransactionDate(e.target.value)}
+                className="text-white w-full h-10"
+              />
             </div>
-            {needsCreditCard && isInstallment && amount && (
-              <p className="text-xs text-muted-foreground mt-1">
-                {parseInt(installmentCount) || 2}x de R$ {formatCurrency(
-                  String(Math.round((parseFloat(amount.replace(/\./g, '').replace(',', '.')) / (parseInt(installmentCount) || 2)) * 100))
-                )}
-              </p>
-            )}
+
+            <div>
+              <Label htmlFor="amount-fab" className="text-sm font-medium text-white mb-1.5 block">Valor (R$)</Label>
+              <div className="relative">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-white/70 font-medium">R$</span>
+                <Input
+                  id="amount-fab"
+                  type="text"
+                  inputMode="numeric"
+                  placeholder="0,00"
+                  value={amount}
+                  onChange={handleAmountChange}
+                  className="pl-10 text-white text-right font-semibold text-lg h-10"
+                />
+              </div>
+            </div>
           </div>
+
+          {needsCreditCard && isInstallment && amount && (
+            <p className="text-xs text-muted-foreground mt-1">
+              {parseInt(installmentCount) || 2}x de R$ {formatCurrency(
+                String(Math.round((parseFloat(amount.replace(/\./g, '').replace(',', '.')) / (parseInt(installmentCount) || 2)) * 100))
+              )}
+            </p>
+          )}
 
           {/* Descrição */}
           <div>
             <Label htmlFor="description-fab" className="text-sm font-medium text-white">Descrição</Label>
             <Input id="description-fab" type="text" placeholder="Descreva a transação" value={description} onChange={(e) => setDescription(e.target.value)} className="mt-1 text-white" />
           </div>
+
+          {/* Transação Fixa / Recorrente (Não aplicável a parcelamento de cartão) */}
+          {(!needsCreditCard || !isInstallment) && (
+            <div className={`p-3 rounded-lg border transition-colors ${type === 'income' ? 'bg-green-500/5 border-green-500/20' : 'bg-red-500/5 border-red-500/20'}`}>
+              <div className="flex items-center justify-between">
+                <div>
+                  <Label className="text-sm font-medium text-white block">{type === 'income' ? 'Receita Fixa/Mensal' : 'Despesa Fixa/Mensal'}</Label>
+                  <p className="text-[10px] text-muted-foreground mt-0.5 max-w-[200px]">Lançar {type === 'income' ? 'essa receita' : 'essa despesa'} com o valor integral para os meses seguintes.</p>
+                </div>
+                <Switch checked={isFixed} onCheckedChange={setIsFixed} />
+              </div>
+
+              {isFixed && (
+                <div className="mt-3 pt-3 border-t border-border/50">
+                  <Label className="text-sm font-medium text-white">Quantos meses futuros deseja lançar?</Label>
+                  <Select value={fixedMonths} onValueChange={setFixedMonths}>
+                    <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="2">2 meses</SelectItem>
+                      <SelectItem value="3">3 meses</SelectItem>
+                      <SelectItem value="6">6 meses</SelectItem>
+                      <SelectItem value="12">1 ano (12 meses)</SelectItem>
+                      <SelectItem value="24">2 anos (24 meses)</SelectItem>
+                      <SelectItem value="60">Tempo indeterminado (5 anos)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Categoria */}
           {!isTransfer && (
