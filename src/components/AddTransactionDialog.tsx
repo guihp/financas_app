@@ -233,7 +233,7 @@ export const AddTransactionDialog = ({
             </RadioGroup>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <Label htmlFor="date-dialog" className="text-sm font-medium text-white mb-1.5 block">Data</Label>
               <Input
@@ -288,13 +288,10 @@ export const AddTransactionDialog = ({
                 <Label className="text-sm font-medium text-white">Quantos meses futuros deseja lançar?</Label>
                 <Select value={fixedMonths} onValueChange={setFixedMonths}>
                   <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="2">2 meses</SelectItem>
-                    <SelectItem value="3">3 meses</SelectItem>
-                    <SelectItem value="6">6 meses</SelectItem>
-                    <SelectItem value="12">1 ano (12 meses)</SelectItem>
-                    <SelectItem value="24">2 anos (24 meses)</SelectItem>
-                    <SelectItem value="60">Tempo indeterminado (5 anos)</SelectItem>
+                  <SelectContent className="max-h-[200px]">
+                    {Array.from({ length: 59 }, (_, i) => i + 2).map(n => (
+                      <SelectItem key={n} value={String(n)}>{n} meses</SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>
