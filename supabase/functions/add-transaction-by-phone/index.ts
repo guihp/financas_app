@@ -62,6 +62,8 @@ serve(async (req) => {
       bank_account_id,    // UUID do banco (obrigatório se payment_method = debit/pix/boleto)
       credit_card_id,     // UUID do cartão (obrigatório se payment_method = credit)
       total_installments, // Número de parcelas (apenas crédito)
+      is_fixed,           // Boolean: indica se é uma despesa/receita fixa
+      fixed_months,       // Number (2 a 60): Quantidade de meses para lançar
     } = await req.json();
 
     // ==================
@@ -262,66 +264,99 @@ serve(async (req) => {
     }
 
     // ==================
-    // INSERIR TRANSAÇÃO
+    // INSERIR TRANSAÇÃO (Única ou Recorrente/Fixa)
     // ==================
-    const transactionInsert: any = {
-      type,
-      amount: parsedAmount,
-      description: description || null,
-      category,
-      date: date || new Date().toISOString().split('T')[0],
-      user_id: userId,
-    };
+    let transactionsToInsert: any[] = [];
+    const baseDate = date || new Date().toISOString().split('T')[0];
+    const groupId = crypto.randomUUID();
 
-    if (payment_method) transactionInsert.payment_method = payment_method;
-    if (resolvedBankAccountId) transactionInsert.bank_account_id = resolvedBankAccountId;
-    if (resolvedCreditCardId) transactionInsert.credit_card_id = resolvedCreditCardId;
-    if (total_installments && payment_method === 'credit') {
-      transactionInsert.total_installments = parseInt(total_installments);
-      transactionInsert.installment_number = 1;
+    if (is_fixed && fixed_months && fixed_months > 1) {
+      // Cria múltiplas transações para os meses futuros
+      const totalMonths = Math.min(parseInt(fixed_months), 60); // Limite máximo 60 meses
+
+      for (let i = 0; i < totalMonths; i++) {
+        // Incrementa o mês adequadamente
+        const fixedDateObj = new Date(baseDate);
+        fixedDateObj.setMonth(fixedDateObj.getMonth() + i);
+        const dateStr = fixedDateObj.toISOString().split('T')[0];
+
+        const suffix = i > 0 ? ` (Fixa ${i + 1}/${totalMonths})` : "";
+        let desc = description ? `${description}${suffix}` : suffix.trim();
+
+        const insertRow: any = {
+          type,
+          amount: parsedAmount,
+          description: desc || null,
+          category,
+          date: dateStr,
+          transaction_date: dateStr,
+          user_id: userId,
+          installment_group_id: groupId,
+          total_installments: 1,
+          installment_number: 1,
+        };
+
+        if (payment_method) insertRow.payment_method = payment_method;
+        if (resolvedBankAccountId) insertRow.bank_account_id = resolvedBankAccountId;
+        if (resolvedCreditCardId) insertRow.credit_card_id = resolvedCreditCardId;
+
+        transactionsToInsert.push(insertRow);
+      }
+    } else {
+      // Transação única normal
+      const insertRow: any = {
+        type,
+        amount: parsedAmount,
+        description: description || null,
+        category,
+        date: baseDate,
+        transaction_date: baseDate,
+        user_id: userId,
+      };
+
+      if (payment_method) insertRow.payment_method = payment_method;
+      if (resolvedBankAccountId) insertRow.bank_account_id = resolvedBankAccountId;
+      if (resolvedCreditCardId) insertRow.credit_card_id = resolvedCreditCardId;
+      if (total_installments && payment_method === 'credit') {
+        insertRow.total_installments = parseInt(total_installments);
+        insertRow.installment_number = 1;
+      }
+
+      transactionsToInsert.push(insertRow);
     }
 
     const { data: transactionData, error: transactionError } = await supabase
       .from('transactions')
-      .insert([transactionInsert])
-      .select()
-      .single();
+      .insert(transactionsToInsert)
+      .select();
 
     if (transactionError) {
       console.error('Erro ao inserir transação:', transactionError);
       return new Response(
         JSON.stringify({
-          error: 'Erro ao criar transação',
+          error: 'Erro ao criar transação/transações fixas',
           details: transactionError.message
         }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    // ==================
-    // RESPOSTA
-    // ==================
-    const methodLabels: Record<string, string> = {
-      debit: 'Débito',
-      pix: 'PIX',
-      credit: 'Crédito',
-      boleto: 'Boleto'
-    };
-
-    const msg = type === 'income'
-      ? `💰 Receita de R$ ${parsedAmount.toFixed(2)} adicionada com sucesso!`
-      : `💸 Despesa de R$ ${parsedAmount.toFixed(2)} (${methodLabels[payment_method] || 'Geral'}) adicionada com sucesso!`;
+    // Pega os IDs retornados no array para montar o link
+    const createdIds = transactionData?.map((t: { id: string }) => t.id) || [];
+    const returnData = transactionsToInsert.length === 1 ? transactionData![0] : transactionData;
 
     return new Response(
       JSON.stringify({
-        success: true,
-        transaction: transactionData,
-        message: msg
+        message: transactionsToInsert.length > 1 ? `Criadas ${transactionsToInsert.length} transações fixas com sucesso!` : 'Transação criada com sucesso!',
+        transaction_id: createdIds.length === 1 ? createdIds[0] : undefined,
+        transaction_ids: createdIds.length > 1 ? createdIds : undefined,
+        transaction_url: `https://dlbiwguzbiosaoyrcvay.supabase.co/rest/v1/transactions?id=in.(${createdIds.join(',')})`,
+        data: returnData
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
 
-  } catch (error) {
+  } catch (error: any) {
     console.error('Erro geral:', error);
     return new Response(
       JSON.stringify({

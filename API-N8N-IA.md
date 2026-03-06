@@ -146,7 +146,7 @@ Endpoint principal para adicionar despesas, receitas ou transferências.
 
 ### ⚠️ Notas sobre Receitas e Despesas Fixas / Recorrentes
 A funcionalidade de "Despesa Fixa" ou "Receita Mensal Fixa" multiplica a mesma entrada pelos meses seguintes. 
-Como a API `/add-transaction-by-phone` insere **uma transação por chamada**, se o usuário pedir para "*lançar uma despesa fixa de 100 reais por 12 meses*", a IA do n8n deverá **fazer um loop (ou multi-chamadas) de 12 requisições**, alterando iterativamente o mês no campo `date` em cada requisição.
+A API `/add-transaction-by-phone` suporta isso **nativamente em uma única chamada**. Se o usuário pedir para "*lançar uma despesa fixa de 100 reais por 12 meses*", a IA do n8n deverá enviar no payload os campos opcionais `"is_fixed": true` e `"fixed_months": 12` (ou quantidade desejada de meses). O servidor se encarregará de criar todas as cópias futuras automaticamente.
 
 ---
 

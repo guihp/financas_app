@@ -139,7 +139,7 @@ export default function ApiDocsPage() {
         {
             method: "POST",
             path: "/add-transaction-by-phone",
-            description: "Cria nova transação (Receita, Despesa ou Transferência). Data é opcional (padrão: hoje). Para Despesas Fixas, enviar requisições iterativas (looping de datas).",
+            description: "Cria nova transação. Suporta Receitas/Despesas Fixas enviando is_fixed=true e fixed_months=X (ex: 12). Suporta parcelamento de cartão com total_installments.",
             curlCommand: `curl -X POST "https://dlbiwguzbiosaoyrcvay.supabase.co/functions/v1/add-transaction-by-phone" \\
   -H "Authorization: Bearer <SUPABASE_ANON_KEY>" \\
   -H "Content-Type: application/json" \\
@@ -151,6 +151,8 @@ export default function ApiDocsPage() {
     "payment_method": "debit",
     "description": "Compra do churrasco",
     "date": "2024-03-01",
+    "is_fixed": true,
+    "fixed_months": 12,
     "bank_account_id": "uuid-da-conta"
   }'`
         },
@@ -268,7 +270,7 @@ export default function ApiDocsPage() {
 
                             <div className="bg-slate-950 p-3 rounded-md border border-slate-800">
                                 <h3 className="font-semibold text-blue-400 mb-1 flex items-center gap-2">📅 Despesas/Receitas Fixas</h3>
-                                <p className="text-slate-300">Faça chamadas múltiplas ("loops") na API <code className="text-slate-100">/add-transaction</code>, variando iterativamente o payload no campo <code className="text-purple-400">date</code> (1 vez para cada mês desejado).</p>
+                                <p className="text-slate-300">Não precisa mais fazer "loops" de chamadas! Basta usar a API <code className="text-slate-100">/add-transaction-by-phone</code> enviando <code className="text-purple-400">is_fixed: true</code> e a quantidade de meses <code className="text-purple-400">fixed_months: 12</code> (ou 2 a 60).</p>
                             </div>
 
                             <div className="bg-slate-950 p-3 rounded-md border border-slate-800">
