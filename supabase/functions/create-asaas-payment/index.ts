@@ -214,10 +214,14 @@ serve(async (req) => {
       const cleanPhone = (creditCardHolderInfo.phone || '').replace(/\D/g, '');
       const remoteIp = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || req.headers.get('x-real-ip') || '127.0.0.1';
 
+      // Pass finalPrice (promo price) as the initial subscription value
+      // This forces the VERY FIRST payment to be generated with finalPrice
+      const initialSubPrice = finalPrice;
+
       const subscriptionPayload: any = {
         customer: customerId,
         billingType: 'CREDIT_CARD',
-        value: promoDaysDuration > 0 ? baseSubscriptionPrice : finalPrice,
+        value: initialSubPrice,
         nextDueDate: nextDueDateStr,
         cycle: 'MONTHLY',
         description: `${plan.name} - IAFÉ Finanças`,
@@ -275,28 +279,31 @@ serve(async (req) => {
         );
       }
 
-      // If promo duration applies, override the value of the very first payment
-      if (promoDaysDuration > 0 && subData.id) {
+      // If promo duration applies, the recurring value should revert to baseSubscriptionPrice
+      // By updating the subscription with updatePendingPayments: false, the first charge (just created) remains at finalPrice
+      // but future charges will be baseSubscriptionPrice.
+      if (promoDaysDuration > 0 && subData.id && baseSubscriptionPrice > finalPrice) {
         try {
-          const paymentsRes = await fetch(`${ASAAS_BASE_URL}/payments?subscription=${subData.id}&status=PENDING`, {
-            headers: { 'accept': 'application/json', 'access_token': ASAAS_API_KEY }
+          const updateRes = await fetch(`${ASAAS_BASE_URL}/subscriptions/${subData.id}`, {
+            method: 'PUT',
+            headers: {
+              'accept': 'application/json',
+              'content-type': 'application/json',
+              'access_token': ASAAS_API_KEY
+            },
+            body: JSON.stringify({
+              value: baseSubscriptionPrice,
+              updatePendingPayments: false
+            })
           });
-          const paymentsData = await paymentsRes.json();
-          if (paymentsData && paymentsData.data && paymentsData.data.length > 0) {
-            const firstPayment = paymentsData.data.sort((a: any, b: any) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime())[0];
-            await fetch(`${ASAAS_BASE_URL}/payments/${firstPayment.id}`, {
-              method: 'POST',
-              headers: {
-                'accept': 'application/json',
-                'content-type': 'application/json',
-                'access_token': ASAAS_API_KEY
-              },
-              body: JSON.stringify({ value: finalPrice })
-            });
-            console.log('Overrode first subscription payment value to promo price:', finalPrice);
+          const updateData = await updateRes.json();
+          if (!updateRes.ok) {
+            console.error('Failed to update subscription to base price:', updateData);
+          } else {
+            console.log(`Successfully scheduled future subscription payments to full price: ${baseSubscriptionPrice}`);
           }
         } catch (err) {
-          console.warn('Failed to override first payment value for promo duration:', err);
+          console.warn('Exception while updating subscription to base price:', err);
         }
       }
 

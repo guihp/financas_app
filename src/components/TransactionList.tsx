@@ -2,6 +2,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { TrendingUp, TrendingDown, Trash2, Users, CreditCard, Banknote, Zap, Download } from "lucide-react";
 import { Transaction } from "./Dashboard";
+import React, { useState, useMemo } from 'react';
+import fullLogoImg from '@/assets/Documento_3.png';
 import { supabase } from "@/integrations/supabase/client";
 import { getCategoryLabel } from "@/constants/financialData";
 import { useToast } from "@/hooks/use-toast";
@@ -112,7 +114,7 @@ export const TransactionList = ({ transactions, showAll = false, onTransactionDe
 
     try {
       // 1) Converter a logo para Base64 dinamicamente sem inchar o JS
-      const imgData = await fetch('/Documento_3.png')
+      const imgData = await fetch(fullLogoImg)
         .then(res => res.blob())
         .then(blob => new Promise<string>((resolve, reject) => {
           const reader = new FileReader();

@@ -1,3 +1,6 @@
+import fullLogoImg from '@/assets/Documento_3.png';
+import iconImg from '@/assets/Documento_2.png';
+
 interface LogoProps {
   variant?: "horizontal" | "icon" | "light" | "dark";
   size?: "sm" | "md" | "lg" | "xl";
@@ -13,7 +16,7 @@ export const Logo = ({ variant = "horizontal", size = "md", className = "" }: Lo
     xl: "h-28"
   };
 
-  // Sizes for icon only (F_DE_FINANÇAS.png)
+  // Sizes for icon only
   const iconSizes = {
     sm: "h-8",
     md: "h-12",
@@ -22,12 +25,12 @@ export const Logo = ({ variant = "horizontal", size = "md", className = "" }: Lo
   };
 
   if (variant === "icon") {
-    // Just the F swoosh icon
+    // Just the variant icon
     return (
       <div className={`flex items-center ${className}`}>
-        <img 
-          src="/F_DE_FINANÇAS.png" 
-          alt="IAFÉ Finanças" 
+        <img
+          src={iconImg}
+          alt="IAFÉ Finanças"
           className={`${iconSizes[size]} w-auto object-contain`}
         />
       </div>
@@ -37,9 +40,9 @@ export const Logo = ({ variant = "horizontal", size = "md", className = "" }: Lo
   // horizontal, light, dark all show full logo with "IAFÉ FINANÇAS" text
   return (
     <div className={`flex items-center ${className}`}>
-      <img 
-        src="/Documento_3.png" 
-        alt="IAFÉ Finanças" 
+      <img
+        src={fullLogoImg}
+        alt="IAFÉ Finanças"
         className={`${fullLogoSizes[size]} w-auto object-contain`}
       />
     </div>
