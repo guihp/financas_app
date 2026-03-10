@@ -11,7 +11,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { isValidAmount, sanitizeDescription, sanitizeCategoryName } from "@/utils/validation";
 import { CreditCard, Banknote, Zap, FileText, Building2, ArrowLeftRight } from "lucide-react";
 import { FIXED_CATEGORIES, CATEGORY_GROUPS, getCategoryLabel, getCategoriesByType, getCategoryGroupsByType } from "@/constants/financialData";
-
+import { CategorySelect } from "./CategorySelect";
 interface AddTransactionFabProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -259,15 +259,15 @@ export const AddTransactionFab = ({ open, onOpenChange, onTransactionAdded }: Ad
         <form onSubmit={handleSubmit} className="space-y-4">
           {/* Tipo */}
           <div>
-            <Label className="text-sm font-medium text-white">Tipo</Label>
+            <Label className="text-sm font-medium text-foreground">Tipo</Label>
             <RadioGroup value={type} onValueChange={(v) => setType(v as "income" | "expense")} className="flex gap-6 mt-2">
               <div className="flex items-center space-x-2">
                 <RadioGroupItem value="expense" id="expense-fab" />
-                <Label htmlFor="expense-fab" className="text-white">Despesa</Label>
+                <Label htmlFor="expense-fab" className="text-foreground">Despesa</Label>
               </div>
               <div className="flex items-center space-x-2">
                 <RadioGroupItem value="income" id="income-fab" />
-                <Label htmlFor="income-fab" className="text-white">Receita</Label>
+                <Label htmlFor="income-fab" className="text-foreground">Receita</Label>
               </div>
             </RadioGroup>
           </div>
@@ -275,7 +275,7 @@ export const AddTransactionFab = ({ open, onOpenChange, onTransactionAdded }: Ad
           {/* Método de Pagamento - only for expenses */}
           {type === "expense" && (
             <div>
-              <Label className="text-sm font-medium text-white mb-2 block">Método de Pagamento</Label>
+              <Label className="text-sm font-medium text-foreground mb-2 block">Método de Pagamento</Label>
               <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
                 {([
                   { key: "debit", icon: <Banknote className="h-4 w-4" />, label: "Débito", activeClass: "border-blue-500 bg-blue-500/10 text-blue-400" },
@@ -304,7 +304,7 @@ export const AddTransactionFab = ({ open, onOpenChange, onTransactionAdded }: Ad
           {/* Bank Account Selection - for debit, pix, boleto, transfer, income */}
           {needsBank && (
             <div className="p-3 rounded-lg bg-blue-500/5 border border-blue-500/20">
-              <Label className="text-sm font-medium text-white flex items-center gap-1.5">
+              <Label className="text-sm font-medium text-foreground flex items-center gap-1.5">
                 <Building2 className="h-3.5 w-3.5" />
                 {isTransfer ? "Banco de origem" : type === "income" ? "Banco de recebimento" : "Banco"}
               </Label>
@@ -332,7 +332,7 @@ export const AddTransactionFab = ({ open, onOpenChange, onTransactionAdded }: Ad
           {needsCreditCard && (
             <div className="space-y-3 p-3 rounded-lg bg-purple-500/5 border border-purple-500/20">
               <div>
-                <Label className="text-sm font-medium text-white flex items-center gap-1.5">
+                <Label className="text-sm font-medium text-foreground flex items-center gap-1.5">
                   <CreditCard className="h-3.5 w-3.5" />
                   Cartão
                 </Label>
@@ -355,12 +355,12 @@ export const AddTransactionFab = ({ open, onOpenChange, onTransactionAdded }: Ad
                 )}
               </div>
               <div className="flex items-center justify-between">
-                <Label className="text-sm text-white">Parcelado?</Label>
+                <Label className="text-sm text-foreground">Parcelado?</Label>
                 <Switch checked={isInstallment} onCheckedChange={setIsInstallment} />
               </div>
               {isInstallment && (
                 <div>
-                  <Label className="text-sm font-medium text-white">Quantas parcelas?</Label>
+                  <Label className="text-sm font-medium text-foreground">Quantas parcelas?</Label>
                   <Select value={installmentCount} onValueChange={setInstallmentCount}>
                     <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
                     <SelectContent>
@@ -377,20 +377,20 @@ export const AddTransactionFab = ({ open, onOpenChange, onTransactionAdded }: Ad
           {/* Data e Valor (Lado a Lado) */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <Label htmlFor="date-fab" className="text-sm font-medium text-white mb-1.5 block">Data</Label>
+              <Label htmlFor="date-fab" className="text-sm font-medium text-foreground mb-1.5 block">Data</Label>
               <Input
                 id="date-fab"
                 type="date"
                 value={transactionDate}
                 onChange={(e) => setTransactionDate(e.target.value)}
-                className="text-white w-full h-10"
+                className="text-foreground w-full h-10"
               />
             </div>
 
             <div>
-              <Label htmlFor="amount-fab" className="text-sm font-medium text-white mb-1.5 block">Valor (R$)</Label>
+              <Label htmlFor="amount-fab" className="text-sm font-medium text-foreground mb-1.5 block">Valor (R$)</Label>
               <div className="relative">
-                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-white/70 font-medium">R$</span>
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-foreground/70 font-medium">R$</span>
                 <Input
                   id="amount-fab"
                   type="text"
@@ -398,7 +398,7 @@ export const AddTransactionFab = ({ open, onOpenChange, onTransactionAdded }: Ad
                   placeholder="0,00"
                   value={amount}
                   onChange={handleAmountChange}
-                  className="pl-10 text-white text-right font-semibold text-lg h-10"
+                  className="pl-10 text-foreground text-right font-semibold text-lg h-10"
                 />
               </div>
             </div>
@@ -414,8 +414,8 @@ export const AddTransactionFab = ({ open, onOpenChange, onTransactionAdded }: Ad
 
           {/* Descrição */}
           <div>
-            <Label htmlFor="description-fab" className="text-sm font-medium text-white">Descrição</Label>
-            <Input id="description-fab" type="text" placeholder="Descreva a transação" value={description} onChange={(e) => setDescription(e.target.value)} className="mt-1 text-white" />
+            <Label htmlFor="description-fab" className="text-sm font-medium text-foreground">Descrição</Label>
+            <Input id="description-fab" type="text" placeholder="Descreva a transação" value={description} onChange={(e) => setDescription(e.target.value)} className="mt-1 text-foreground" />
           </div>
 
           {/* Transação Fixa / Recorrente (Não aplicável a parcelamento de cartão) */}
@@ -423,7 +423,7 @@ export const AddTransactionFab = ({ open, onOpenChange, onTransactionAdded }: Ad
             <div className={`p-3 rounded-lg border transition-colors ${type === 'income' ? 'bg-green-500/5 border-green-500/20' : 'bg-red-500/5 border-red-500/20'}`}>
               <div className="flex items-center justify-between">
                 <div>
-                  <Label className="text-sm font-medium text-white block">{type === 'income' ? 'Receita Fixa/Mensal' : 'Despesa Fixa/Mensal'}</Label>
+                  <Label className="text-sm font-medium text-foreground block">{type === 'income' ? 'Receita Fixa/Mensal' : 'Despesa Fixa/Mensal'}</Label>
                   <p className="text-[10px] text-muted-foreground mt-0.5 max-w-[200px]">Lançar {type === 'income' ? 'essa receita' : 'essa despesa'} com o valor integral para os meses seguintes.</p>
                 </div>
                 <Switch checked={isFixed} onCheckedChange={setIsFixed} />
@@ -431,7 +431,7 @@ export const AddTransactionFab = ({ open, onOpenChange, onTransactionAdded }: Ad
 
               {isFixed && (
                 <div className="mt-3 pt-3 border-t border-border/50">
-                  <Label className="text-sm font-medium text-white">Quantos meses futuros deseja lançar?</Label>
+                  <Label className="text-sm font-medium text-foreground">Quantos meses futuros deseja lançar?</Label>
                   <Select value={fixedMonths} onValueChange={setFixedMonths}>
                     <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
                     <SelectContent className="max-h-[200px]">
@@ -448,31 +448,13 @@ export const AddTransactionFab = ({ open, onOpenChange, onTransactionAdded }: Ad
           {/* Categoria */}
           {!isTransfer && (
             <div>
-              <Label htmlFor="category-fab" className="text-sm font-medium text-white">Categoria</Label>
-              <Select value={category} onValueChange={setCategory}>
-                <SelectTrigger className="mt-1"><SelectValue placeholder="Selecione uma categoria" /></SelectTrigger>
-                <SelectContent className="max-h-[300px]">
-                  {filteredGroups.map(group => (
-                    <div key={group}>
-                      <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground bg-muted/50 sticky top-0">{group}</div>
-                      {filteredCategories.filter(c => c.group === group).map(cat => (
-                        <SelectItem key={cat.value} value={cat.value}>
-                          {cat.emoji} {cat.label}
-                        </SelectItem>
-                      ))}
-                    </div>
-                  ))}
-                  {/* Custom user categories */}
-                  {userCategoryValues.filter(v => !FIXED_CATEGORIES.find(fc => fc.value === v)).length > 0 && (
-                    <div>
-                      <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground bg-muted/50 sticky top-0">Minhas Categorias</div>
-                      {userCategoryValues.filter(v => !FIXED_CATEGORIES.find(fc => fc.value === v)).map(cat => (
-                        <SelectItem key={cat} value={cat}>{cat.charAt(0).toUpperCase() + cat.slice(1)}</SelectItem>
-                      ))}
-                    </div>
-                  )}
-                </SelectContent>
-              </Select>
+              <Label htmlFor="category-fab" className="text-sm font-medium text-foreground mb-1.5 block">Categoria</Label>
+              <CategorySelect
+                value={category}
+                onValueChange={setCategory}
+                type={type}
+                categories={categories}
+              />
             </div>
           )}
 

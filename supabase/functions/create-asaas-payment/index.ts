@@ -149,8 +149,32 @@ serve(async (req) => {
       discountPercentage = Number(registration.promotional_codes.discount_percentage);
     }
 
-    let finalPrice = Number(plan.price) * (1 - (discountPercentage / 100));
+    // Override with dynamic pricing from app_settings
+    const { data: appSettings } = await supabaseAdmin
+      .from('app_settings')
+      .select('*')
+      .limit(1)
+      .single();
+
+    let originalPrice = Number(plan.price);
+    let promoPrice = originalPrice;
+
+    if (appSettings) {
+      if (appSettings.product_full_price) {
+        originalPrice = Number(appSettings.product_full_price);
+      }
+      if (appSettings.product_promo_price) {
+        promoPrice = Number(appSettings.product_promo_price);
+      }
+    }
+
+    const promoDaysDuration = appSettings?.promo_days || 0;
+
+    let finalPrice = promoPrice * (1 - (discountPercentage / 100));
     finalPrice = Math.round(finalPrice * 100) / 100;
+
+    let baseSubscriptionPrice = originalPrice * (1 - (discountPercentage / 100));
+    baseSubscriptionPrice = Math.round(baseSubscriptionPrice * 100) / 100;
 
     // PIX: resolve CPF/CNPJ - from body or fallback to Asaas customer
     let cpfCnpjForPix = cpfCnpj ? String(cpfCnpj).replace(/\D/g, '') : '';
@@ -179,10 +203,10 @@ serve(async (req) => {
     }
 
     // ============================================
-    // CREDIT CARD: Create Asaas SUBSCRIPTION (trial 7 days, then monthly)
+    // CREDIT CARD: Create Asaas SUBSCRIPTION (trial dynamic days, then monthly)
     // ============================================
     if (billingType === 'CREDIT_CARD') {
-      const TRIAL_DAYS = 7;
+      const TRIAL_DAYS = appSettings?.trial_days || 7;
       const nextDueDate = new Date();
       nextDueDate.setDate(nextDueDate.getDate() + TRIAL_DAYS);
       const nextDueDateStr = nextDueDate.toISOString().split('T')[0];
@@ -193,7 +217,7 @@ serve(async (req) => {
       const subscriptionPayload: any = {
         customer: customerId,
         billingType: 'CREDIT_CARD',
-        value: finalPrice,
+        value: promoDaysDuration > 0 ? baseSubscriptionPrice : finalPrice,
         nextDueDate: nextDueDateStr,
         cycle: 'MONTHLY',
         description: `${plan.name} - IAFÉ Finanças`,
@@ -249,6 +273,31 @@ serve(async (req) => {
           JSON.stringify({ error: errorMessage, details: subData.errors ?? subData }),
           { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
+      }
+
+      // If promo duration applies, override the value of the very first payment
+      if (promoDaysDuration > 0 && subData.id) {
+        try {
+          const paymentsRes = await fetch(`${ASAAS_BASE_URL}/payments?subscription=${subData.id}&status=PENDING`, {
+            headers: { 'accept': 'application/json', 'access_token': ASAAS_API_KEY }
+          });
+          const paymentsData = await paymentsRes.json();
+          if (paymentsData && paymentsData.data && paymentsData.data.length > 0) {
+            const firstPayment = paymentsData.data.sort((a: any, b: any) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime())[0];
+            await fetch(`${ASAAS_BASE_URL}/payments/${firstPayment.id}`, {
+              method: 'POST',
+              headers: {
+                'accept': 'application/json',
+                'content-type': 'application/json',
+                'access_token': ASAAS_API_KEY
+              },
+              body: JSON.stringify({ value: finalPrice })
+            });
+            console.log('Overrode first subscription payment value to promo price:', finalPrice);
+          }
+        } catch (err) {
+          console.warn('Failed to override first payment value for promo duration:', err);
+        }
       }
 
       // Update pending registration with subscription info

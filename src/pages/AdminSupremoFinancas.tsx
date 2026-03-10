@@ -4,13 +4,14 @@ import { supabase } from "@/integrations/supabase/client";
 import { User } from "@supabase/supabase-js";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Users, Shield, Gift, Activity, CircleUser, TrendingUp, UserPlus, CreditCard, CalendarDays } from "lucide-react";
+import { Users, Shield, Gift, Activity, CircleUser, TrendingUp, UserPlus, CreditCard, CalendarDays, Settings } from "lucide-react";
 import { toast } from "sonner";
 import { AdminPromotionalCodes } from "@/components/AdminPromotionalCodes";
 import { AdminUserList } from "@/components/AdminUserList";
 import { AdminCreateUser } from "@/components/AdminCreateUser";
 import { AdminSubscriptions } from "@/components/AdminSubscriptions";
 import { AdminLeadsList } from "@/components/AdminLeadsList";
+import { AdminAppSettings } from "@/components/AdminAppSettings";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { format, subDays, startOfDay, endOfDay, startOfMonth } from "date-fns";
@@ -289,6 +290,10 @@ const AdminSupremoFinancas = () => {
                         <Gift className="h-4 w-4" />
                         <span className="text-sm font-medium">Marketing & Códigos</span>
                     </TabsTrigger>
+                    <TabsTrigger value="settings" className="flex items-center justify-center gap-2 py-2.5">
+                        <Settings className="h-4 w-4 text-purple-500" />
+                        <span className="text-sm font-medium text-purple-500">Configurações</span>
+                    </TabsTrigger>
                 </TabsList>
 
                 <TabsContent value="overview" className="space-y-6">
@@ -447,6 +452,10 @@ const AdminSupremoFinancas = () => {
 
                 <TabsContent value="promo_codes">
                     <AdminPromotionalCodes />
+                </TabsContent>
+
+                <TabsContent value="settings" className="space-y-6">
+                    <AdminAppSettings />
                 </TabsContent>
             </Tabs>
         </div>

@@ -15,16 +15,16 @@ serve(async (req) => {
   try {
     const body = await req.json();
     console.log('Getting pending payment for:', body.email);
-    
+
     const { email } = body;
 
     // Validate required fields
     if (!email) {
       return new Response(
         JSON.stringify({ error: 'Email é obrigatório' }),
-        { 
-          status: 400, 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        {
+          status: 400,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
         }
       );
     }
@@ -48,13 +48,13 @@ serve(async (req) => {
     if (regError || !registration) {
       console.log('No pending registration found for:', email);
       return new Response(
-        JSON.stringify({ 
+        JSON.stringify({
           found: false,
           message: 'Nenhum pagamento pendente encontrado para este email.'
         }),
-        { 
-          status: 200, 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        {
+          status: 200,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
         }
       );
     }
@@ -72,14 +72,14 @@ serve(async (req) => {
         .eq('id', registration.id);
 
       return new Response(
-        JSON.stringify({ 
+        JSON.stringify({
           found: true,
           expired: true,
           message: 'Este pagamento expirou. Por favor, inicie um novo cadastro.'
         }),
-        { 
-          status: 200, 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        {
+          status: 200,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
         }
       );
     }
@@ -87,22 +87,39 @@ serve(async (req) => {
     // If already paid, inform the user (include registrationId so frontend can call check-payment-status to ensure user account exists)
     if (registration.status === 'paid' || registration.status === 'registered') {
       return new Response(
-        JSON.stringify({ 
+        JSON.stringify({
           found: true,
           paid: true,
           registration: { id: registration.id },
           message: 'Seu pagamento já foi confirmado! Você pode fazer login na sua conta.'
         }),
-        { 
-          status: 200, 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        {
+          status: 200,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
         }
       );
     }
 
     // Return pending payment info
     const plan = registration.plans;
-    
+    let originalPrice = plan ? Number(plan.price) : 0;
+
+    // Override with dynamic pricing from app_settings
+    const { data: appSettings } = await supabaseAdmin
+      .from('app_settings')
+      .select('*')
+      .limit(1)
+      .single();
+
+    if (plan && appSettings) {
+      if (appSettings.product_full_price) {
+        originalPrice = Number(appSettings.product_full_price);
+      }
+      if (appSettings.product_promo_price) {
+        plan.price = Number(appSettings.product_promo_price);
+      }
+    }
+
     console.log('Found pending payment:', {
       registrationId: registration.id,
       status: registration.status,
@@ -110,7 +127,7 @@ serve(async (req) => {
     });
 
     return new Response(
-      JSON.stringify({ 
+      JSON.stringify({
         found: true,
         expired: false,
         paid: false,
@@ -141,12 +158,13 @@ serve(async (req) => {
         plan: plan ? {
           id: plan.id,
           name: plan.name,
+          original_price: originalPrice,
           price: plan.price,
           interval: plan.interval
         } : null
       }),
-      { 
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+      {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       }
     );
 
@@ -154,9 +172,9 @@ serve(async (req) => {
     console.error('Error in get-pending-payment function:', error);
     return new Response(
       JSON.stringify({ error: 'Erro interno. Tente novamente.' }),
-      { 
-        status: 500, 
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+      {
+        status: 500,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       }
     );
   }

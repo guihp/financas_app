@@ -38,7 +38,7 @@ const EndpointCard = ({ method, path, description, curlCommand }: { method: stri
                     <Button
                         size="icon"
                         variant="ghost"
-                        className="absolute top-2 right-2 h-8 w-8 text-slate-400 opacity-0 group-hover:opacity-100 transition-opacity bg-slate-900 hover:bg-slate-800 hover:text-white"
+                        className="absolute top-2 right-2 h-8 w-8 text-slate-400 opacity-0 group-hover:opacity-100 transition-opacity bg-slate-900 hover:bg-slate-800 hover:text-foreground"
                         onClick={handleCopy}
                     >
                         {copied ? <Check className="h-4 w-4 text-green-500" /> : <Copy className="h-4 w-4" />}
@@ -259,7 +259,7 @@ export default function ApiDocsPage() {
                 <div className="lg:col-span-5 space-y-6 lg:sticky lg:top-6">
                     <Card className="bg-slate-900 border-slate-800 text-slate-200 shadow-md">
                         <CardHeader className="bg-slate-800/20 border-b border-slate-800/50 pb-4">
-                            <CardTitle className="text-xl text-white">Guia de Intenções para IA</CardTitle>
+                            <CardTitle className="text-xl text-foreground">Guia de Intenções para IA</CardTitle>
                             <CardDescription className="text-slate-400">Como a IA deve processar os comandos</CardDescription>
                         </CardHeader>
                         <CardContent className="space-y-4 pt-4 text-sm leading-relaxed">
@@ -282,7 +282,7 @@ export default function ApiDocsPage() {
 
                     <Card className="bg-slate-900 border-slate-800 shadow-md">
                         <CardHeader className="bg-slate-800/20 border-b border-slate-800/50 pb-4">
-                            <CardTitle className="text-xl text-white">Console de Teste</CardTitle>
+                            <CardTitle className="text-xl text-foreground">Console de Teste</CardTitle>
                         </CardHeader>
                         <CardContent className="pt-4">
                             <ApiTestForm />

@@ -220,7 +220,25 @@ serve(async (req) => {
     }
 
     // Validate promo_code and calculate discount
-    let finalPrice = Number(planData.price);
+    let originalPrice = Number(planData.price);
+    let finalPrice = originalPrice;
+
+    // Override with dynamic pricing from app_settings
+    const { data: appSettings } = await supabaseAdmin
+      .from('app_settings')
+      .select('*')
+      .limit(1)
+      .single();
+
+    if (appSettings) {
+      if (appSettings.product_full_price) {
+        originalPrice = Number(appSettings.product_full_price);
+      }
+      if (appSettings.product_promo_price) {
+        finalPrice = Number(appSettings.product_promo_price);
+      }
+    }
+
     let appliedPromoId = null;
     let discountPercentage = 0; // Default 0% discount
 
@@ -364,7 +382,7 @@ serve(async (req) => {
         plan: {
           id: planData.id,
           name: planData.name,
-          original_price: planData.price,
+          original_price: originalPrice,
           price: finalPrice,
           interval: planData.interval,
           applied_discount: discountPercentage,

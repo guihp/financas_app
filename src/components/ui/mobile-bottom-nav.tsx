@@ -17,6 +17,8 @@ import {
   Users,
   MoreHorizontal,
   X,
+  Moon,
+  Sun,
 } from "lucide-react";
 import { useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
@@ -24,6 +26,7 @@ import { AddTransactionFab } from "@/components/AddTransactionFab";
 import { supabase } from "@/integrations/supabase/client";
 import { Dock, DockIcon } from "@/components/ui/dock";
 import { Button } from "@/components/ui/button";
+import { useTheme } from "@/components/theme-provider";
 
 interface MobileBottomNavProps {
   currentView?: string;
@@ -44,6 +47,7 @@ export const MobileBottomNav = ({
   const location = useLocation();
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [showMoreMenu, setShowMoreMenu] = useState(false);
+  const { theme, setTheme } = useTheme();
 
   const navItems = [
     { path: "/dash", view: "dashboard", label: "Início", icon: TrendingUp },
@@ -167,6 +171,25 @@ export const MobileBottomNav = ({
                 })}
               </div>
 
+              {/* Dark Mode Toggle */}
+              <div className="px-3 pb-1">
+                <button
+                  onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+                  className="w-full flex items-center gap-3 py-2.5 px-3 rounded-xl text-foreground hover:bg-muted/50 transition-colors active:scale-[0.98]"
+                >
+                  <div className="h-8 w-8 rounded-lg bg-primary/10 flex items-center justify-center">
+                    {theme === "dark" ? (
+                      <Sun className="h-4 w-4 text-primary" />
+                    ) : (
+                      <Moon className="h-4 w-4 text-primary" />
+                    )}
+                  </div>
+                  <span className="text-sm font-medium">
+                    {theme === "dark" ? "Modo Claro" : "Modo Escuro"}
+                  </span>
+                </button>
+              </div>
+
               {/* Logout */}
               <div className="px-3 pb-3 pt-1">
                 <div className="h-px bg-border/50 mb-2" />
@@ -221,7 +244,7 @@ export const MobileBottomNav = ({
                         setCurrentView?.(item.view);
                       }
                     }}
-                    className={active ? "text-primary" : "text-white/60"}
+                    className={active ? "text-primary" : "text-foreground/60"}
                   >
                     <Icon className={`h-5 w-5 ${active ? "text-primary" : ""}`} />
                   </DockIcon>
@@ -257,7 +280,7 @@ export const MobileBottomNav = ({
                 className={
                   showMoreMenu || moreMenuItems.some(i => location.pathname === i.path)
                     ? "text-primary"
-                    : "text-white/60"
+                    : "text-foreground/60"
                 }
               >
                 <MoreHorizontal

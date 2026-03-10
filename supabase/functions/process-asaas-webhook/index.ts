@@ -345,6 +345,68 @@ serve(async (req) => {
     }
 
     // Handle other events (overdue, cancelled, etc)
+    if (eventType === 'PAYMENT_CREATED') {
+      const asaasSubscriptionId = payment?.subscription || body?.subscription;
+      if (asaasSubscriptionId) {
+        // Find subscription
+        const { data: existingSub } = await supabaseAdmin
+          .from('subscriptions')
+          .select('promo_ends_at')
+          .eq('asaas_subscription_id', asaasSubscriptionId)
+          .maybeSingle();
+
+        if (existingSub && existingSub.promo_ends_at) {
+          const promoEndsAt = new Date(existingSub.promo_ends_at);
+          const paymentDueDate = new Date(payment?.dueDate || body?.dueDate);
+
+          if (paymentDueDate <= promoEndsAt) {
+            // It's still within the promotional period, fetch app_settings for the promo price
+            const { data: appSettings } = await supabaseAdmin
+              .from('app_settings')
+              .select('product_promo_price')
+              .limit(1)
+              .single();
+
+            if (appSettings && appSettings.product_promo_price) {
+              const promoPrice = Number(appSettings.product_promo_price);
+
+              // Apply discount if there is a promotional code
+              let finalPromoPrice = promoPrice;
+              if (registration?.promotional_code_id) {
+                const { data: promoCode } = await supabaseAdmin
+                  .from('promotional_codes')
+                  .select('discount_percentage')
+                  .eq('id', registration.promotional_code_id)
+                  .single();
+                if (promoCode) {
+                  finalPromoPrice = promoPrice * (1 - (Number(promoCode.discount_percentage) / 100));
+                }
+              }
+              finalPromoPrice = Math.round(finalPromoPrice * 100) / 100;
+
+              // Only update if the payment value is different
+              if (Number(payment?.value) !== finalPromoPrice) {
+                try {
+                  await fetch(`${ASAAS_BASE_URL}/payments/${paymentId}`, {
+                    method: 'POST',
+                    headers: {
+                      'accept': 'application/json',
+                      'content-type': 'application/json',
+                      'access_token': ASAAS_API_KEY
+                    },
+                    body: JSON.stringify({ value: finalPromoPrice })
+                  });
+                  console.log(`Updated payment ${paymentId} to promo price ${finalPromoPrice} for subscription ${asaasSubscriptionId}`);
+                } catch (e) {
+                  console.warn('Failed to update PAYMENT_CREATED value for promo duration:', e);
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+
     if (eventType === 'PAYMENT_OVERDUE') {
       await supabaseAdmin
         .from('pending_registrations')

@@ -86,17 +86,17 @@ export const TransactionChart = ({ transactions, type = "expenses" }: Transactio
           margin={{ top: 10, right: 10, left: -10, bottom: 5 }}
           barCategoryGap="20%"
         >
-          <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" vertical={false} />
+          <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
           <XAxis
             dataKey="day"
             axisLine={false}
             tickLine={false}
-            tick={{ fontSize: 10, fill: "rgba(255,255,255,0.6)" }}
+            tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }}
           />
           <YAxis
             axisLine={false}
             tickLine={false}
-            tick={{ fontSize: 10, fill: "rgba(255,255,255,0.5)" }}
+            tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }}
             tickFormatter={(value) => `R$${(value / 1000).toFixed(0)}k`}
             width={45}
           />
@@ -105,7 +105,7 @@ export const TransactionChart = ({ transactions, type = "expenses" }: Transactio
               if (active && payload && payload.length) {
                 return (
                   <div className="bg-card border border-border rounded-lg p-3 shadow-xl">
-                    <p className="font-medium text-white text-sm">{label}</p>
+                    <p className="font-medium text-foreground text-sm">{label}</p>
                     <p className={`text-sm font-bold ${type === "expenses" ? "text-red-400" : "text-green-400"}`}>
                       {formatCurrency(Number(payload[0].value))}
                     </p>

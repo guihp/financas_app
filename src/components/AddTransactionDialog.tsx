@@ -8,6 +8,7 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
 import { isValidAmount, sanitizeDescription, sanitizeCategoryName } from "@/utils/validation";
+import { CategorySelect } from "./CategorySelect";
 
 export interface Transaction {
   id: string;
@@ -73,35 +74,7 @@ export const AddTransactionDialog = ({
     setAmount(formatted);
   };
 
-  const defaultCategories = [
-    "alimentacao",
-    "transporte",
-    "saude",
-    "lazer",
-    "educacao",
-    "casa",
-    "trabalho",
-    "geral"
-  ];
 
-  const allCategories = [
-    ...defaultCategories,
-    ...categories.map(c => c.name)
-  ].filter((value, index, self) => self.indexOf(value) === index);
-
-  const getCategoryDisplayName = (categoryName: string) => {
-    const names: Record<string, string> = {
-      alimentacao: "Alimentação",
-      transporte: "Transporte",
-      saude: "Saúde",
-      lazer: "Lazer",
-      educacao: "Educação",
-      casa: "Casa",
-      trabalho: "Trabalho",
-      geral: "Geral"
-    };
-    return names[categoryName] || categoryName.charAt(0).toUpperCase() + categoryName.slice(1);
-  };
 
   const handleCreateCategory = async () => {
     if (!newCategoryName.trim()) {
@@ -220,35 +193,35 @@ export const AddTransactionDialog = ({
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <Label className="text-sm font-medium text-white">Tipo</Label>
+            <Label className="text-sm font-medium text-foreground">Tipo</Label>
             <RadioGroup value={type} onValueChange={(value) => setType(value as "income" | "expense")} className="flex gap-6 mt-2">
               <div className="flex items-center space-x-2">
                 <RadioGroupItem value="expense" id="expense" />
-                <Label htmlFor="expense" className="text-white">Despesa</Label>
+                <Label htmlFor="expense" className="text-foreground">Despesa</Label>
               </div>
               <div className="flex items-center space-x-2">
                 <RadioGroupItem value="income" id="income" />
-                <Label htmlFor="income" className="text-white">Receita</Label>
+                <Label htmlFor="income" className="text-foreground">Receita</Label>
               </div>
             </RadioGroup>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <Label htmlFor="date-dialog" className="text-sm font-medium text-white mb-1.5 block">Data</Label>
+              <Label htmlFor="date-dialog" className="text-sm font-medium text-foreground mb-1.5 block">Data</Label>
               <Input
                 id="date-dialog"
                 type="date"
                 value={transactionDate}
                 onChange={(e) => setTransactionDate(e.target.value)}
-                className="text-white w-full h-10"
+                className="text-foreground w-full h-10"
               />
             </div>
 
             <div>
-              <Label htmlFor="amount" className="text-sm font-medium text-white mb-1.5 block">Valor (R$)</Label>
+              <Label htmlFor="amount" className="text-sm font-medium text-foreground mb-1.5 block">Valor (R$)</Label>
               <div className="relative">
-                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-white/70 font-medium">R$</span>
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-foreground/70 font-medium">R$</span>
                 <Input
                   id="amount"
                   type="text"
@@ -256,28 +229,28 @@ export const AddTransactionDialog = ({
                   placeholder="0,00"
                   value={amount}
                   onChange={handleAmountChange}
-                  className="pl-10 text-white text-right font-semibold text-lg h-10"
+                  className="pl-10 text-foreground text-right font-semibold text-lg h-10"
                 />
               </div>
             </div>
           </div>
 
           <div>
-            <Label htmlFor="description" className="text-sm font-medium text-white">Descrição</Label>
+            <Label htmlFor="description" className="text-sm font-medium text-foreground">Descrição</Label>
             <Input
               id="description"
               type="text"
               placeholder="Descreva a transação"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              className="mt-1 text-white"
+              className="mt-1 text-foreground"
             />
           </div>
 
           <div className={`p-3 rounded-lg border transition-colors ${type === 'income' ? 'bg-green-500/5 border-green-500/20' : 'bg-red-500/5 border-red-500/20'}`}>
             <div className="flex items-center justify-between">
               <div>
-                <Label className="text-sm font-medium text-white block">{type === 'income' ? 'Receita Fixa/Mensal' : 'Despesa Fixa/Mensal'}</Label>
+                <Label className="text-sm font-medium text-foreground block">{type === 'income' ? 'Receita Fixa/Mensal' : 'Despesa Fixa/Mensal'}</Label>
                 <p className="text-[10px] text-muted-foreground mt-0.5 max-w-[200px]">Lançar {type === 'income' ? 'essa receita' : 'essa despesa'} com o valor integral para os meses seguintes.</p>
               </div>
               <Switch checked={isFixed} onCheckedChange={setIsFixed} />
@@ -285,7 +258,7 @@ export const AddTransactionDialog = ({
 
             {isFixed && (
               <div className="mt-3 pt-3 border-t border-border/50">
-                <Label className="text-sm font-medium text-white">Quantos meses futuros deseja lançar?</Label>
+                <Label className="text-sm font-medium text-foreground">Quantos meses futuros deseja lançar?</Label>
                 <Select value={fixedMonths} onValueChange={setFixedMonths}>
                   <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
                   <SelectContent className="max-h-[200px]">
@@ -299,20 +272,14 @@ export const AddTransactionDialog = ({
           </div>
 
           <div>
-            <Label htmlFor="category" className="text-sm font-medium text-white">Categoria</Label>
+            <Label htmlFor="category" className="text-sm font-medium text-foreground mb-1.5 block">Categoria</Label>
             <div className="space-y-2 mt-1">
-              <Select value={category} onValueChange={setCategory}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecione uma categoria" />
-                </SelectTrigger>
-                <SelectContent>
-                  {allCategories.map(cat => (
-                    <SelectItem key={cat} value={cat}>
-                      {getCategoryDisplayName(cat)}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <CategorySelect
+                value={category}
+                onValueChange={setCategory}
+                type={type}
+                categories={categories}
+              />
 
               {!showNewCategoryInput ? (
                 <Button

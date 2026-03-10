@@ -72,8 +72,7 @@ const renderActiveShape = (props: any) => {
         x={cx}
         y={cy - 10}
         textAnchor="middle"
-        fill="white"
-        className="text-sm font-semibold"
+        className="text-sm font-semibold fill-foreground"
       >
         {getCategoryDisplayName(payload.name)}
       </text>
@@ -81,8 +80,7 @@ const renderActiveShape = (props: any) => {
         x={cx}
         y={cy + 10}
         textAnchor="middle"
-        fill="white"
-        className="text-xs"
+        className="text-xs fill-foreground"
       >
         {`R$ ${value.toFixed(2).replace('.', ',')}`}
       </text>
@@ -90,8 +88,7 @@ const renderActiveShape = (props: any) => {
         x={cx}
         y={cy + 28}
         textAnchor="middle"
-        fill="rgba(255,255,255,0.7)"
-        className="text-xs"
+        className="text-xs fill-muted-foreground"
       >
         {`${(percent * 100).toFixed(1)}%`}
       </text>
@@ -182,7 +179,7 @@ export const TransactionPieChart = ({ transactions, type = "expenses" }: PieChar
           variant={viewMode === "expenses" ? "default" : "outline"}
           size="sm"
           onClick={() => setViewMode("expenses")}
-          className={viewMode === "expenses" ? "bg-red-500 hover:bg-red-600 text-white" : "text-white border-white/30"}
+          className={viewMode === "expenses" ? "bg-red-500 hover:bg-red-600 text-white" : "text-foreground border-border"}
         >
           Despesas
         </Button>
@@ -190,7 +187,7 @@ export const TransactionPieChart = ({ transactions, type = "expenses" }: PieChar
           variant={viewMode === "income" ? "default" : "outline"}
           size="sm"
           onClick={() => setViewMode("income")}
-          className={viewMode === "income" ? "bg-green-500 hover:bg-green-600 text-white" : "text-white border-white/30"}
+          className={viewMode === "income" ? "bg-green-500 hover:bg-green-600 text-white" : "text-foreground border-border"}
         >
           Receitas
         </Button>
@@ -199,9 +196,9 @@ export const TransactionPieChart = ({ transactions, type = "expenses" }: PieChar
       {/* Filtros de Categoria */}
       <div className="space-y-2">
         <div className="flex items-center justify-between">
-          <span className="text-xs text-white/70">Filtrar por categoria:</span>
+          <span className="text-xs text-foreground/70">Filtrar por categoria:</span>
           {selectedCategories.length > 0 && (
-            <Button variant="ghost" size="sm" onClick={clearFilters} className="h-6 text-xs text-white/70 hover:text-white">
+            <Button variant="ghost" size="sm" onClick={clearFilters} className="h-6 text-xs text-foreground/70 hover:text-foreground">
               Limpar filtros
             </Button>
           )}
@@ -211,14 +208,13 @@ export const TransactionPieChart = ({ transactions, type = "expenses" }: PieChar
             <Badge
               key={category}
               variant={selectedCategories.includes(category) ? "default" : "outline"}
-              className={`cursor-pointer transition-all text-xs ${
-                selectedCategories.includes(category) 
-                  ? "text-white" 
-                  : "text-white/80 border-white/30 hover:border-white/60"
-              }`}
+              className={`cursor-pointer transition-all text-xs ${selectedCategories.includes(category)
+                  ? "text-white"
+                  : "text-foreground/80 border-border hover:border-foreground/40"
+                }`}
               style={{
-                backgroundColor: selectedCategories.includes(category) 
-                  ? COLORS[index % COLORS.length] 
+                backgroundColor: selectedCategories.includes(category)
+                  ? COLORS[index % COLORS.length]
                   : 'transparent'
               }}
               onClick={() => toggleCategory(category)}
@@ -231,7 +227,7 @@ export const TransactionPieChart = ({ transactions, type = "expenses" }: PieChar
 
       {/* Total */}
       <div className="text-center">
-        <span className="text-white/70 text-sm">Total: </span>
+        <span className="text-foreground/70 text-sm">Total: </span>
         <span className={`text-lg font-bold ${viewMode === "expenses" ? "text-red-400" : "text-green-400"}`}>
           {formatCurrency(total)}
         </span>
@@ -257,8 +253,8 @@ export const TransactionPieChart = ({ transactions, type = "expenses" }: PieChar
               animationDuration={800}
             >
               {chartData.map((_, index) => (
-                <Cell 
-                  key={`cell-${index}`} 
+                <Cell
+                  key={`cell-${index}`}
                   fill={COLORS[index % COLORS.length]}
                   stroke="rgba(0,0,0,0.2)"
                   strokeWidth={1}
@@ -268,10 +264,10 @@ export const TransactionPieChart = ({ transactions, type = "expenses" }: PieChar
             <Tooltip
               formatter={(value: number) => [formatCurrency(value), 'Valor']}
               contentStyle={{
-                backgroundColor: 'hsl(270 25% 18%)',
-                border: '1px solid hsl(270 20% 28%)',
+                backgroundColor: 'hsl(var(--card))',
+                border: '1px solid hsl(var(--border))',
                 borderRadius: '8px',
-                color: 'white'
+                color: 'hsl(var(--foreground))'
               }}
               labelFormatter={(label) => getCategoryDisplayName(label)}
             />
@@ -282,19 +278,19 @@ export const TransactionPieChart = ({ transactions, type = "expenses" }: PieChar
       {/* Legenda customizada */}
       <div className="grid grid-cols-2 gap-2 mt-4">
         {chartData.map((entry, index) => (
-          <div 
-            key={entry.name} 
+          <div
+            key={entry.name}
             className="flex items-center gap-2 text-sm cursor-pointer hover:opacity-80 transition-opacity"
             onClick={() => toggleCategory(entry.name)}
           >
-            <div 
-              className="w-3 h-3 rounded-full flex-shrink-0" 
+            <div
+              className="w-3 h-3 rounded-full flex-shrink-0"
               style={{ backgroundColor: COLORS[index % COLORS.length] }}
             />
-            <span className="text-white/90 truncate text-xs">
+            <span className="text-foreground/90 truncate text-xs">
               {getCategoryDisplayName(entry.name)}
             </span>
-            <span className="text-white/60 text-xs ml-auto">
+            <span className="text-foreground/60 text-xs ml-auto">
               {((entry.value / total) * 100).toFixed(0)}%
             </span>
           </div>

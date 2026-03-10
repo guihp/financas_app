@@ -1,3 +1,4 @@
+import { useState, useEffect } from "react";
 import { Logo } from "@/components/Logo";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -22,6 +23,23 @@ export const TrialExpiredWall = ({
   userEmail,
   daysExpiredAgo = 0,
 }: TrialExpiredWallProps) => {
+  const [price, setPrice] = useState<string>("29,90");
+
+  useEffect(() => {
+    const fetchSettings = async () => {
+      try {
+        const result: any = await supabase.from("app_settings" as any).select("product_promo_price").limit(1).single();
+        const data = result.data;
+        if (data && data.product_promo_price) {
+          setPrice(Number(data.product_promo_price).toFixed(2).replace(".", ","));
+        }
+      } catch (err) {
+        console.error("Failed to fetch settings:", err);
+      }
+    };
+    fetchSettings();
+  }, []);
+
   const handleLogout = async () => {
     try {
       await supabase.auth.signOut({ scope: "local" });
@@ -73,7 +91,7 @@ export const TrialExpiredWall = ({
             </div>
 
             <div className="flex items-baseline gap-1">
-              <span className="text-3xl font-bold">R$ 29,90</span>
+              <span className="text-3xl font-bold">R$ {price}</span>
               <span className="text-sm text-muted-foreground">/mês</span>
             </div>
 

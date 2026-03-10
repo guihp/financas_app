@@ -55,6 +55,7 @@ const Auth = () => {
   const [termsStepDone, setTermsStepDone] = useState(false);
   const [termsScrolledToBottom, setTermsScrolledToBottom] = useState(false);
   const [acceptedTerms, setAcceptedTerms] = useState(false);
+  const [showPromoField, setShowPromoField] = useState(false);
 
   const navigate = useNavigate();
   const { toast } = useToast();
@@ -131,6 +132,23 @@ const Auth = () => {
         navigate("/");
       }
     });
+
+    const fetchPromoSettings = async () => {
+      try {
+        const { data } = await supabase
+          .from("app_settings" as any)
+          .select("enable_promo_code")
+          .limit(1)
+          .single();
+        const typedData: any = data;
+        if (typedData && typedData.enable_promo_code === true) {
+          setShowPromoField(true);
+        }
+      } catch (e) {
+        console.error("Failed to fetch promo settings:", e);
+      }
+    };
+    fetchPromoSettings();
 
     return () => subscription.unsubscribe();
   }, [navigate]);
@@ -778,21 +796,23 @@ const Auth = () => {
                     </div>
                   </div>
 
-                  <div className="space-y-2">
-                    <Label htmlFor="signup-promo-code">Código Promocional (Opcional)</Label>
-                    <div className="relative">
-                      <Gift className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                      <Input
-                        id="signup-promo-code"
-                        type="text"
-                        placeholder="Ex: IAFERAP10"
-                        value={promoCode}
-                        onChange={(e) => setPromoCode(e.target.value.toUpperCase())}
-                        className="pl-10 uppercase"
-                        disabled={otpVerified}
-                      />
+                  {showPromoField && (
+                    <div className="space-y-2">
+                      <Label htmlFor="signup-promo-code">Código Promocional (Opcional)</Label>
+                      <div className="relative">
+                        <Gift className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                        <Input
+                          id="signup-promo-code"
+                          type="text"
+                          placeholder="Ex: IAFERAP10"
+                          value={promoCode}
+                          onChange={(e) => setPromoCode(e.target.value.toUpperCase())}
+                          className="pl-10 uppercase"
+                          disabled={otpVerified}
+                        />
+                      </div>
                     </div>
-                  </div>
+                  )}
 
                   {message && (
                     <Alert>

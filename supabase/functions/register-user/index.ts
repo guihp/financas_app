@@ -7,8 +7,7 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
-// Trial period configuration
-const TRIAL_DAYS = 7;
+// Default plan config
 const DEFAULT_PLAN_NAME = 'Plano Mensal';
 
 serve(async (req) => {
@@ -38,6 +37,20 @@ serve(async (req) => {
     let isTrialRegistration = true;
     let registration: any = null;
     let termsAcceptedAt: string | null = null;
+    let trialDays = 7;
+    let promoDays = 0;
+
+    // Fetch dynamic trial days from app_settings
+    const { data: appSettings } = await supabaseAdmin
+      .from('app_settings' as any)
+      .select('trial_days, promo_days')
+      .limit(1)
+      .single();
+
+    if (appSettings) {
+      if (appSettings.trial_days !== undefined) trialDays = Number(appSettings.trial_days);
+      if (appSettings.promo_days !== undefined && appSettings.promo_days !== null) promoDays = Number(appSettings.promo_days);
+    }
 
     // ============================================
     // PATH: registrationId only (payment confirmed - create user from pending_registrations)
@@ -305,12 +318,18 @@ serve(async (req) => {
     if (isTrialRegistration) {
       // TRIAL: 7 days free (from OTP registration or card_registered)
       const trialEndsAt = new Date();
-      trialEndsAt.setDate(trialEndsAt.getDate() + TRIAL_DAYS);
+      trialEndsAt.setDate(trialEndsAt.getDate() + trialDays);
 
       subscriptionData.is_trial = true;
       subscriptionData.trial_ends_at = trialEndsAt.toISOString();
       subscriptionData.current_period_start = now.toISOString().split('T')[0];
       subscriptionData.current_period_end = trialEndsAt.toISOString().split('T')[0];
+
+      if (promoDays > 0) {
+        const promoEndsAt = new Date(trialEndsAt);
+        promoEndsAt.setDate(promoEndsAt.getDate() + promoDays);
+        subscriptionData.promo_ends_at = promoEndsAt.toISOString();
+      }
       // Save Asaas subscription ID if card was registered
       if (registration?.asaas_subscription_id) {
         subscriptionData.asaas_subscription_id = registration.asaas_subscription_id;
@@ -321,7 +340,7 @@ serve(async (req) => {
 
       console.log('Creating trial subscription:', {
         userId: authData.user.id,
-        trialDays: TRIAL_DAYS,
+        trialDays: trialDays,
         trialEndsAt: trialEndsAt.toISOString(),
         hasAsaasSubscription: !!registration?.asaas_subscription_id
       });
@@ -379,7 +398,7 @@ serve(async (req) => {
         }
 
         const trialEndsAt = new Date();
-        trialEndsAt.setDate(trialEndsAt.getDate() + TRIAL_DAYS);
+        trialEndsAt.setDate(trialEndsAt.getDate() + trialDays);
 
         const emailPromise = fetch(`${supabaseUrl}/functions/v1/send-payment-email`, {
           method: 'POST',
@@ -392,7 +411,7 @@ serve(async (req) => {
             to: sanitizedEmail,
             userName: full_name,
             planName: planName,
-            trialDays: TRIAL_DAYS,
+            trialDays: trialDays,
             trialEndsAt: trialEndsAt.toISOString()
           })
         }).then(res => res.json())
@@ -419,7 +438,7 @@ serve(async (req) => {
       phone: cleanPhone,
       full_name,
       isTrial: isTrialRegistration,
-      trialDays: isTrialRegistration ? TRIAL_DAYS : 0
+      trialDays: isTrialRegistration ? trialDays : 0
     });
 
     return new Response(
@@ -428,7 +447,7 @@ serve(async (req) => {
         user_id: authData.user.id,
         email: authData.user.email,
         isTrial: isTrialRegistration,
-        trialDays: isTrialRegistration ? TRIAL_DAYS : 0
+        trialDays: isTrialRegistration ? trialDays : 0
       }),
       {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }

@@ -5,6 +5,8 @@ import { User } from "@supabase/supabase-js";
 import { Logo } from "@/components/Logo";
 import { MobileBottomNav } from "@/components/ui/mobile-bottom-nav";
 import { TrialExpiredWall } from "@/components/TrialExpiredWall";
+import { AutoDarkMode } from "@/components/AutoDarkMode";
+import { useTheme } from "@/components/theme-provider";
 import { Button } from "@/components/ui/button";
 import {
   LayoutDashboard,
@@ -19,6 +21,8 @@ import {
   Users,
   Receipt,
   Landmark,
+  Moon,
+  Sun,
 } from "lucide-react";
 
 interface SubscriptionCheck {
@@ -38,6 +42,7 @@ export const AppLayout = () => {
   });
   const navigate = useNavigate();
   const location = useLocation();
+  const { theme, setTheme } = useTheme();
 
   const checkSubscription = async (userId: string) => {
     try {
@@ -287,6 +292,25 @@ export const AppLayout = () => {
           </nav>
 
           <div className="mt-auto pt-4 border-t border-sidebar-border space-y-3">
+            {/* Dark Mode Toggle */}
+            <Button
+              variant="ghost"
+              className="w-full justify-start gap-3 text-sidebar-foreground hover:bg-sidebar-accent/50"
+              onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+            >
+              {theme === "dark" ? (
+                <>
+                  <Sun className="h-5 w-5" />
+                  Modo Claro
+                </>
+              ) : (
+                <>
+                  <Moon className="h-5 w-5" />
+                  Modo Escuro
+                </>
+              )}
+            </Button>
+
             <div className="flex items-center gap-3 px-2">
               <div className="h-9 w-9 rounded-full bg-primary/20 flex items-center justify-center flex-shrink-0">
                 <span className="text-sm font-semibold text-primary">
@@ -320,6 +344,9 @@ export const AppLayout = () => {
         <div className="lg:hidden">
           <MobileBottomNav userEmail={user.email} isSuperAdmin={isSuperAdmin} />
         </div>
+
+        {/* Auto Dark Mode Popup */}
+        <AutoDarkMode />
       </div>
     </div>
   );

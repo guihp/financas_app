@@ -185,6 +185,16 @@ export const Categories = ({ transactions, categories, onAddCategory, onUpdateCa
 
       if (error) throw error;
 
+      // Cascade delete: Remove subcategories when a parent category is deleted.
+      // Since parent_id stores the name string instead of UUID, we verify by name
+      if (!category.parent_id && category.name) {
+        await supabase
+          .from('categories')
+          .delete()
+          .ilike('parent_id', category.name)
+          .eq('user_id', user.id);
+      }
+
       toast.success("Categoria excluída com sucesso!");
       onUpdateCategories();
     } catch (error) {
