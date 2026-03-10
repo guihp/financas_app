@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="utf-8">
+</head>
+
+<body style="font-family: Arial, sans-serif; background-color: #f4f4f5; margin: 0; padding: 40px 0;">
+    <div
+        style="max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);">
+        <div style="background-color: #2F0743; padding: 30px; text-align: center;">
+            <h1 style="color: #ffffff; margin: 0; font-size: 24px;">IAFÉ Finanças</h1>
+        </div>
+        <div style="padding: 40px 30px; text-align: center;">
+            <h2 style="color: #333333; margin-top: 0;">Confirme seu E-mail</h2>
+            <p style="color: #666666; font-size: 16px; line-height: 1.5; margin-bottom: 30px;">
+                Obrigado por se cadastrar na IAFÉ Finanças!<br>
+                Para começar a usar sua conta, por favor confirme seu endereço de e-mail clicando no botão abaixo:
+            </p>
+            <a href="{{ .ConfirmationURL }}"
+                style="display: inline-block; background-color: #2F0743; color: #ffffff; text-decoration: none; padding: 14px 28px; border-radius: 6px; font-weight: bold; font-size: 16px;">
+                Confirmar meu e-mail
+            </a>
+            <p style="color: #999999; font-size: 14px; margin-top: 30px;">
+                Se você não criou um cadastro, pode ignorar este e-mail.
+            </p>
+        </div>
+        <div style="background-color: #f9fafb; border-top: 1px solid #eeeeee; padding: 20px; text-align: center;">
+            <p style="color: #999999; font-size: 12px; margin: 0;">
+                &copy; {{ .CurrentYear }} IAFÉ Finanças. Todos os direitos reservados.
+            </p>
+        </div>
+    </div>
+</body>
+
+</html>

@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="utf-8">
+</head>
+
+<body style="font-family: Arial, sans-serif; background-color: #f4f4f5; margin: 0; padding: 40px 0;">
+    <div
+        style="max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);">
+        <div style="background-color: #2F0743; padding: 30px; text-align: center;">
+            <h1 style="color: #ffffff; margin: 0; font-size: 24px;">IAFÉ Finanças</h1>
+        </div>
+        <div style="padding: 40px 30px; text-align: center;">
+            <h2 style="color: #333333; margin-top: 0;">Recuperação de Senha</h2>
+            <p style="color: #666666; font-size: 16px; line-height: 1.5; margin-bottom: 30px;">
+                Recebemos uma solicitação para redefinir a senha da sua conta no IAFÉ Finanças.<br>
+                Clique no botão abaixo para criar uma nova senha:
+            </p>
+            <a href="{{ .ConfirmationURL }}"
+                style="display: inline-block; background-color: #2F0743; color: #ffffff; text-decoration: none; padding: 14px 28px; border-radius: 6px; font-weight: bold; font-size: 16px;">
+                Redefinir Minha Senha
+            </a>
+            <p style="color: #999999; font-size: 14px; margin-top: 30px;">
+                Se você não solicitou esta alteração, pode ignorar este e-mail em segurança. Sua senha não será alterada
+                até que você acesse o link acima e crie uma nova.
+            </p>
+        </div>
+        <div style="background-color: #f9fafb; border-top: 1px solid #eeeeee; padding: 20px; text-align: center;">
+            <p style="color: #999999; font-size: 12px; margin: 0;">
+                &copy; {{ .CurrentYear }} IAFÉ Finanças. Todos os direitos reservados.
+            </p>
+        </div>
+    </div>
+</body>
+
+</html>
