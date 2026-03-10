@@ -35,7 +35,7 @@ export interface CardHolderInfo {
 // Detect card brand based on number
 const getCardBrand = (number: string): string => {
   const cleanNumber = number.replace(/\s/g, '');
-  
+
   if (/^4/.test(cleanNumber)) return 'visa';
   if (/^5[1-5]/.test(cleanNumber) || /^2[2-7]/.test(cleanNumber)) return 'mastercard';
   if (/^3[47]/.test(cleanNumber)) return 'amex';
@@ -44,7 +44,7 @@ const getCardBrand = (number: string): string => {
   if (/^3(?:0[0-5]|[68])/.test(cleanNumber)) return 'diners';
   if (/^(606282|3841)/.test(cleanNumber)) return 'hipercard';
   if (/^(50|636|637|638|639)/.test(cleanNumber)) return 'elo';
-  
+
   return 'unknown';
 };
 
@@ -58,7 +58,7 @@ const formatCardNumber = (value: string): string => {
 // Format CPF/CNPJ
 const formatCpfCnpj = (value: string): string => {
   const cleanValue = value.replace(/\D/g, '');
-  
+
   if (cleanValue.length <= 11) {
     // CPF: 000.000.000-00
     return cleanValue
@@ -103,8 +103,8 @@ const formatPhoneDisplay = (value: string): string => {
   return `(${numbers.slice(0, 2)}) ${numbers.slice(2, 7)}-${numbers.slice(7, 11)}`;
 };
 
-export const CreditCardInput = ({ 
-  onCardChange, 
+export const CreditCardInput = ({
+  onCardChange,
   onHolderInfoChange,
   disabled = false,
   defaultPhone = '',
@@ -117,7 +117,7 @@ export const CreditCardInput = ({
   const [expiryYear, setExpiryYear] = useState('');
   const [ccv, setCcv] = useState('');
   const [isFlipped, setIsFlipped] = useState(false);
-  
+
   // Holder info (pré-preenchido com telefone do cadastro e endereço da página)
   const [cpfCnpj, setCpfCnpj] = useState('');
   const [postalCode, setPostalCode] = useState(() => {
@@ -171,7 +171,7 @@ export const CreditCardInput = ({
       numbers = numbers.slice(0, 2) + '9' + numbers.slice(2);
     }
     numbers = numbers.slice(0, 11);
-    
+
     if (numbers.length <= 2) return numbers.length > 0 ? `(${numbers}` : '';
     if (numbers.length <= 7) return `(${numbers.slice(0, 2)}) ${numbers.slice(2)}`;
     return `(${numbers.slice(0, 2)}) ${numbers.slice(2, 7)}-${numbers.slice(7, 11)}`;
@@ -180,13 +180,13 @@ export const CreditCardInput = ({
   return (
     <div className="space-y-4">
       {/* Card Preview */}
-      <div 
+      <div
         className="perspective-1000 cursor-pointer"
         onClick={() => setIsFlipped(!isFlipped)}
         onMouseEnter={() => ccv.length > 0 && setIsFlipped(true)}
         onMouseLeave={() => setIsFlipped(false)}
       >
-        <div 
+        <div
           className={cn(
             "relative w-full h-48 transition-transform duration-500 transform-style-preserve-3d",
             isFlipped && "rotate-y-180"
@@ -197,7 +197,7 @@ export const CreditCardInput = ({
           }}
         >
           {/* Card Front */}
-          <div 
+          <div
             className={cn(
               "absolute inset-0 rounded-xl p-5 text-white shadow-lg backface-hidden",
               "bg-gradient-to-br",
@@ -211,13 +211,13 @@ export const CreditCardInput = ({
                 {cardBrand !== 'unknown' ? cardBrand : 'Cartão'}
               </span>
             </div>
-            
+
             <div className="mb-6">
               <p className="text-xl tracking-widest font-mono">
                 {cardNumber || '•••• •••• •••• ••••'}
               </p>
             </div>
-            
+
             <div className="flex justify-between items-end">
               <div>
                 <p className="text-xs opacity-70 uppercase">Titular</p>
@@ -235,13 +235,13 @@ export const CreditCardInput = ({
           </div>
 
           {/* Card Back */}
-          <div 
+          <div
             className={cn(
               "absolute inset-0 rounded-xl text-white shadow-lg",
               "bg-gradient-to-br",
               brandColors[cardBrand]
             )}
-            style={{ 
+            style={{
               backfaceVisibility: 'hidden',
               transform: 'rotateY(180deg)',
             }}
@@ -317,8 +317,21 @@ export const CreditCardInput = ({
                 const val = e.target.value.replace(/\D/g, '').slice(0, 2);
                 if (val === '') {
                   setExpiryMonth('');
-                } else if (parseInt(val) >= 1 && parseInt(val) <= 12) {
-                  setExpiryMonth(String(parseInt(val)).padStart(2, '0'));
+                } else if (val.length === 1) {
+                  // Allow single digit typing (0, 1, etc) without blocking
+                  if (parseInt(val) >= 2 && parseInt(val) <= 9) {
+                    // Auto-pad single digits 2-9 to 02-09
+                    setExpiryMonth(val.padStart(2, '0'));
+                  } else {
+                    // Allow 0 and 1 as first digit (user will type second digit)
+                    setExpiryMonth(val);
+                  }
+                } else {
+                  // Two digits: validate 01-12
+                  const num = parseInt(val);
+                  if (num >= 1 && num <= 12) {
+                    setExpiryMonth(val.padStart(2, '0'));
+                  }
                 }
               }}
               className="pl-10 font-mono"
@@ -328,7 +341,7 @@ export const CreditCardInput = ({
             />
           </div>
         </div>
-        
+
         <div className="space-y-2">
           <Label htmlFor="expiry-year">Ano</Label>
           <Input
@@ -344,7 +357,7 @@ export const CreditCardInput = ({
             autoComplete="cc-exp-year"
           />
         </div>
-        
+
         <div className="space-y-2">
           <Label htmlFor="ccv">CVV</Label>
           <div className="relative">
@@ -418,7 +431,7 @@ export const CreditCardInput = ({
             />
           </div>
         </div>
-        
+
         <div className="space-y-2">
           <Label htmlFor="address-number">Número</Label>
           <Input

@@ -525,30 +525,67 @@ const PagamentoPendente = () => {
           {pendingPayment && paymentStatus === 'pending' && (
             <div className="space-y-4">
               {/* Plan Info */}
-              {plan && (
-                <div className="p-4 bg-primary/10 rounded-lg border border-primary/20">
-                  <div className="flex items-center justify-between mb-1">
-                    <h3 className="font-semibold text-lg">{plan.name}</h3>
-                    {(promoCodeApplied || (plan as any).applied_discount > 0 || discountParam) && (
-                      <span className="px-2 py-0.5 bg-green-500/20 text-green-400 text-[10px] font-bold rounded-full uppercase tracking-wider">
-                        {discountParam || (plan as any).applied_discount}% OFF
-                      </span>
+              {plan && (() => {
+                // get-pending-payment returns: plan.price = promo price, plan.original_price = full price
+                const finalPrice = finalPriceParam ? Number(finalPriceParam) : plan.price;
+                const originalPrice = originalPriceParam ? Number(originalPriceParam) : ((plan as any).original_price || plan.price);
+                const promoDays = (plan as any).promo_days || 0;
+
+                // Calculate discount percentage
+                let discountPercent = 0;
+                if (discountParam) {
+                  discountPercent = Number(discountParam);
+                } else if ((plan as any).applied_discount > 0) {
+                  discountPercent = (plan as any).applied_discount;
+                } else if (originalPrice > finalPrice) {
+                  discountPercent = Math.round(((originalPrice - finalPrice) / originalPrice) * 100);
+                }
+
+                const hasDiscount = discountPercent > 0;
+
+                return (
+                  <div className="p-4 bg-primary/10 rounded-lg border border-primary/20">
+                    <div className="flex items-center justify-between mb-2">
+                      <h3 className="font-semibold text-lg">{plan.name}</h3>
+                      {hasDiscount && (
+                        <span className="px-2 py-0.5 bg-green-500/20 text-green-400 text-[10px] font-bold rounded-full uppercase tracking-wider">
+                          {discountPercent}% OFF
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex items-baseline gap-2">
+                      {hasDiscount && originalPrice && (
+                        <span className="text-sm text-muted-foreground line-through">
+                          R$ {originalPrice.toFixed(2).replace('.', ',')}
+                        </span>
+                      )}
+                      <p className="text-2xl font-bold text-green-500">
+                        R$ {finalPrice.toFixed(2).replace('.', ',')}
+                        <span className="text-sm font-normal text-muted-foreground">/mês</span>
+                      </p>
+                    </div>
+                    {hasDiscount && (
+                      <div className="mt-2 pt-2 border-t border-primary/10">
+                        <p className="text-xs text-muted-foreground">
+                          {promoDays > 0 ? (
+                            <>
+                              🎉 <span className="text-green-400 font-medium">Promoção válida por {promoDays} dias!</span>
+                              {' '}Após esse período, o valor será de{' '}
+                              <span className="font-semibold">R$ {originalPrice.toFixed(2).replace('.', ',')}/mês</span>.
+                            </>
+                          ) : (
+                            <>
+                              🎉 <span className="text-green-400 font-medium">Valor promocional aplicado!</span>
+                              {' '}Após o primeiro mês, o valor será de{' '}
+                              <span className="font-semibold">R$ {originalPrice.toFixed(2).replace('.', ',')}/mês</span>.
+                            </>
+                          )}
+                        </p>
+                      </div>
                     )}
                   </div>
-                  <div className="flex items-baseline gap-2">
-                    {/* Only show scratched price if there is a discount */}
-                    {(promoCodeApplied || (plan as any).applied_discount > 0 || discountParam) && (
-                      <span className="text-sm text-muted-foreground line-through">
-                        R$ {originalPriceParam ? Number(originalPriceParam).toFixed(2).replace('.', ',') : '49,90'}
-                      </span>
-                    )}
-                    <p className="text-2xl font-bold text-green-500">
-                      R$ {finalPriceParam ? Number(finalPriceParam).toFixed(2).replace('.', ',') : plan.price.toFixed(2).replace('.', ',')}
-                      <span className="text-sm font-normal text-muted-foreground">/mês</span>
-                    </p>
-                  </div>
-                </div>
-              )}
+                );
+              })()}
 
               {/* Expiration Info */}
               <div className="flex items-center gap-2 text-sm text-muted-foreground">

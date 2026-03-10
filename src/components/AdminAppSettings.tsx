@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, Save } from "lucide-react";
+import { Loader2, Save, RefreshCw } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 
 export const AdminAppSettings = () => {
@@ -92,6 +92,18 @@ export const AdminAppSettings = () => {
 
             if (error) throw error;
 
+            // Sync plans table with the full price so it stays consistent
+            const fullPriceNum = parseFloat(fullPrice);
+            if (!isNaN(fullPriceNum) && fullPriceNum > 0) {
+                const { error: planError } = await supabase
+                    .from("plans")
+                    .update({ price: fullPriceNum, updated_at: new Date().toISOString() } as any)
+                    .eq("active", true);
+                if (planError) {
+                    console.error("Failed to sync plans table:", planError);
+                }
+            }
+
             toast({
                 title: "Sucesso",
                 description: "Configurações salvas corretamente.",
@@ -104,6 +116,36 @@ export const AdminAppSettings = () => {
             });
         } finally {
             setSaving(false);
+        }
+    };
+
+    const [updatingSubs, setUpdatingSubs] = useState(false);
+
+    const handleUpdateSubscriptions = async () => {
+        setUpdatingSubs(true);
+        try {
+            const { data: { session } } = await supabase.auth.getSession();
+            if (!session?.access_token) throw new Error("Sessão expirada. Faça login novamente.");
+
+            const { data, error } = await supabase.functions.invoke('update-subscriptions-price', {
+                headers: { Authorization: `Bearer ${session.access_token}` },
+            });
+
+            if (error) throw new Error(error.message);
+            if (data?.error) throw new Error(data.error);
+
+            toast({
+                title: "Assinaturas Atualizadas",
+                description: `${data.updated} atualizadas, ${data.alreadyCorrect} já corretas, ${data.errors} erros de ${data.total} total.`,
+            });
+        } catch (error: any) {
+            toast({
+                title: "Erro ao atualizar assinaturas",
+                description: error.message,
+                variant: "destructive",
+            });
+        } finally {
+            setUpdatingSubs(false);
         }
     };
 
@@ -193,7 +235,26 @@ export const AdminAppSettings = () => {
                     </div>
                 </div>
 
-                <div className="pt-4 border-t border-border flex justify-end">
+                <div className="pt-4 border-t border-border flex justify-end gap-3">
+                    <Button
+                        type="button"
+                        variant="outline"
+                        disabled={updatingSubs || saving}
+                        onClick={handleUpdateSubscriptions}
+                        className="min-w-[120px]"
+                    >
+                        {updatingSubs ? (
+                            <>
+                                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                Atualizando...
+                            </>
+                        ) : (
+                            <>
+                                <RefreshCw className="h-4 w-4 mr-2" />
+                                Atualizar Assinaturas
+                            </>
+                        )}
+                    </Button>
                     <Button type="submit" disabled={saving} className="min-w-[120px]">
                         {saving ? (
                             <>
@@ -208,6 +269,9 @@ export const AdminAppSettings = () => {
                         )}
                     </Button>
                 </div>
+                <p className="text-xs text-muted-foreground mt-2">
+                    O botão "Atualizar Assinaturas" aplica o valor cheio para todas as assinaturas ativas no Asaas. Use após salvar os novos valores.
+                </p>
             </form>
         </div>
     );

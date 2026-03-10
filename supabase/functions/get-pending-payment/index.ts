@@ -160,7 +160,8 @@ serve(async (req) => {
           name: plan.name,
           original_price: originalPrice,
           price: plan.price,
-          interval: plan.interval
+          interval: plan.interval,
+          promo_days: appSettings?.promo_days || 0
         } : null
       }),
       {
