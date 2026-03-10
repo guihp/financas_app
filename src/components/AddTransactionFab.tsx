@@ -26,7 +26,10 @@ export const AddTransactionFab = ({ open, onOpenChange, onTransactionAdded }: Ad
   const [amount, setAmount] = useState("");
   const [description, setDescription] = useState("");
   const [category, setCategory] = useState("");
-  const [transactionDate, setTransactionDate] = useState(() => new Date().toISOString().split('T')[0]);
+  const [transactionDate, setTransactionDate] = useState(() => {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  });
   const [categories, setCategories] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const { toast } = useToast();
@@ -166,7 +169,10 @@ export const AddTransactionFab = ({ open, onOpenChange, onTransactionAdded }: Ad
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Usuário não autenticado");
 
-      const selectedDate = transactionDate || new Date().toISOString().split('T')[0];
+      const selectedDate = transactionDate || (() => {
+        const now = new Date();
+        return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+      })();
       const effectivePaymentMethod = type === "expense" ? paymentMethod : null;
 
       if (effectivePaymentMethod === "credit" && isInstallment) {
@@ -176,9 +182,9 @@ export const AddTransactionFab = ({ open, onOpenChange, onTransactionAdded }: Ad
 
         const installments = [];
         for (let i = 0; i < totalInstallments; i++) {
-          const installmentDate = new Date(selectedDate);
+          const installmentDate = new Date(selectedDate + 'T12:00:00');
           installmentDate.setMonth(installmentDate.getMonth() + i);
-          const dateStr = installmentDate.toISOString().split('T')[0];
+          const dateStr = `${installmentDate.getFullYear()}-${String(installmentDate.getMonth() + 1).padStart(2, '0')}-${String(installmentDate.getDate()).padStart(2, '0')}`;
           let currentAmount = installmentAmount;
           if (i === totalInstallments - 1) {
             currentAmount = Math.round((amountValidation.value! - (installmentAmount * (totalInstallments - 1))) * 100) / 100;
@@ -202,9 +208,9 @@ export const AddTransactionFab = ({ open, onOpenChange, onTransactionAdded }: Ad
         const groupId = crypto.randomUUID();
 
         for (let i = 0; i < totalMonths; i++) {
-          const fixedDate = new Date(selectedDate);
+          const fixedDate = new Date(selectedDate + 'T12:00:00');
           fixedDate.setMonth(fixedDate.getMonth() + i);
-          const dateStr = fixedDate.toISOString().split('T')[0];
+          const dateStr = `${fixedDate.getFullYear()}-${String(fixedDate.getMonth() + 1).padStart(2, '0')}-${String(fixedDate.getDate()).padStart(2, '0')}`;
 
           fixedTransactions.push({
             user_id: user.id, type, amount: amountValidation.value,
@@ -237,8 +243,9 @@ export const AddTransactionFab = ({ open, onOpenChange, onTransactionAdded }: Ad
       }
 
       // Reset
+      const now = new Date();
       setAmount(""); setDescription(""); setCategory("");
-      setTransactionDate(new Date().toISOString().split('T')[0]);
+      setTransactionDate(`${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`);
       setPaymentMethod("debit"); setSelectedCardId(""); setSelectedBankId("");
       setIsInstallment(false); setInstallmentCount("2");
       setIsFixed(false); setFixedMonths("12");

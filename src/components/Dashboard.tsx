@@ -236,8 +236,13 @@ export const Dashboard = ({ user }: DashboardProps) => {
       amount: transaction.amount,
       description: transaction.description,
       category: transaction.category,
-      date: transaction.date instanceof Date ? transaction.date.toISOString().split('T')[0] : transaction.date,
-      transaction_date: transaction.date instanceof Date ? transaction.date.toISOString().split('T')[0] : transaction.date,
+      // Safely format date - append T12:00:00 for date-only strings to avoid UTC midnight timezone shift
+      date: transaction.date instanceof Date
+        ? `${transaction.date.getFullYear()}-${String(transaction.date.getMonth() + 1).padStart(2, '0')}-${String(transaction.date.getDate()).padStart(2, '0')}`
+        : transaction.date,
+      transaction_date: transaction.date instanceof Date
+        ? `${transaction.date.getFullYear()}-${String(transaction.date.getMonth() + 1).padStart(2, '0')}-${String(transaction.date.getDate()).padStart(2, '0')}`
+        : transaction.date,
       user_id: user.id,
       phone: formattedPhone,
       installment_group_id: transaction.installment_group_id,

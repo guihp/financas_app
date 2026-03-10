@@ -148,9 +148,11 @@ export const TransactionList = ({ transactions, showAll = false, onTransactionDe
       let dateStr = "N/A";
       try {
         if (t.date || t.created_at) {
-          const dateObj = new Date(t.date || t.created_at);
-          // adjust for timezone issues by ensuring we use UTC if needed, but local is fine for simple strings
-          dateStr = new Date(dateObj.getTime() + dateObj.getTimezoneOffset() * 60000).toLocaleDateString("pt-BR");
+          const rawDate = t.date || t.created_at;
+          // Append T12:00:00 to date-only strings to avoid UTC midnight timezone shift
+          const safeDateStr = typeof rawDate === 'string' && rawDate.length === 10 ? rawDate + 'T12:00:00' : rawDate;
+          const dateObj = new Date(safeDateStr);
+          dateStr = dateObj.toLocaleDateString("pt-BR");
         }
       } catch (e) {
         // fallback
@@ -232,7 +234,10 @@ export const TransactionList = ({ transactions, showAll = false, onTransactionDe
           </div>
         ) : (
           displayTransactions.map((transaction) => {
-            const date = new Date(transaction.date || transaction.created_at);
+            const rawDate = transaction.date || transaction.created_at;
+            // Append T12:00:00 to date-only strings to avoid UTC midnight timezone shift
+            const safeDateStr = typeof rawDate === 'string' && rawDate.length === 10 ? rawDate + 'T12:00:00' : rawDate;
+            const date = new Date(safeDateStr);
             return (
               <div key={transaction.id} className="flex items-center justify-between p-2 lg:p-0 hover:bg-muted/50 rounded-lg lg:rounded-none lg:hover:bg-transparent transition-colors group">
                 <div className="flex items-center gap-2 lg:gap-3 flex-1 min-w-0">

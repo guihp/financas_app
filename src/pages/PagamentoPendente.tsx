@@ -82,7 +82,7 @@ const PagamentoPendente = () => {
   const { toast } = useToast();
 
   const createPayment = async (billingType: 'CREDIT_CARD', creditCard?: CreditCardData, creditCardHolderInfo?: CardHolderInfo) => {
-    console.log('createPayment called', { billingType, hasCard: !!creditCard, hasHolderInfo: !!creditCardHolderInfo, hasAddress: !!address, pendingPaymentId: pendingPayment?.id, customerId: pendingPayment?.customerId });
+    // Payment creation initiated
     if (!pendingPayment?.id) {
       setMessage("Dados do pagamento incompletos. Busque pelo e-mail novamente.");
       return;
@@ -163,7 +163,7 @@ const PagamentoPendente = () => {
           phone: phone || creditCardHolderInfo.phone.replace(/\D/g, '')
         };
       }
-      console.log('Calling create-asaas-payment', { billingType: 'CREDIT_CARD', registrationId: pendingPayment.id, customerId, hasAddress: !!address });
+      // Calling payment API
       // Usar fetch para capturar o body em respostas 4xx (Supabase invoke não retorna o body no erro)
       const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || "https://dlbiwguzbiosaoyrcvay.supabase.co";
       const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
@@ -173,7 +173,7 @@ const PagamentoPendente = () => {
         body: JSON.stringify(body)
       });
       const data = await res.json().catch(() => ({}));
-      console.log('create-asaas-payment response', { status: res.status, ok: res.ok, data });
+      // Payment response received
       if (!res.ok) {
         const errMsg = data?.error || data?.message || (typeof data?.details === 'string' ? data.details : data?.details?.[0]?.description) || `Erro ${res.status}`;
         throw new Error(errMsg);

@@ -37,19 +37,15 @@ export const AdminUserList = () => {
   const fetchUsers = async () => {
     try {
       setLoading(true);
-      console.log('AdminUserList: Starting fetchUsers...');
-      
+
+
       // Try the debug function first to get all users
-      console.log('AdminUserList: Calling debug-list-users function...');
+
       const debugResponse = await supabase.functions.invoke('debug-list-users', {
         method: 'GET'
       });
-      console.log('AdminUserList: Debug response received:', {
-        error: debugResponse.error,
-        data: debugResponse.data,
-        hasUsers: debugResponse.data?.users?.length > 0
-      });
-      
+
+
       if (debugResponse.error) {
         console.error('AdminUserList: Debug function error:', debugResponse.error);
         toast.error("Erro ao carregar usuários: " + debugResponse.error.message);
@@ -57,12 +53,12 @@ export const AdminUserList = () => {
       }
 
       if (debugResponse.data && debugResponse.data.users) {
-        console.log('AdminUserList: Setting users data:', debugResponse.data.users.length, 'users');
+
         setUsers(debugResponse.data.users);
         return;
       }
 
-      console.log('AdminUserList: No users data found in response');
+
       setUsers([]);
       toast.error("Nenhum dado de usuário encontrado na resposta");
     } catch (error) {
@@ -115,9 +111,9 @@ export const AdminUserList = () => {
     if (banned_until) {
       return <Badge variant="destructive">Banido</Badge>;
     }
-    
-    return status === 'active' ? 
-      <Badge variant="default">Ativo</Badge> : 
+
+    return status === 'active' ?
+      <Badge variant="default">Ativo</Badge> :
       <Badge variant="secondary">Inativo</Badge>;
   };
 
@@ -202,7 +198,7 @@ export const AdminUserList = () => {
             Atualizar
           </Button>
         </CardTitle>
-        
+
         <div className="relative">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
@@ -213,7 +209,7 @@ export const AdminUserList = () => {
           />
         </div>
       </CardHeader>
-      
+
       <CardContent>
         {/* Mobile View - Cards */}
         <div className="block lg:hidden space-y-4">
@@ -231,7 +227,7 @@ export const AdminUserList = () => {
                     {getStatusBadge(user.status, user.banned_until)}
                   </div>
                 </div>
-                
+
                 <div className="grid grid-cols-2 gap-2">
                   <div>
                     <label className="text-xs text-muted-foreground block mb-1">Perfil</label>
@@ -249,7 +245,7 @@ export const AdminUserList = () => {
                       </SelectContent>
                     </Select>
                   </div>
-                  
+
                   <div>
                     <label className="text-xs text-muted-foreground block mb-1">Status</label>
                     <Select
@@ -266,10 +262,10 @@ export const AdminUserList = () => {
                     </Select>
                   </div>
                 </div>
-                
+
                 <div className="pt-2 flex flex-col gap-2">
-                  <EditUserDialog 
-                    userId={user.id} 
+                  <EditUserDialog
+                    userId={user.id}
                     userEmail={user.email}
                     userName={user.full_name}
                     userPhone={user.phone}
@@ -277,19 +273,19 @@ export const AdminUserList = () => {
                   />
                   <ChangeUserPasswordDialog userId={user.id} userEmail={user.email} />
                 </div>
-                
+
                 <div className="text-xs text-muted-foreground pt-2 border-t border-border">
                   <span>Criado: {new Date(user.created_at).toLocaleDateString('pt-BR')}</span>
                   <span className="mx-2">•</span>
-                  <span>Último acesso: {user.last_sign_in_at ? 
-                    new Date(user.last_sign_in_at).toLocaleDateString('pt-BR') : 
+                  <span>Último acesso: {user.last_sign_in_at ?
+                    new Date(user.last_sign_in_at).toLocaleDateString('pt-BR') :
                     "Nunca"
                   }</span>
                 </div>
               </div>
             </Card>
           ))}
-          
+
           {filteredUsers.length === 0 && (
             <div className="text-center py-8 text-muted-foreground">
               {searchTerm ? "Nenhum usuário encontrado com esse filtro" : "Nenhum usuário encontrado"}
@@ -353,15 +349,15 @@ export const AdminUserList = () => {
                     {new Date(user.created_at).toLocaleDateString('pt-BR')}
                   </TableCell>
                   <TableCell>
-                    {user.last_sign_in_at ? 
-                      new Date(user.last_sign_in_at).toLocaleDateString('pt-BR') : 
+                    {user.last_sign_in_at ?
+                      new Date(user.last_sign_in_at).toLocaleDateString('pt-BR') :
                       "Nunca"
                     }
                   </TableCell>
                   <TableCell>
                     <div className="flex gap-2 items-center">
-                      <EditUserDialog 
-                        userId={user.id} 
+                      <EditUserDialog
+                        userId={user.id}
                         userEmail={user.email}
                         userName={user.full_name}
                         userPhone={user.phone}
@@ -372,7 +368,7 @@ export const AdminUserList = () => {
                   </TableCell>
                 </TableRow>
               ))}
-              
+
               {filteredUsers.length === 0 && (
                 <TableRow>
                   <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">

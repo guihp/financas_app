@@ -44,7 +44,10 @@ export const AddTransactionDialog = ({
   const [amount, setAmount] = useState("");
   const [description, setDescription] = useState("");
   const [category, setCategory] = useState("");
-  const [transactionDate, setTransactionDate] = useState(() => new Date().toISOString().split('T')[0]);
+  const [transactionDate, setTransactionDate] = useState(() => {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  });
   const [isFixed, setIsFixed] = useState(false);
   const [fixedMonths, setFixedMonths] = useState("12");
   const [newCategoryName, setNewCategoryName] = useState("");
@@ -145,9 +148,9 @@ export const AddTransactionDialog = ({
       const groupId = crypto.randomUUID();
 
       for (let i = 0; i < totalMonths; i++) {
-        const fixedDate = new Date(transactionDate);
+        const fixedDate = new Date(transactionDate + 'T12:00:00');
         fixedDate.setMonth(fixedDate.getMonth() + i);
-        const dateStr = fixedDate.toISOString().split('T')[0];
+        const dateStr = `${fixedDate.getFullYear()}-${String(fixedDate.getMonth() + 1).padStart(2, '0')}-${String(fixedDate.getDate()).padStart(2, '0')}`;
 
         fixedTransactions.push({
           type,
@@ -177,7 +180,8 @@ export const AddTransactionDialog = ({
     setAmount("");
     setDescription("");
     setCategory("");
-    setTransactionDate(new Date().toISOString().split('T')[0]);
+    const now = new Date();
+    setTransactionDate(`${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`);
     setIsFixed(false);
     setFixedMonths("12");
     setNewCategoryName("");

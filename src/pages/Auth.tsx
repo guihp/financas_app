@@ -279,7 +279,7 @@ const Auth = () => {
           return;
         }
 
-        console.log('Verifying OTP:', { phone: cleanPhone, code: trimmedCode });
+        // OTP verification - sensitive data not logged
 
         const { data, error } = await supabase.functions.invoke('verify-otp', {
           body: {
@@ -427,7 +427,7 @@ const Auth = () => {
       <Card className="w-full max-w-md bg-gradient-card shadow-card border-border">
         <CardHeader className="space-y-4">
           <div className="flex justify-center">
-            <Logo variant="horizontal" size="xl" />
+            <Logo variant="horizontal" size="lg" />
           </div>
           <div className="text-center">
             <CardTitle className="text-2xl">
