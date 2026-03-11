@@ -500,11 +500,11 @@ REGRAS:
             { name: "payment_method", type: "string", required: true, description: "Método de pagamento.", values: ["debit", "pix", "credit", "boleto", "transfer"] },
             { name: "description", type: "string", required: false, description: "Descrição livre." },
             { name: "date", type: "string", required: false, description: "Data YYYY-MM-DD. Padrão: hoje." },
-            { name: "bank_account_id", type: "uuid", required: false, description: "UUID do banco. Obrigatório para debit/pix/boleto/transfer." },
-            { name: "credit_card_id", type: "uuid", required: false, description: "UUID do cartão. Obrigatório para credit." },
-            { name: "is_fixed", type: "boolean", required: false, description: "true = cria transações fixas mensais." },
-            { name: "fixed_months", type: "number", required: false, description: "Meses para fixas (2-60). Só com is_fixed=true." },
-            { name: "total_installments", type: "number", required: false, description: "Parcelas para cartão de crédito." },
+            { name: "bank_account_id", type: "uuid", required: false, description: "UUID do banco. Obrigatório (exceto para format credit)." },
+            { name: "credit_card_id", type: "uuid", required: false, description: "UUID do cartão. Obrigatório se payment_method=credit." },
+            { name: "is_fixed", type: "boolean", required: false, description: "Se for true, insere os próximos meses automaticamente como despesa fixa." },
+            { name: "fixed_months", type: "number", required: false, description: "Para is_fixed=true: Quantos meses lançar (2 a 60). Padrão: ignorado se is_fixed=false." },
+            { name: "total_installments", type: "number", required: false, description: "Para credit: Número de parcelas. Ex: 5 (para compra parcelada em 5x)." },
         ],
         curlCommand: `# ── DESPESA SIMPLES (débito) ──
 curl -X POST "${BASE}/add-transaction-by-phone" \\
