@@ -177,7 +177,29 @@ GET /manage-accounts-by-phone?phone=5511999999999
   "name": "Nubank Crédito",
   "closing_day": 3,
   "due_day": 10,
-  "card_limit": 5000
+  "card_limit": 5000,
+  "bank_account_id": "uuid-do-banco"
+}
+```
+
+### POST — Vincular cartão ao banco
+```json
+{
+  "phone": "5511999999999",
+  "action": "link_card",
+  "card_id": "uuid-do-cartao",
+  "bank_account_id": "uuid-do-banco"
+}
+```
+
+### POST — Pagar Fatura
+```json
+{
+  "phone": "5511999999999",
+  "action": "pay_invoice",
+  "card_id": "uuid-do-cartao",
+  "month_name": "Março 2026",
+  "amount": 450.90
 }
 ```
 
@@ -192,8 +214,16 @@ GET /manage-accounts-by-phone?phone=5511999999999
 | `closing_day` | number | ✅* | Dia fechamento fatura (1-31) |
 | `due_day` | number | ✅* | Dia vencimento fatura (1-31) |
 | `card_limit` | number | ❌ | Limite do cartão |
+| `bank_account_id` | string | ❌ | UUID do banco (usado em `create_card` ou `link_card`) |
+| `card_id` | string | ✅** | UUID do cartão (usado em `link_card` ou `pay_invoice`) |
+| `month_name` | string | ✅*** | Nome do mês + ano (Ex: "Março 2026") |
+| `amount` | number | ✅*** | Valor do pagamento |
 
 > \* Obrigatório apenas para `create_card`
+>
+> \** Obrigatório para `link_card` e `pay_invoice`
+>
+> \*** Obrigatório para `pay_invoice`
 
 ### Response 200 (criar banco)
 ```json
