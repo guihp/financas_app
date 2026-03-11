@@ -468,6 +468,95 @@ Use esta API para descobrir os UUIDs necessários nos campos bank_account_id e c
         ],
     },
 
+    // ── 9A. MANAGE ACCOUNTS: Criar Cartão ─────
+    {
+        method: "POST",
+        path: "/manage-accounts-by-phone (Criar Cartão)",
+        summary: "Cria um novo cartão de crédito para o usuário.",
+        description: `Cria um cartão de crédito associado ao usuário. Opcionalmente já pode ser vinculado a uma conta bancária enviando o bank_account_id.`,
+        params: [
+            { name: "phone", type: "string", required: true, description: "Telefone do usuário." },
+            { name: "action", type: "string", required: true, description: "Deve ser 'create_card'.", values: ["create_card"] },
+            { name: "name", type: "string", required: true, description: "Nome do cartão. Ex: Nubank Crédito." },
+            { name: "closing_day", type: "number", required: true, description: "Dia do fechamento da fatura (1-31)." },
+            { name: "due_day", type: "number", required: true, description: "Dia do vencimento da fatura (1-31)." },
+            { name: "card_limit", type: "number", required: false, description: "Limite de crédito do cartão." },
+            { name: "bank_account_id", type: "uuid", required: false, description: "UUID do banco para vincular." },
+        ],
+        curlCommand: `curl -X POST "${BASE}/manage-accounts-by-phone" \\
+  -H "Authorization: Bearer <SUPABASE_ANON_KEY>" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "phone": "5511999999999",
+    "action": "create_card",
+    "name": "Nubank Crédito",
+    "closing_day": 3,
+    "due_day": 10
+  }'`,
+        responseExample: `{ "success": true, "message": "💳 Cartão Nubank Crédito criado com sucesso!", "credit_card": { "id": "uuid-cartao", ... } }`,
+        errors: [
+            { code: 400, message: "Campos obrigatórios faltando", cause: "Faltou closing_day ou due_day.", fix: "Sempre envie os dias de fechamento e vencimento." },
+        ],
+    },
+
+    // ── 9B. MANAGE ACCOUNTS: Vincular Cartão ──
+    {
+        method: "POST",
+        path: "/manage-accounts-by-phone (Vincular Cartão)",
+        summary: "Vincula um cartão de crédito a uma conta bancária (débito automático em fatura).",
+        description: `Permite associar um cartão existente a um banco existente. Muito útil para que comandos de Pagar Fatura saibam de onde debitar.`,
+        params: [
+            { name: "phone", type: "string", required: true, description: "Telefone do usuário." },
+            { name: "action", type: "string", required: true, description: "Deve ser 'link_card'.", values: ["link_card"] },
+            { name: "card_id", type: "uuid", required: true, description: "UUID do cartão de crédito (obtido via GET accounts)." },
+            { name: "bank_account_id", type: "uuid", required: true, description: "UUID do banco a ser vinculado." },
+        ],
+        curlCommand: `curl -X POST "${BASE}/manage-accounts-by-phone" \\
+  -H "Authorization: Bearer <SUPABASE_ANON_KEY>" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "phone": "5511999999999",
+    "action": "link_card",
+    "card_id": "uuid-do-cartao",
+    "bank_account_id": "uuid-do-banco"
+  }'`,
+        responseExample: `{ "success": true, "message": "Cartão vinculado com sucesso!", "credit_card": { "bank_account_id": "..." } }`,
+        errors: [
+            { code: 400, message: "Faltando IDs", cause: "card_id ou bank_account_id ausente.", fix: "Envie os UUIDs obrigatórios." },
+        ],
+    },
+
+    // ── 9C. MANAGE ACCOUNTS: Pagar Fatura ─────
+    {
+        method: "POST",
+        path: "/manage-accounts-by-phone (Pagar Fatura)",
+        summary: "Realiza o pagamento de uma fatura de cartão de crédito de forma inteligente.",
+        description: `Gera uma transação de débito no banco vinculado ao cartão de crédito. Se a fatura já constar como paga neste mês, a API retorna erro impedindo pagamento duplicado.`,
+        params: [
+            { name: "phone", type: "string", required: true, description: "Telefone do usuário." },
+            { name: "action", type: "string", required: true, description: "Deve ser 'pay_invoice'.", values: ["pay_invoice"] },
+            { name: "card_id", type: "uuid", required: true, description: "UUID do cartão associado." },
+            { name: "month_name", type: "string", required: true, description: "Nome do mês e ano da fatura. Ex: 'Abril 2026'." },
+            { name: "amount", type: "number", required: true, description: "Valor exato a ser debitado." },
+        ],
+        curlCommand: `curl -X POST "${BASE}/manage-accounts-by-phone" \\
+  -H "Authorization: Bearer <SUPABASE_ANON_KEY>" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "phone": "5511999999999",
+    "action": "pay_invoice",
+    "card_id": "uuid-do-cartao",
+    "month_name": "Fevereiro 2026",
+    "amount": 1400.50
+  }'`,
+        responseExample: `{ "success": true, "message": "Fatura paga com sucesso! R$ 1400.50 debitados." }`,
+        errors: [
+            { code: 400, message: "Cartão não possui conta bancária", cause: "Não há bank_account_id no cartão.", fix: "Vincule uma conta primeiro usando 'link_card' ou via Interface Web." },
+            { code: 400, message: "Esta fatura já foi paga", cause: "Sistema detectou um pagamento prévio com a mesma descrição e cartão.", fix: "Pagamento duplicado evitado nativamente." },
+        ],
+        tips: "💡 É fortemente recomendado vincular cartões de crédito às contas bancárias na aba 'Cartões' para poder usufruir de Automações N8N de Pagamento de Fatura sem intervenção manual.",
+    },
+
     // ── 10. ADD TRANSACTION ─────────────────
     {
         method: "POST",
