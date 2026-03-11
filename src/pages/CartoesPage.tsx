@@ -14,6 +14,13 @@ import {
     DialogTitle,
 } from "@/components/ui/dialog";
 import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from "@/components/ui/select";
+import {
     AlertDialog,
     AlertDialogAction,
     AlertDialogCancel,
@@ -43,6 +50,7 @@ export interface CreditCardType {
     color: string;
     created_at: string;
     updated_at: string;
+    bank_account_id?: string;
 }
 
 export interface BankAccountType {
@@ -77,6 +85,7 @@ const CartoesPage = () => {
     const [formDueDay, setFormDueDay] = useState("15");
     const [formLimit, setFormLimit] = useState("");
     const [formColor, setFormColor] = useState(CARD_COLORS[0]);
+    const [formBankAccountId, setFormBankAccountId] = useState("");
     const [submitting, setSubmitting] = useState(false);
 
     // Bank form state
@@ -146,13 +155,13 @@ const CartoesPage = () => {
 
     // ---- Credit Card helpers ----
     const resetCardForm = () => {
-        setFormName(""); setFormClosingDay("5"); setFormDueDay("15"); setFormLimit(""); setFormColor(CARD_COLORS[0]); setEditingCard(null);
+        setFormName(""); setFormClosingDay("5"); setFormDueDay("15"); setFormLimit(""); setFormColor(CARD_COLORS[0]); setFormBankAccountId(""); setEditingCard(null);
     };
 
     const openEditCardDialog = (card: CreditCardType) => {
         setEditingCard(card); setFormName(card.name); setFormClosingDay(String(card.closing_day));
         setFormDueDay(String(card.due_day)); setFormLimit(card.card_limit ? String(card.card_limit) : "");
-        setFormColor(card.color || CARD_COLORS[0]); setShowCardDialog(true);
+        setFormColor(card.color || CARD_COLORS[0]); setFormBankAccountId(card.bank_account_id || ""); setShowCardDialog(true);
     };
 
     const handleSubmitCard = async (e: React.FormEvent) => {
@@ -165,7 +174,8 @@ const CartoesPage = () => {
         }
         setSubmitting(true);
         try {
-            const cardData = { name: formName.trim(), closing_day: closingDay, due_day: dueDay, card_limit: formLimit ? parseFloat(formLimit.replace(",", ".")) : 0, color: formColor, user_id: user.id };
+            const finalBankId = (!formBankAccountId || formBankAccountId === "none") ? null : formBankAccountId;
+            const cardData = { name: formName.trim(), closing_day: closingDay, due_day: dueDay, card_limit: formLimit ? parseFloat(formLimit.replace(",", ".")) : 0, color: formColor, bank_account_id: finalBankId, user_id: user.id };
             if (editingCard) {
                 const { error } = await supabase.from("credit_cards").update(cardData).eq("id", editingCard.id).eq("user_id", user.id);
                 if (error) throw error;
@@ -397,6 +407,11 @@ const CartoesPage = () => {
                                                 <div>
                                                     <CardTitle className="text-lg">{card.name}</CardTitle>
                                                     <p className="text-xs text-muted-foreground">Fecha dia {card.closing_day} • Vence dia {card.due_day}</p>
+                                                    {card.bank_account_id && banks.find(b => b.id === card.bank_account_id) && (
+                                                        <p className="text-[10px] bg-muted/50 inline-block px-1.5 py-0.5 rounded text-muted-foreground mt-1">
+                                                            🏦 {banks.find(b => b.id === card.bank_account_id)?.name}
+                                                        </p>
+                                                    )}
                                                 </div>
                                             </div>
                                             <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -489,6 +504,25 @@ const CartoesPage = () => {
                                 <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground font-medium">R$</span>
                                 <Input id="card-limit" type="text" inputMode="decimal" placeholder="0,00" value={formLimit} onChange={(e) => setFormLimit(e.target.value)} className="pl-10" />
                             </div>
+                        </div>
+                        <div>
+                            <Label className="text-sm font-medium">Conta Bancária Vinculada (Opcional)</Label>
+                            <Select value={formBankAccountId} onValueChange={setFormBankAccountId}>
+                                <SelectTrigger className="mt-1">
+                                    <SelectValue placeholder="Selecione um banco..." />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="none">Nenhum</SelectItem>
+                                    {banks.map(bank => (
+                                        <SelectItem key={bank.id} value={bank.id}>
+                                            {bank.name}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                            <p className="text-[10px] text-muted-foreground mt-1">
+                                Vincula o cartão a um banco para abater o saldo automaticamente.
+                            </p>
                         </div>
                         <div>
                             <Label className="text-sm font-medium">Cor</Label>

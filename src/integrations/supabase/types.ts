@@ -59,6 +59,36 @@ export type Database = {
           },
         ]
       }
+      app_settings: {
+        Row: {
+          enable_promo_code: boolean
+          id: string
+          product_full_price: number
+          product_promo_price: number
+          promo_days: number | null
+          trial_days: number
+          updated_at: string | null
+        }
+        Insert: {
+          enable_promo_code?: boolean
+          id?: string
+          product_full_price?: number
+          product_promo_price?: number
+          promo_days?: number | null
+          trial_days?: number
+          updated_at?: string | null
+        }
+        Update: {
+          enable_promo_code?: boolean
+          id?: string
+          product_full_price?: number
+          product_promo_price?: number
+          promo_days?: number | null
+          trial_days?: number
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
       appointment_notifications_sent: {
         Row: {
           appointment_id: string
@@ -175,8 +205,11 @@ export type Database = {
           icon: string | null
           id: string
           name: string
+          parent_id: string | null
+          type: string | null
           updated_at: string
           user_id: string
+          value: string | null
         }
         Insert: {
           color?: string | null
@@ -185,8 +218,11 @@ export type Database = {
           icon?: string | null
           id?: string
           name: string
+          parent_id?: string | null
+          type?: string | null
           updated_at?: string
           user_id: string
+          value?: string | null
         }
         Update: {
           color?: string | null
@@ -195,13 +231,17 @@ export type Database = {
           icon?: string | null
           id?: string
           name?: string
+          parent_id?: string | null
+          type?: string | null
           updated_at?: string
           user_id?: string
+          value?: string | null
         }
         Relationships: []
       }
       credit_cards: {
         Row: {
+          bank_account_id: string | null
           card_limit: number | null
           closing_day: number
           color: string | null
@@ -213,6 +253,7 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          bank_account_id?: string | null
           card_limit?: number | null
           closing_day: number
           color?: string | null
@@ -224,6 +265,7 @@ export type Database = {
           user_id: string
         }
         Update: {
+          bank_account_id?: string | null
           card_limit?: number | null
           closing_day?: number
           color?: string | null
@@ -234,7 +276,15 @@ export type Database = {
           updated_at?: string | null
           user_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "credit_cards_bank_account_id_fkey"
+            columns: ["bank_account_id"]
+            isOneToOne: false
+            referencedRelation: "bank_accounts"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       n8n_chat_histories_registra_ai: {
         Row: {
@@ -489,6 +539,7 @@ export type Database = {
           full_name: string | null
           id: string
           phone: string | null
+          telefone_id: string | null
           updated_at: string
           user_id: string
         }
@@ -499,6 +550,7 @@ export type Database = {
           full_name?: string | null
           id?: string
           phone?: string | null
+          telefone_id?: string | null
           updated_at?: string
           user_id: string
         }
@@ -509,10 +561,19 @@ export type Database = {
           full_name?: string | null
           id?: string
           phone?: string | null
+          telefone_id?: string | null
           updated_at?: string
           user_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "profiles_telefone_id_fkey"
+            columns: ["telefone_id"]
+            isOneToOne: false
+            referencedRelation: "registraAi_dados"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       promotional_codes: {
         Row: {
@@ -655,6 +716,7 @@ export type Database = {
           id: string
           is_trial: boolean | null
           plan_id: string | null
+          promo_ends_at: string | null
           promotional_code_id: string | null
           status: string
           trial_ends_at: string | null
@@ -672,6 +734,7 @@ export type Database = {
           id?: string
           is_trial?: boolean | null
           plan_id?: string | null
+          promo_ends_at?: string | null
           promotional_code_id?: string | null
           status?: string
           trial_ends_at?: string | null
@@ -689,6 +752,7 @@ export type Database = {
           id?: string
           is_trial?: boolean | null
           plan_id?: string | null
+          promo_ends_at?: string | null
           promotional_code_id?: string | null
           status?: string
           trial_ends_at?: string | null
@@ -1074,4 +1138,3 @@ export const Constants = {
     },
   },
 } as const
-

@@ -71,7 +71,7 @@ serve(async (req) => {
 
             const { data: cards } = await supabase
                 .from('credit_cards')
-                .select('id, name, closing_day, due_day, card_limit, color, created_at')
+                .select('id, name, closing_day, due_day, card_limit, color, created_at, bank_account_id')
                 .eq('user_id', userId)
                 .order('name');
 
@@ -93,7 +93,7 @@ serve(async (req) => {
         // =====================
         if (req.method === 'POST') {
             const body = await req.json();
-            const { phone, action, name, color, closing_day, due_day, card_limit } = body;
+            const { phone, action, name, color, closing_day, due_day, card_limit, bank_account_id } = body;
 
             if (!phone || !action || !name) {
                 return new Response(
@@ -171,7 +171,8 @@ serve(async (req) => {
                         closing_day: parseInt(closing_day),
                         due_day: parseInt(due_day),
                         card_limit: card_limit ? parseFloat(card_limit) : null,
-                        color: resolvedColor
+                        color: resolvedColor,
+                        bank_account_id: bank_account_id || null
                     })
                     .select()
                     .single();

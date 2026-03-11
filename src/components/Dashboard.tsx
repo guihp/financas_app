@@ -54,6 +54,9 @@ export const Dashboard = ({ user }: DashboardProps) => {
   const [isSuperAdmin, setIsSuperAdmin] = useState(false);
 
   const totalBalance = transactions.reduce((acc, transaction) => {
+    if (transaction.type === "expense" && transaction.payment_method === "credit") {
+      return acc;
+    }
     return transaction.type === "income"
       ? acc + transaction.amount
       : acc - transaction.amount;
@@ -64,7 +67,7 @@ export const Dashboard = ({ user }: DashboardProps) => {
     .reduce((acc, t) => acc + Number(t.amount), 0);
 
   const totalExpense = transactions
-    .filter(t => t.type === "expense")
+    .filter(t => t.type === "expense" && t.payment_method !== "credit")
     .reduce((acc, t) => acc + Number(t.amount), 0);
 
   // Load transactions and categories from Supabase

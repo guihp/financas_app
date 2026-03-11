@@ -10,7 +10,9 @@ import {
     ChevronRight,
     CreditCard,
     CalendarDays,
+    CheckCircle2,
 } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
 
 interface OutletContextType {
     user: User;
@@ -36,9 +38,11 @@ interface CreditCardInfo {
     due_day: number;
     color: string;
     card_limit: number;
+    bank_account_id?: string;
 }
 
 const FaturasPage = () => {
+    const { toast } = useToast();
     const { user } = useOutletContext<OutletContextType>();
     const [cards, setCards] = useState<CreditCardInfo[]>([]);
     const [transactions, setTransactions] = useState<FaturaTransaction[]>([]);
@@ -53,7 +57,7 @@ const FaturasPage = () => {
             // Load cards
             const { data: cardsData, error: cardsError } = await supabase
                 .from("credit_cards")
-                .select("id, name, closing_day, due_day, color, card_limit")
+                .select("id, name, closing_day, due_day, color, card_limit, bank_account_id")
                 .eq("user_id", user.id)
                 .order("name");
 
@@ -179,6 +183,46 @@ const FaturasPage = () => {
         );
     };
 
+    const [payingCardId, setPayingCardId] = useState<string | null>(null);
+
+    const handlePayInvoice = async (cardId: string, monthName: string, amount: number, bankAccountId?: string) => {
+        if (!bankAccountId) {
+            toast({ title: "Banco não vinculado", description: "Vincule uma conta bancária a este cartão na página de Cartões para pagar a fatura.", variant: "destructive" });
+            return;
+        }
+        if (amount <= 0) {
+            toast({ title: "Fatura Zerada", description: "Não há valor para pagar nesta fatura." });
+            return;
+        }
+
+        setPayingCardId(cardId);
+        try {
+            const today = new Date().toISOString().split("T")[0];
+            const expenseDesc = `Fatura ${cards.find(c => c.id === cardId)?.name} - ${monthName}`;
+
+            const { error } = await supabase.from("transactions").insert({
+                user_id: user.id,
+                type: "expense",
+                amount: amount,
+                category: "geral",
+                description: expenseDesc,
+                date: today,
+                transaction_date: today,
+                payment_method: "debit",
+                bank_account_id: bankAccountId,
+                total_installments: 1,
+                installment_number: 1
+            });
+
+            if (error) throw error;
+            toast({ title: "Fatura Paga", description: "✅ O valor da fatura foi debitado da sua conta bancária!" });
+        } catch (err: any) {
+            toast({ title: "Erro ao pagar", description: err.message, variant: "destructive" });
+        } finally {
+            setPayingCardId(null);
+        }
+    };
+
     if (loading) {
         return (
             <div className="flex items-center justify-center py-12">
@@ -293,6 +337,17 @@ const FaturasPage = () => {
                                                 </p>
                                             )}
                                         </div>
+                                    </div>
+                                    <div className="flex gap-2 mt-4 pt-3 border-t border-white/10">
+                                        <Button
+                                            className="w-full text-xs gap-1.5 font-medium transition-all"
+                                            style={{ backgroundColor: card.color, color: "#fff" }}
+                                            disabled={payingCardId === card.id || cardTotal <= 0}
+                                            onClick={() => handlePayInvoice(card.id, monthLabel, cardTotal, card.bank_account_id)}
+                                        >
+                                            <CheckCircle2 className="w-4 h-4" />
+                                            {payingCardId === card.id ? "Pagando..." : "Pagar Fatura"}
+                                        </Button>
                                     </div>
                                 </CardHeader>
                                 <CardContent>
