@@ -46,6 +46,7 @@ const FaturasPage = () => {
     const { user } = useOutletContext<OutletContextType>();
     const [cards, setCards] = useState<CreditCardInfo[]>([]);
     const [transactions, setTransactions] = useState<FaturaTransaction[]>([]);
+    const [paidInvoices, setPaidInvoices] = useState<string[]>([]);
     const [loading, setLoading] = useState(true);
     const [selectedMonth, setSelectedMonth] = useState(() => {
         const now = new Date();
@@ -77,6 +78,17 @@ const FaturasPage = () => {
 
             if (txError) throw txError;
             setTransactions(txData || []);
+
+            // Load explicit invoice payments
+            const { data: paymentsData, error: paymentsError } = await supabase
+                .from("transactions")
+                .select("description")
+                .eq("user_id", user.id)
+                .eq("payment_method", "debit")
+                .like("description", "Fatura %");
+
+            if (paymentsError) throw paymentsError;
+            setPaidInvoices(paymentsData?.map(p => p.description || "") || []);
         } catch (error) {
             console.error("Error loading faturas data:", error);
         } finally {
@@ -215,6 +227,7 @@ const FaturasPage = () => {
             });
 
             if (error) throw error;
+            setPaidInvoices(prev => [...prev, expenseDesc]);
             toast({ title: "Fatura Paga", description: "✅ O valor da fatura foi debitado da sua conta bancária!" });
         } catch (err: any) {
             toast({ title: "Erro ao pagar", description: err.message, variant: "destructive" });
@@ -297,6 +310,8 @@ const FaturasPage = () => {
                             0
                         );
 
+                        const isPaid = paidInvoices.includes(`Fatura ${card.name} - ${monthLabel}`);
+
                         return (
                             <Card
                                 key={card.id}
@@ -339,15 +354,22 @@ const FaturasPage = () => {
                                         </div>
                                     </div>
                                     <div className="flex gap-2 mt-4 pt-3 border-t border-white/10">
-                                        <Button
-                                            className="w-full text-xs gap-1.5 font-medium transition-all"
-                                            style={{ backgroundColor: card.color, color: "#fff" }}
-                                            disabled={payingCardId === card.id || cardTotal <= 0}
-                                            onClick={() => handlePayInvoice(card.id, monthLabel, cardTotal, card.bank_account_id)}
-                                        >
-                                            <CheckCircle2 className="w-4 h-4" />
-                                            {payingCardId === card.id ? "Pagando..." : "Pagar Fatura"}
-                                        </Button>
+                                        {isPaid ? (
+                                            <div className="w-full flex items-center justify-center gap-2 text-sm text-green-500 font-medium py-2">
+                                                <CheckCircle2 className="w-4 h-4" />
+                                                Fatura Paga
+                                            </div>
+                                        ) : (
+                                            <Button
+                                                className="w-full text-xs gap-1.5 font-medium transition-all"
+                                                style={{ backgroundColor: card.color, color: "#fff" }}
+                                                disabled={payingCardId === card.id || cardTotal <= 0}
+                                                onClick={() => handlePayInvoice(card.id, monthLabel, cardTotal, card.bank_account_id)}
+                                            >
+                                                <CheckCircle2 className="w-4 h-4" />
+                                                {payingCardId === card.id ? "Pagando..." : "Pagar Fatura"}
+                                            </Button>
+                                        )}
                                     </div>
                                 </CardHeader>
                                 <CardContent>
