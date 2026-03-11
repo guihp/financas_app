@@ -302,6 +302,39 @@ serve(async (req) => {
 
         transactionsToInsert.push(insertRow);
       }
+    } else if (total_installments && payment_method === 'credit' && parseInt(total_installments) > 1) {
+      // Cria múltiplas transações de parcelamento (Crédito)
+      const numInstallments = parseInt(total_installments);
+      const installmentAmount = Math.round((parsedAmount / numInstallments) * 100) / 100;
+
+      for (let i = 0; i < numInstallments; i++) {
+        const installmentDate = new Date(baseDate + 'T12:00:00');
+        installmentDate.setMonth(installmentDate.getMonth() + i);
+        const dateStr = `${installmentDate.getFullYear()}-${String(installmentDate.getMonth() + 1).padStart(2, '0')}-${String(installmentDate.getDate()).padStart(2, '0')}`;
+
+        // Ajustar centavos na última parcela para evitar dizimas não exatas
+        let currentAmount = installmentAmount;
+        if (i === numInstallments - 1) {
+          currentAmount = Math.round((parsedAmount - (installmentAmount * (numInstallments - 1))) * 100) / 100;
+        }
+
+        const insertRow: any = {
+          type,
+          amount: currentAmount,
+          description: description || null,
+          category,
+          date: dateStr,
+          transaction_date: dateStr,
+          user_id: userId,
+          payment_method: 'credit',
+          credit_card_id: resolvedCreditCardId,
+          total_installments: numInstallments,
+          installment_number: i + 1,
+          installment_group_id: groupId,
+        };
+
+        transactionsToInsert.push(insertRow);
+      }
     } else {
       // Transação única normal
       const insertRow: any = {
@@ -318,7 +351,7 @@ serve(async (req) => {
       if (resolvedBankAccountId) insertRow.bank_account_id = resolvedBankAccountId;
       if (resolvedCreditCardId) insertRow.credit_card_id = resolvedCreditCardId;
       if (total_installments && payment_method === 'credit') {
-        insertRow.total_installments = parseInt(total_installments);
+        insertRow.total_installments = 1;
         insertRow.installment_number = 1;
       }
 
