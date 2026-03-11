@@ -42,6 +42,8 @@ export const Appointments = ({ user }: AppointmentsProps) => {
   });
   const { toast } = useToast();
 
+  const [validationError, setValidationError] = useState<string | null>(null);
+
   const fetchAppointments = async () => {
     try {
       // Verificar se usuário ainda está ativo
@@ -82,12 +84,15 @@ export const Appointments = ({ user }: AppointmentsProps) => {
   }, [user.id]);
 
   const handleCreateAppointment = async () => {
-    if (!newAppointment.title || !newAppointment.date) {
-      toast({
-        title: "Erro",
-        description: "Título e data são obrigatórios.",
-        variant: "destructive",
-      });
+    setValidationError(null);
+
+    if (!newAppointment.title) {
+      setValidationError("O Título do agendamento é obrigatório.");
+      return;
+    }
+
+    if (!newAppointment.date) {
+      setValidationError("A Data do agendamento é obrigatória.");
       return;
     }
 
@@ -99,20 +104,12 @@ export const Appointments = ({ user }: AppointmentsProps) => {
     maxFutureDate.setFullYear(today.getFullYear() + 2);
 
     if (selectedDate < today) {
-      toast({
-        title: "Erro",
-        description: "A data não pode ser anterior ao dia atual.",
-        variant: "destructive",
-      });
+      setValidationError("A data não pode ser anterior ao dia de hoje.");
       return;
     }
 
     if (selectedDate > maxFutureDate) {
-      toast({
-        title: "Erro",
-        description: "A data não pode ser superior a 2 anos no futuro.",
-        variant: "destructive",
-      });
+      setValidationError("A data não pode ser superior a 2 anos no futuro.");
       return;
     }
 
@@ -275,6 +272,12 @@ export const Appointments = ({ user }: AppointmentsProps) => {
                 <DialogTitle>Criar Novo Agendamento</DialogTitle>
               </DialogHeader>
               <div className="space-y-4">
+                {validationError && (
+                  <div className="bg-destructive/15 text-destructive text-sm font-medium p-3 rounded-md border border-destructive/20 flex items-start gap-2">
+                    <div className="mt-0.5">⚠️</div>
+                    <div>{validationError}</div>
+                  </div>
+                )}
                 <div>
                   <Label htmlFor="title">Título</Label>
                   <Input
@@ -283,11 +286,14 @@ export const Appointments = ({ user }: AppointmentsProps) => {
                     onChange={(e) =>
                       setNewAppointment({ ...newAppointment, title: e.target.value })
                     }
-                    placeholder="Digite o título do agendamento"
+                    placeholder="Digite o título do agendamento (Ex: Consulta Médica)"
                   />
                 </div>
                 <div>
-                  <Label htmlFor="description">Descrição</Label>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <Label htmlFor="description">Descrição</Label>
+                    <span className="text-xs text-muted-foreground mr-1">(Opcional)</span>
+                  </div>
                   <Textarea
                     id="description"
                     value={newAppointment.description}
