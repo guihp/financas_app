@@ -71,7 +71,7 @@ serve(async (req) => {
 
             const { data: cards } = await supabase
                 .from('credit_cards')
-                .select('id, name, closing_day, due_day, card_limit, color, created_at, bank_account_id')
+                .select('id, name, closing_day, due_day, card_limit, color, created_at')
                 .eq('user_id', userId)
                 .order('name');
 
