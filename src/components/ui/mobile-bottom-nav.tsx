@@ -19,6 +19,8 @@ import {
   X,
   Moon,
   Sun,
+  MessageCircle,
+  Bot
 } from "lucide-react";
 import { useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
@@ -63,6 +65,8 @@ export const MobileBottomNav = ({
     { path: "/faturas", label: "Faturas", icon: Receipt, color: "text-amber-400", bg: "bg-amber-500/15" },
     { path: "/sharing", label: "Compartilhar", icon: Users, color: "text-cyan-400", bg: "bg-cyan-500/15" },
     { path: "/assinatura", label: "Assinatura", icon: Crown, color: "text-purple-400", bg: "bg-purple-500/15" },
+    { action: "ai", label: "Falar com IA", icon: Bot, color: "text-indigo-400", bg: "bg-indigo-500/15" },
+    { action: "support", label: "Suporte", icon: MessageCircle, color: "text-green-500", bg: "bg-green-500/15" },
     { path: "/alterar-senha", label: "Alterar Senha", icon: Key, color: "text-slate-400", bg: "bg-slate-500/15" },
     ...(isSuperAdmin ? [{ path: "/admin/supremo/iafe/financas", label: "Painel Admin", icon: Shield, color: "text-orange-400", bg: "bg-orange-500/15" }] : []),
   ];
@@ -88,10 +92,18 @@ export const MobileBottomNav = ({
 
   const isRouterMode = !setCurrentView;
 
-  const handleNavigation = (path: string) => {
+  const handleNavigation = (item: any) => {
     setShowMoreMenu(false);
-    if (isRouterMode) {
-      navigate(path);
+    if (item.action === "support") {
+      window.open("https://wa.me/5598984999475", "_blank");
+      return;
+    }
+    if (item.action === "ai") {
+      window.open("https://wa.me/5519991679072", "_blank");
+      return;
+    }
+    if (item.path && isRouterMode) {
+      navigate(item.path);
     }
   };
 
@@ -147,14 +159,14 @@ export const MobileBottomNav = ({
               <div className="grid grid-cols-3 gap-1 p-3">
                 {moreMenuItems.map((item, index) => {
                   const Icon = item.icon;
-                  const isActive = location.pathname === item.path;
+                  const isActive = item.path ? location.pathname === item.path : false;
                   return (
                     <motion.button
-                      key={item.path}
+                      key={item.path || item.action}
                       initial={{ opacity: 0, y: 15 }}
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ delay: index * 0.04, type: "spring", damping: 20, stiffness: 300 }}
-                      onClick={() => handleNavigation(item.path)}
+                      onClick={() => handleNavigation(item)}
                       className={`flex flex-col items-center gap-2 py-3 px-2 rounded-xl transition-all active:scale-95 ${isActive
                         ? "bg-primary/15 ring-1 ring-primary/30"
                         : "hover:bg-muted/50 active:bg-muted"

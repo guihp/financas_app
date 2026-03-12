@@ -347,6 +347,34 @@ export const AppLayout = () => {
           <MobileBottomNav userEmail={user.email} isSuperAdmin={isSuperAdmin} />
         </div>
 
+        {/* Desktop Floating Action Buttons (Support & AI) - visible only on lg (1024px+) */}
+        <div className="hidden lg:flex fixed bottom-6 right-6 flex-col gap-3 z-50">
+          <a
+            href="https://wa.me/5519991679072"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center justify-center p-3 rounded-full bg-blue-600 hover:bg-blue-700 text-white shadow-lg transition-transform hover:scale-105 group"
+            title="Falar com Inteligência Artificial"
+          >
+            <div className="absolute right-full mr-3 bg-card text-card-foreground text-xs px-2 py-1 rounded shadow opacity-0 group-hover:opacity-100 whitespace-nowrap pointer-events-none transition-opacity">
+              Falar com Inteligência Artificial
+            </div>
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 8V4H8" /><rect width="16" height="12" x="4" y="8" rx="2" /><path d="M2 14h2" /><path d="M20 14h2" /><path d="M15 13v2" /><path d="M9 13v2" /></svg>
+          </a>
+          <a
+            href="https://wa.me/5598984999475"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center justify-center p-3 rounded-full bg-[#25D366] hover:bg-[#20bd5a] text-white shadow-lg transition-transform hover:scale-105 group"
+            title="Suporte WhatsApp"
+          >
+            <div className="absolute right-full mr-3 bg-card text-card-foreground text-xs px-2 py-1 rounded shadow opacity-0 group-hover:opacity-100 whitespace-nowrap pointer-events-none transition-opacity">
+              Suporte WhatsApp
+            </div>
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 21l1.65-3.8a9 9 0 1 1 3.4 2.9L3 21" /><path d="M9 10a.5.5 0 0 0 1 0V9a.5.5 0 0 0-1 0v1a5 5 0 0 0 5 5h1a.5.5 0 0 0 0-1h-1a.5.5 0 0 0 0 1" /></svg>
+          </a>
+        </div>
+
         {/* Auto Dark Mode Popup */}
         <AutoDarkMode />
       </div>
