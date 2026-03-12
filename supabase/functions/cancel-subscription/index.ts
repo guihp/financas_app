@@ -95,26 +95,47 @@ serve(async (req) => {
             }
         }
 
-        // Update subscription in database
         if (isTrial) {
-            // TRIAL: Cancel immediately - lose access now
-            await supabaseAdmin
-                .from('subscriptions')
-                .update({
-                    status: 'cancelled',
-                    cancelled_at: now.toISOString(),
-                    cancel_at_period_end: false,
-                    is_trial: false,
-                    updated_at: now.toISOString()
-                })
-                .eq('id', subscription.id);
+            // Copy user to "desistentes" and delete their account as they are on trial
+            const { data: profile } = await supabaseAdmin
+                .from('profiles')
+                .select('full_name, phone')
+                .eq('user_id', user.id)
+                .maybeSingle();
 
-            console.log('Trial subscription cancelled immediately:', subscription.id);
+            const desistenteData = {
+                user_id: user.id,
+                email: user.email,
+                full_name: profile?.full_name || user.user_metadata?.full_name || '',
+                phone: profile?.phone || user.user_metadata?.phone || ''
+            };
+
+            const { error: desistenteError } = await supabaseAdmin
+                .from('desistentes')
+                .insert(desistenteData);
+
+            if (desistenteError) {
+                console.error('Error saving desistente:', desistenteError);
+                // Non-blocking error
+            }
+
+            // Hard delete user from Auth. This cascades and deletes profile, tokens, subscriptions, etc
+            const { error: deleteError } = await supabaseAdmin.auth.admin.deleteUser(user.id);
+
+            if (deleteError) {
+                console.error('Error deleting user:', deleteError);
+                return new Response(
+                    JSON.stringify({ error: 'Erro ao excluir conta do usuário.' }),
+                    { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+                );
+            }
+
+            console.log('Trial user deleted successfully:', user.id);
 
             return new Response(
                 JSON.stringify({
                     success: true,
-                    message: 'Período gratuito cancelado. Nenhuma cobrança foi feita.',
+                    message: 'Período de teste cancelado e dados removidos da plataforma.',
                     cancelledImmediately: true
                 }),
                 { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -136,7 +157,7 @@ serve(async (req) => {
             return new Response(
                 JSON.stringify({
                     success: true,
-                    message: `Assinatura cancelada. Você ainda terá acesso até ${new Date(periodEnd).toLocaleDateString('pt-BR')}.`,
+                    message: `Sua assinatura foi cancelada. Você ainda terá acesso ao sistema até ${new Date(periodEnd).toLocaleDateString('pt-BR')}.`,
                     cancelledImmediately: false,
                     accessUntil: periodEnd
                 }),
