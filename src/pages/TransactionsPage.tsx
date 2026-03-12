@@ -10,8 +10,15 @@ import { Button } from "@/components/ui/button";
 import { DateRangeFilter } from "@/components/DateRangeFilter";
 import { filterTransactionsByDate } from "@/utils/dateFilter";
 import type { DateFilterOption, DateRange } from "@/utils/dateFilter";
-import { Plus } from "lucide-react";
+import { Plus, Building2 } from "lucide-react";
 import { Transaction } from "@/components/Dashboard";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 interface OutletContextType {
   user: User;
@@ -25,7 +32,30 @@ const TransactionsPage = () => {
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [dateFilter, setDateFilter] = useState<DateFilterOption>("all");
   const [dateRange, setDateRange] = useState<DateRange>({ start: null, end: null });
+  const [selectedBank, setSelectedBank] = useState<string>("all");
+  const [banks, setBanks] = useState<{ id: string, name: string }[]>([]);
   const { allUserIds, loading: loadingConnections } = useConnectedUserIds(user?.id);
+
+  const loadBanks = async () => {
+    try {
+      const { data, error } = await supabase
+        .from("bank_accounts")
+        .select("id, name")
+        .eq("user_id", user.id)
+        .order("name");
+      if (!error && data) {
+        setBanks(data);
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  useEffect(() => {
+    if (user?.id) {
+      loadBanks();
+    }
+  }, [user?.id]);
 
   const loadTransactions = async () => {
     if (allUserIds.length === 0) return;
@@ -58,10 +88,13 @@ const TransactionsPage = () => {
     }
   }, [user?.id, allUserIds, loadingConnections]);
 
-  const filteredTransactions = useMemo(
-    () => filterTransactionsByDate(transactions, dateFilter, dateRange),
-    [transactions, dateFilter, dateRange]
-  );
+  const filteredTransactions = useMemo(() => {
+    let result = filterTransactionsByDate(transactions as any, dateFilter, dateRange) as Transaction[];
+    if (selectedBank !== "all") {
+      result = result.filter((t) => t.bank_account_id === selectedBank);
+    }
+    return result;
+  }, [transactions, dateFilter, dateRange, selectedBank]);
 
   if (loading) {
     return (
@@ -82,6 +115,18 @@ const TransactionsPage = () => {
             onValueChange={setDateFilter}
             onDateRangeChange={setDateRange}
           />
+          <Select value={selectedBank} onValueChange={setSelectedBank}>
+            <SelectTrigger className="w-[140px] h-8 sm:h-9">
+              <Building2 className="w-3.5 h-3.5 mr-2 text-muted-foreground" />
+              <SelectValue placeholder="Todos os Bancos" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todos os Bancos</SelectItem>
+              {banks.map((b) => (
+                <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
           <Button onClick={() => setShowAddDialog(true)} className="gap-2 h-8 sm:h-9">
             <Plus className="h-4 w-4" />
             <span className="hidden sm:inline">Nova Transação</span>

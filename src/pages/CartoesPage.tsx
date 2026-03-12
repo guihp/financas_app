@@ -60,6 +60,7 @@ export interface BankAccountType {
     color: string;
     created_at: string;
     updated_at: string;
+    balance?: number;
 }
 
 const CARD_COLORS = [
@@ -114,7 +115,30 @@ const CartoesPage = () => {
                 .eq("user_id", user.id)
                 .order("name");
             if (error) throw error;
-            setBanks((data as BankAccountType[]) || []);
+
+            // Fetch transactions to calculate real balances
+            const { data: transData } = await supabase
+                .from("transactions")
+                .select("bank_account_id, amount, type")
+                .eq("user_id", user.id)
+                .not("bank_account_id", "is", null);
+
+            const bankBalances: Record<string, number> = {};
+            if (transData) {
+                transData.forEach((t: any) => {
+                    const bId = t.bank_account_id;
+                    if (!bankBalances[bId]) bankBalances[bId] = 0;
+                    if (t.type === 'income') bankBalances[bId] += Number(t.amount);
+                    else if (t.type === 'expense') bankBalances[bId] -= Number(t.amount);
+                });
+            }
+
+            const banksWithBalance = (data || []).map(b => ({
+                ...b,
+                balance: bankBalances[b.id] || 0
+            }));
+
+            setBanks(banksWithBalance as BankAccountType[]);
         } catch (error) {
             console.error("Error loading banks:", error);
         }
@@ -350,10 +374,15 @@ const CartoesPage = () => {
                                         <CardHeader className="pb-3">
                                             <div className="flex items-center justify-between">
                                                 <div className="flex items-center gap-3">
-                                                    <div className="w-10 h-10 rounded-xl flex items-center justify-center shadow-md" style={{ backgroundColor: bank.color }}>
+                                                    <div className="w-10 h-10 rounded-xl flex items-center justify-center shadow-md flex-shrink-0" style={{ backgroundColor: bank.color }}>
                                                         <Building2 className="h-5 w-5 text-white" />
                                                     </div>
-                                                    <CardTitle className="text-lg">{bank.name}</CardTitle>
+                                                    <div>
+                                                        <CardTitle className="text-lg">{bank.name}</CardTitle>
+                                                        <p className={`text-sm font-semibold mt-0.5 ${bank.balance && bank.balance >= 0 ? "text-green-600" : bank.balance && bank.balance < 0 ? "text-destructive" : "text-muted-foreground"}`}>
+                                                            {formatCurrency(bank.balance || 0)}
+                                                        </p>
+                                                    </div>
                                                 </div>
                                                 <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                                                     <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => openEditBankDialog(bank)}><Edit className="h-3.5 w-3.5" /></Button>

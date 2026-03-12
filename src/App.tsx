@@ -10,6 +10,7 @@ import AdminSupremoFinancas from "./pages/AdminSupremoFinancas";
 import NotFound from "./pages/NotFound";
 import DashPage from "./pages/DashPage";
 import TransactionsPage from "./pages/TransactionsPage";
+import ExtratosPage from "./pages/ExtratosPage";
 import StatsPage from "./pages/StatsPage";
 import AgendaPage from "./pages/AgendaPage";
 import CategoriasPage from "./pages/CategoriasPage";
@@ -51,6 +52,7 @@ const App = () => (
           >
             <Route path="/dash" element={<DashPage />} />
             <Route path="/transactions" element={<TransactionsPage />} />
+            <Route path="/extratos" element={<ExtratosPage />} />
             <Route path="/stats" element={<StatsPage />} />
             <Route path="/agenda" element={<AgendaPage />} />
             <Route path="/categorias" element={<CategoriasPage />} />

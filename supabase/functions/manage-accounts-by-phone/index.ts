@@ -75,10 +75,36 @@ serve(async (req) => {
                 .eq('user_id', userId)
                 .order('name');
 
+            const { data: transactions } = await supabase
+                .from('transactions')
+                .select('amount, type, bank_account_id')
+                .eq('user_id', userId)
+                .not('bank_account_id', 'is', null);
+
+            const banksWithBalance = (banks || []).map((bank: any) => {
+                let income = 0;
+                let expense = 0;
+
+                (transactions || []).forEach((t: any) => {
+                    if (t.bank_account_id === bank.id) {
+                        const amount = Number(t.amount) || 0;
+                        if (t.type === 'income') income += amount;
+                        else if (t.type === 'expense') expense += amount;
+                    }
+                });
+
+                return {
+                    ...bank,
+                    balance: income - expense,
+                    income,
+                    expense
+                };
+            });
+
             return new Response(
                 JSON.stringify({
                     success: true,
-                    bank_accounts: banks || [],
+                    bank_accounts: banksWithBalance,
                     credit_cards: cards || [],
                     total_banks: banks?.length || 0,
                     total_cards: cards?.length || 0,

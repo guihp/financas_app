@@ -51,6 +51,7 @@ export const Dashboard = ({ user }: DashboardProps) => {
   const [loading, setLoading] = useState(true);
   const [summaryView, setSummaryView] = useState<"expenses" | "income">("expenses");
   const [categories, setCategories] = useState<any[]>([]);
+  const [bankAccounts, setBankAccounts] = useState<any[]>([]);
   const [isSuperAdmin, setIsSuperAdmin] = useState(false);
 
   const totalBalance = transactions.reduce((acc, transaction) => {
@@ -69,6 +70,22 @@ export const Dashboard = ({ user }: DashboardProps) => {
   const totalExpense = transactions
     .filter(t => t.type === "expense" && t.payment_method !== "credit")
     .reduce((acc, t) => acc + Number(t.amount), 0);
+
+  const bankBalances = bankAccounts.map(bank => {
+    let income = 0;
+    let expense = 0;
+    transactions.forEach(t => {
+      if (t.bank_account_id === bank.id) {
+        if (t.type === 'income') income += Number(t.amount);
+        else if (t.type === 'expense') expense += Number(t.amount);
+      }
+    });
+
+    return {
+      ...bank,
+      balance: income - expense,
+    };
+  });
 
   // Load transactions and categories from Supabase
   useEffect(() => {
@@ -173,6 +190,19 @@ export const Dashboard = ({ user }: DashboardProps) => {
           console.error("Erro ao carregar categorias:", categoriesError);
         } else {
           setCategories(categoriesData || []);
+        }
+
+        // Load Bank Accounts
+        const { data: banksData, error: banksError } = await supabase
+          .from('bank_accounts')
+          .select('*')
+          .eq('user_id', user.id)
+          .order('name');
+
+        if (banksError) {
+          console.error("Erro ao carregar bancos:", banksError);
+        } else {
+          setBankAccounts(banksData || []);
         }
 
       } catch (error) {
@@ -571,16 +601,47 @@ export const Dashboard = ({ user }: DashboardProps) => {
                   </div>
 
                   <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 lg:gap-6">
+                    {/* Minhas Contas */}
+                    <Card className="bg-gradient-card shadow-card border-border lg:row-span-1">
+                      <CardHeader className="pb-3 p-4 lg:p-6">
+                        <CardTitle className="text-sm text-muted-foreground flex items-center gap-2">
+                          <DollarSign className="w-4 h-4" />
+                          Minhas Contas
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent className="pt-0 p-4 lg:p-6 lg:pt-0 space-y-4">
+                        {bankBalances.length === 0 ? (
+                          <div className="text-sm text-muted-foreground text-center py-4">Nenhuma conta cadastrada</div>
+                        ) : (
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            {bankBalances.map(bank => (
+                              <div key={bank.id} className="flex justify-between items-center p-3 rounded-lg bg-background border border-border">
+                                <div className="flex items-center gap-3 truncate">
+                                  <div className="w-8 h-8 rounded-full flex items-center justify-center text-white flex-shrink-0" style={{ backgroundColor: bank.color || '#666' }}>
+                                    {bank.name.charAt(0).toUpperCase()}
+                                  </div>
+                                  <span className="font-medium text-sm truncate" title={bank.name}>{bank.name}</span>
+                                </div>
+                                <span className={`font-bold text-sm ml-2 flex-shrink-0 ${bank.balance >= 0 ? "text-green-600" : "text-destructive"}`}>
+                                  R$ {bank.balance.toFixed(2).replace(".", ",")}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </CardContent>
+                    </Card>
+
                     {/* Pie Chart - Análise por Categoria */}
-                    <Card className="bg-gradient-card shadow-card border-border lg:row-span-2">
-                      <CardHeader className="pb-2">
+                    <Card className="bg-gradient-card shadow-card border-border lg:row-span-1">
+                      <CardHeader className="pb-2 p-4 lg:p-6">
                         <CardTitle className="text-lg font-semibold text-foreground flex items-center gap-2">
                           <span className="w-2 h-2 bg-primary rounded-full"></span>
                           Análise por Categoria
                         </CardTitle>
                         <p className="text-xs text-foreground/60">Clique nas categorias para filtrar</p>
                       </CardHeader>
-                      <CardContent>
+                      <CardContent className="p-4 lg:p-6 pt-0">
                         <TransactionPieChart transactions={transactions} type="expenses" />
                       </CardContent>
                     </Card>

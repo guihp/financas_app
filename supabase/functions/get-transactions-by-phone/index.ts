@@ -15,16 +15,16 @@ serve(async (req) => {
   try {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-    
+
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     // Only allow GET requests
     if (req.method !== 'GET') {
       return new Response(
         JSON.stringify({ error: 'Method not allowed' }),
-        { 
-          status: 405, 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        {
+          status: 405,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
         }
       );
     }
@@ -35,13 +35,14 @@ serve(async (req) => {
     const type = url.searchParams.get('type'); // 'income' or 'expense'
     const category = url.searchParams.get('category');
     const limit = url.searchParams.get('limit');
+    const bank = url.searchParams.get('bank');
 
     if (!phone) {
       return new Response(
         JSON.stringify({ error: 'Phone number is required' }),
-        { 
-          status: 400, 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        {
+          status: 400,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
         }
       );
     }
@@ -50,18 +51,18 @@ serve(async (req) => {
 
     // Normalize phone number and try different variations
     const normalizedPhone = phone.replace(/\D/g, '');
-    
+
     // Generate phone variations
     const variations = [
       normalizedPhone, // Original
-      `+${normalizedPhone}`, 
+      `+${normalizedPhone}`,
       normalizedPhone.length > 10 ? normalizedPhone.substring(2) : normalizedPhone,
       // Add the missing 9 for mobile numbers
-      normalizedPhone.length === 12 && normalizedPhone.startsWith('55') ? 
+      normalizedPhone.length === 12 && normalizedPhone.startsWith('55') ?
         `55${normalizedPhone.substring(2, 4)}9${normalizedPhone.substring(4)}` : null,
-      normalizedPhone.length === 12 && normalizedPhone.startsWith('55') ? 
+      normalizedPhone.length === 12 && normalizedPhone.startsWith('55') ?
         `+55${normalizedPhone.substring(2, 4)}9${normalizedPhone.substring(4)}` : null,
-      normalizedPhone.length === 12 && normalizedPhone.startsWith('55') ? 
+      normalizedPhone.length === 12 && normalizedPhone.startsWith('55') ?
         `${normalizedPhone.substring(4)}` : null
     ].filter(Boolean);
 
@@ -75,7 +76,7 @@ serve(async (req) => {
       console.log(`Trying phone variation: ${phoneVariation}`);
       const { data, error } = await supabase
         .rpc('get_user_id_by_phone', { phone_number: phoneVariation });
-      
+
       if (!error && data) {
         userId = data;
         console.log(`Found user with phone variation: ${phoneVariation}`);
@@ -91,9 +92,9 @@ serve(async (req) => {
       console.error('Error getting user by phone:', userError);
       return new Response(
         JSON.stringify({ error: 'Failed to find user' }),
-        { 
-          status: 500, 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        {
+          status: 500,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
         }
       );
     }
@@ -101,9 +102,9 @@ serve(async (req) => {
     if (!userId) {
       return new Response(
         JSON.stringify({ error: 'User not found with this phone number' }),
-        { 
-          status: 404, 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        {
+          status: 404,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
         }
       );
     }
@@ -113,6 +114,29 @@ serve(async (req) => {
       .from('transactions')
       .select('*')
       .eq('user_id', userId);
+
+    if (bank) {
+      const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(bank);
+      if (isUUID) {
+        query = query.eq('bank_account_id', bank);
+      } else {
+        const { data: bankData } = await supabase
+          .from('bank_accounts')
+          .select('id')
+          .eq('user_id', userId)
+          .ilike('name', bank)
+          .maybeSingle();
+
+        if (bankData) {
+          query = query.eq('bank_account_id', bankData.id);
+        } else {
+          return new Response(
+            JSON.stringify({ error: `Banco '${bank}' não encontrado para este usuário` }),
+            { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+      }
+    }
 
     // Apply optional filters
     if (type && (type === 'income' || type === 'expense')) {
@@ -130,7 +154,7 @@ serve(async (req) => {
 
     // Order by date (most recent first)
     query = query.order('date', { ascending: false })
-                 .order('created_at', { ascending: false });
+      .order('created_at', { ascending: false });
 
     const { data: transactions, error: transactionsError } = await query;
 
@@ -138,19 +162,19 @@ serve(async (req) => {
       console.error('Error fetching transactions:', transactionsError);
       return new Response(
         JSON.stringify({ error: 'Failed to fetch transactions' }),
-        { 
-          status: 500, 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        {
+          status: 500,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
         }
       );
     }
 
     // Calculate totals
-    const totalIncome = transactions?.filter(t => t.type === 'income')
-      .reduce((sum, t) => sum + parseFloat(t.amount), 0) || 0;
-    
-    const totalExpense = transactions?.filter(t => t.type === 'expense')
-      .reduce((sum, t) => sum + parseFloat(t.amount), 0) || 0;
+    const totalIncome = transactions?.filter((t: any) => t.type === 'income')
+      .reduce((sum: number, t: any) => sum + parseFloat(t.amount), 0) || 0;
+
+    const totalExpense = transactions?.filter((t: any) => t.type === 'expense')
+      .reduce((sum: number, t: any) => sum + parseFloat(t.amount), 0) || 0;
 
     const balance = totalIncome - totalExpense;
 
@@ -167,9 +191,9 @@ serve(async (req) => {
           balance
         }
       }),
-      { 
-        status: 200, 
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+      {
+        status: 200,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       }
     );
 
@@ -177,9 +201,9 @@ serve(async (req) => {
     console.error('Unexpected error in get-transactions function:', error);
     return new Response(
       JSON.stringify({ error: 'Internal server error' }),
-      { 
-        status: 500, 
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+      {
+        status: 500,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       }
     );
   }

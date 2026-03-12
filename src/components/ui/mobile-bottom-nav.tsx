@@ -58,6 +58,7 @@ export const MobileBottomNav = ({
   ];
 
   const moreMenuItems = [
+    { path: "/extratos", label: "Extratos", icon: Receipt, color: "text-emerald-400", bg: "bg-emerald-500/15" },
     { path: "/cartoes", label: "Bancos e Cartões", icon: Landmark, color: "text-blue-400", bg: "bg-blue-500/15" },
     { path: "/faturas", label: "Faturas", icon: Receipt, color: "text-amber-400", bg: "bg-amber-500/15" },
     { path: "/sharing", label: "Compartilhar", icon: Users, color: "text-cyan-400", bg: "bg-cyan-500/15" },

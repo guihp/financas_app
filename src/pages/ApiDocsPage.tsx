@@ -419,7 +419,7 @@ CUIDADO: Esta ação não pode ser desfeita.`,
         summary: "Lista bancos e cartões de crédito do usuário. Necessário para obter os IDs usados nas transações.",
         description: `Retorna todas as contas bancárias (bank_accounts) e cartões de crédito (credit_cards) cadastrados.
 
-Use esta API para descobrir os UUIDs necessários nos campos bank_account_id e credit_card_id.`,
+Retorna também o balanço atualizado ("balance") que o banco tem com base nos cálculos de receitas e despesas registradas no banco em todo o período histórico.`,
         params: [
             { name: "phone", type: "string", required: true, description: "Número de telefone do usuário (query param)." },
         ],
@@ -428,8 +428,8 @@ Use esta API para descobrir os UUIDs necessários nos campos bank_account_id e c
   -H "Content-Type: application/json"`,
         responseExample: `{
   "bank_accounts": [
-    { "id": "uuid-banco-1", "name": "Nubank", "color": "#8B5CF6" },
-    { "id": "uuid-banco-2", "name": "Inter", "color": "#F97316" }
+    { "id": "uuid-banco-1", "name": "Nubank", "color": "#8B5CF6", "balance": 1540.50 },
+    { "id": "uuid-banco-2", "name": "Inter", "color": "#F97316", "balance": -300.00 }
   ],
   "credit_cards": [
     { "id": "uuid-cartao-1", "name": "Visa Gold", "closing_day": 15, "due_day": 25 }
@@ -672,11 +672,18 @@ curl -X POST "${BASE}/add-transaction-by-phone" \\
         method: "GET",
         path: "/get-transactions-by-phone",
         summary: "Retorna o extrato de transações do mês atual com saldos e totais.",
-        description: `Retorna as transações do mês corrente com receitas, despesas e saldo líquido.`,
+        description: `Retorna as transações do mês corrente com receitas, despesas e saldo líquido. Ao passar o parâmetro \`bank\` ou \`bank_account_id\`, você recebe perfeitamente apenas o extrato referente àquele banco e as somas daquele banco específico.`,
         params: [
             { name: "phone", type: "string", required: true, description: "Telefone do usuário (query param)." },
+            { name: "bank", type: "string", required: false, description: "Filtro opcional. Pode ser o nome do banco (ex: 'Nubank') ou o seu respectivo ID (bank_account_id)." },
         ],
-        curlCommand: `curl -X GET "${BASE}/get-transactions-by-phone?phone=5511999999999" \\
+        curlCommand: `# Obter Todas as transações do mês
+curl -X GET "${BASE}/get-transactions-by-phone?phone=5511999999999" \\
+  -H "Authorization: Bearer <SUPABASE_ANON_KEY>" \\
+  -H "Content-Type: application/json"
+  
+# Obter Apenaso Extrato de um Banco
+curl -X GET "${BASE}/get-transactions-by-phone?phone=5511999999999&bank=Nubank" \\
   -H "Authorization: Bearer <SUPABASE_ANON_KEY>" \\
   -H "Content-Type: application/json"`,
         responseExample: `{
@@ -688,6 +695,7 @@ curl -X POST "${BASE}/add-transaction-by-phone" \\
         errors: [
             { code: 404, message: "Usuário não encontrado", cause: "Telefone incorreto.", fix: "Confirme com /get-user-by-phone." },
         ],
+        tips: "💡 Usar o param ?bank=Nome é ideal para consultar o balanço específico que a pessoa tem guardado e o quanto entrou e saiu somente desta conta."
     },
 
     // ── 12. UPDATE TRANSACTION ──────────────

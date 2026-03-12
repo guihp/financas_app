@@ -23,6 +23,7 @@ import {
   Landmark,
   Moon,
   Sun,
+  FileText,
 } from "lucide-react";
 
 interface SubscriptionCheck {
@@ -206,6 +207,7 @@ export const AppLayout = () => {
   const menuItems = [
     { path: "/dash", icon: LayoutDashboard, label: "Dashboard" },
     { path: "/transactions", icon: DollarSign, label: "Transações" },
+    { path: "/extratos", icon: FileText, label: "Extratos" },
     { path: "/cartoes", icon: Landmark, label: "Cartões" },
     { path: "/faturas", icon: Receipt, label: "Faturas" },
     { path: "/stats", icon: PieChart, label: "Estatísticas" },
