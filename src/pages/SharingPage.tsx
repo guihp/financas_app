@@ -104,11 +104,24 @@ const SharingPage = () => {
 
         setInviting(true);
         try {
-            const { error } = await supabase.functions.invoke('invite-user', {
+            const { data, error } = await supabase.functions.invoke('invite-user', {
                 body: { email: inviteEmail }
             });
 
-            if (error) throw error;
+            if (error) {
+                // If it's a FunctionsHttpError, the response body might be in error.context
+                if (error.context && typeof error.context.json === 'function') {
+                    const errorData = await error.context.json().catch(() => null);
+                    if (errorData?.error) {
+                        throw new Error(errorData.error);
+                    }
+                }
+                throw error;
+            }
+
+            if (data?.error) {
+                throw new Error(data.error);
+            }
 
             toast({
                 title: "Convite enviado!",
@@ -119,18 +132,24 @@ const SharingPage = () => {
             fetchConnections();
         } catch (error: any) {
             console.error('Error inviting user:', error);
-            let msg = "Erro ao enviar convite.";
-            try {
-                const body = JSON.parse(error.message);
-                if (body.error) msg = body.error;
-            } catch (e) {
-                // ignore
+
+            let msg = "Erro ao tentar enviar o convite. Verifique o e-mail inserido e tente novamente.";
+
+            if (error.message) {
+                msg = error.message;
+                try {
+                    const parsed = JSON.parse(error.message);
+                    if (parsed.error) msg = parsed.error;
+                } catch (e) {
+                    // Not JSON, use original message
+                }
             }
 
             toast({
-                title: "Erro",
+                title: "Não foi possível enviar o convite",
                 description: msg,
                 variant: "destructive",
+                duration: 6000,
             });
         } finally {
             setInviting(false);

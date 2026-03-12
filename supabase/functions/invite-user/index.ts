@@ -15,9 +15,14 @@ serve(async (req) => {
         const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
         const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
 
+        console.log('Received request');
+
         // Create a Supabase client with the Auth context of the logged in user
-        const authHeader = req.headers.get('Authorization')!;
+        const authHeader = req.headers.get('Authorization');
+        console.log('Auth header present:', !!authHeader);
+
         if (!authHeader) {
+            console.error('No authorization header passed');
             return new Response(
                 JSON.stringify({ error: 'No authorization header passed' }),
                 { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -33,7 +38,10 @@ serve(async (req) => {
         // Get the user from the token
         const { data: { user }, error: userError } = await supabaseClient.auth.getUser();
 
+        console.log('User fetched:', user ? user.id : null, 'Error:', userError);
+
         if (userError || !user) {
+            console.error('Unauthorized error during getUser:', userError);
             return new Response(
                 JSON.stringify({ error: 'Unauthorized', details: userError }),
                 { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -42,6 +50,7 @@ serve(async (req) => {
 
         const requesterId = user.id;
         const body = await req.json();
+        console.log('Body email:', body.email);
         const { email } = body;
 
         if (!email) {
@@ -115,6 +124,13 @@ serve(async (req) => {
             }
         }
 
+        if (!recipientId) {
+            return new Response(
+                JSON.stringify({ error: 'Usuário não localizado na plataforma. Convites só podem ser enviados para contas cadastradas.' }),
+                { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            );
+        }
+
         // Create connection record
         const { data: connection, error: createError } = await supabaseAdmin
             .from('account_connections')
@@ -161,7 +177,7 @@ serve(async (req) => {
                 to: inviteeEmail,
                 userName: inviteeName,
                 requesterName: requesterName,
-                invitationLink: `https://financas.iafeoficial.com/convite?id=${connection.id}`
+                invitationLink: `https://financas.iafeoficial.com/sharing?id=${connection.id}`
             })
         });
 

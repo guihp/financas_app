@@ -395,7 +395,7 @@ const getWelcomeTrialEmailContent = (data: {
     <!-- CTA Button -->
     <tr>
       <td style="padding: 0 32px 32px; text-align: center;" class="mobile-padding">
-        <a href="https://financas.iafeoficial.com/dash" class="btn btn-primary" style="display: inline-block; background: linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%); color: white; padding: 16px 40px; border-radius: 10px; text-decoration: none; font-weight: 600; font-size: 16px;">
+        <a href="https://financas.iafeoficial.com/login" class="btn btn-primary" style="display: inline-block; background: linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%); color: white; padding: 16px 40px; border-radius: 10px; text-decoration: none; font-weight: 600; font-size: 16px;">
           🚀 Acessar Minha Conta
         </a>
       </td>
@@ -466,7 +466,7 @@ const getTrialExpiringEmailContent = (data: {
     <!-- CTA Button -->
     <tr>
       <td style="padding: 0 32px 32px; text-align: center;" class="mobile-padding">
-        <a href="https://financas.iafeoficial.com/pagamento-pendente" class="btn btn-success" style="display: inline-block; background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%); color: white; padding: 16px 40px; border-radius: 10px; text-decoration: none; font-weight: 600; font-size: 16px;">
+        <a href="https://financas.iafeoficial.com/login" class="btn btn-success" style="display: inline-block; background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%); color: white; padding: 16px 40px; border-radius: 10px; text-decoration: none; font-weight: 600; font-size: 16px;">
           💳 Assinar Agora
         </a>
         <p style="margin: 16px 0 0 0; color: #64748b; font-size: 13px;">
@@ -583,7 +583,7 @@ O QUE VOCÊ PODE FAZER:
 ✓ Agendar compromissos financeiros
 ✓ Receber insights de IA sobre seus gastos
 
-🚀 Acesse sua conta: https://financas.iafeoficial.com/dash
+🚀 Acesse sua conta: https://financas.iafeoficial.com/login
 
 ───────────────────────────────
 Dúvidas? Entre em contato:
@@ -676,7 +676,7 @@ const getInvitationAcceptedEmailContent = (data: {
     <!-- CTA Button -->
     <tr>
       <td style="padding: 0 32px 32px; text-align: center;" class="mobile-padding">
-        <a href="https://financas.iafeoficial.com/dash" class="btn btn-primary" style="display: inline-block; background: linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%); color: white; padding: 16px 40px; border-radius: 10px; text-decoration: none; font-weight: 600; font-size: 16px;">
+        <a href="https://financas.iafeoficial.com/login" class="btn btn-primary" style="display: inline-block; background: linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%); color: white; padding: 16px 40px; border-radius: 10px; text-decoration: none; font-weight: 600; font-size: 16px;">
           🚀 Acessar Painel
         </a>
       </td>
