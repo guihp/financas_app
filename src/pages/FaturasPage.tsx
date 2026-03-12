@@ -5,12 +5,28 @@ import { User } from "@supabase/supabase-js";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import {
+    Dialog,
+    DialogContent,
+    DialogHeader,
+    DialogTitle,
+    DialogDescription,
+    DialogFooter,
+} from "@/components/ui/dialog";
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from "@/components/ui/select";
+import {
     Receipt,
     ChevronLeft,
     ChevronRight,
     CreditCard,
     CalendarDays,
     CheckCircle2,
+    Landmark,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
@@ -47,23 +63,43 @@ const FaturasPage = () => {
     const [cards, setCards] = useState<CreditCardInfo[]>([]);
     const [transactions, setTransactions] = useState<FaturaTransaction[]>([]);
     const [paidInvoices, setPaidInvoices] = useState<string[]>([]);
+    const [banks, setBanks] = useState<{ id: string; name: string }[]>([]);
     const [loading, setLoading] = useState(true);
     const [selectedMonth, setSelectedMonth] = useState(() => {
         const now = new Date();
         return { month: now.getMonth(), year: now.getFullYear() };
     });
 
+    // Payment Modal State
+    const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
+    const [selectedBankId, setSelectedBankId] = useState<string>("");
+    const [paymentData, setPaymentData] = useState<{
+        cardId: string;
+        monthName: string;
+        amount: number;
+    } | null>(null);
+
     const loadData = async () => {
         try {
             // Load cards
             const { data: cardsData, error: cardsError } = await supabase
                 .from("credit_cards")
-                .select("id, name, closing_day, due_day, color, card_limit, bank_account_id")
+                .select("id, name, closing_day, due_day, color, card_limit")
                 .eq("user_id", user.id)
                 .order("name");
 
             if (cardsError) throw cardsError;
             setCards(cardsData || []);
+
+            // Load banks
+            const { data: banksData, error: banksError } = await supabase
+                .from("bank_accounts")
+                .select("id, name")
+                .eq("user_id", user.id)
+                .order("name");
+
+            if (banksError) throw banksError;
+            setBanks(banksData || []);
 
             // Load credit transactions for a wide range to cover installments
             const { data: txData, error: txError } = await supabase
@@ -197,31 +233,38 @@ const FaturasPage = () => {
 
     const [payingCardId, setPayingCardId] = useState<string | null>(null);
 
-    const handlePayInvoice = async (cardId: string, monthName: string, amount: number, bankAccountId?: string) => {
-        if (!bankAccountId) {
-            toast({ title: "Banco não vinculado", description: "Vincule uma conta bancária a este cartão na página de Cartões para pagar a fatura.", variant: "destructive" });
-            return;
-        }
+    const handlePayInvoice = (cardId: string, monthName: string, amount: number) => {
         if (amount <= 0) {
             toast({ title: "Fatura Zerada", description: "Não há valor para pagar nesta fatura." });
             return;
         }
+        setPaymentData({ cardId, monthName, amount });
+        setIsPaymentModalOpen(true);
+    };
 
-        setPayingCardId(cardId);
+    const confirmPayment = async () => {
+        if (!paymentData) return;
+        if (!selectedBankId) {
+            toast({ title: "Erro", description: "Selecione a conta bancária para debitar o valor.", variant: "destructive" });
+            return;
+        }
+
+        setPayingCardId(paymentData.cardId);
+        setIsPaymentModalOpen(false); // Fecha logo o modal pra dar feedback visual no botão atrás
         try {
             const today = new Date().toISOString().split("T")[0];
-            const expenseDesc = `Fatura ${cards.find(c => c.id === cardId)?.name} - ${monthName}`;
+            const expenseDesc = `Fatura ${cards.find(c => c.id === paymentData.cardId)?.name} - ${paymentData.monthName}`;
 
             const { error } = await supabase.from("transactions").insert({
                 user_id: user.id,
                 type: "expense",
-                amount: amount,
+                amount: paymentData.amount,
                 category: "geral",
                 description: expenseDesc,
                 date: today,
                 transaction_date: today,
                 payment_method: "debit",
-                bank_account_id: bankAccountId,
+                bank_account_id: selectedBankId,
                 total_installments: 1,
                 installment_number: 1
             });
@@ -233,6 +276,8 @@ const FaturasPage = () => {
             toast({ title: "Erro ao pagar", description: err.message, variant: "destructive" });
         } finally {
             setPayingCardId(null);
+            setPaymentData(null);
+            setSelectedBankId(""); // reset
         }
     };
 
@@ -364,7 +409,7 @@ const FaturasPage = () => {
                                                 className="w-full text-xs gap-1.5 font-medium transition-all"
                                                 style={{ backgroundColor: card.color, color: "#fff" }}
                                                 disabled={payingCardId === card.id || cardTotal <= 0}
-                                                onClick={() => handlePayInvoice(card.id, monthLabel, cardTotal, card.bank_account_id)}
+                                                onClick={() => handlePayInvoice(card.id, monthLabel, cardTotal)}
                                             >
                                                 <CheckCircle2 className="w-4 h-4" />
                                                 {payingCardId === card.id ? "Pagando..." : "Pagar Fatura"}
@@ -418,6 +463,54 @@ const FaturasPage = () => {
                     })}
                 </div>
             )}
+
+            {/* Payment Modal */}
+            <Dialog open={isPaymentModalOpen} onOpenChange={(open) => {
+                setIsPaymentModalOpen(open);
+                if (!open) {
+                    setSelectedBankId("");
+                    setPaymentData(null);
+                }
+            }}>
+                <DialogContent className="sm:max-w-md">
+                    <DialogHeader>
+                        <DialogTitle>Pagar Fatura</DialogTitle>
+                        <DialogDescription>
+                            Selecione a conta bancária de onde o pagamento da fatura será debitado.
+                            Valor: <strong className="text-foreground">{paymentData ? formatCurrency(paymentData.amount) : "R$ 0,00"}</strong>
+                        </DialogDescription>
+                    </DialogHeader>
+
+                    <div className="py-4 space-y-4">
+                        <div className="space-y-2">
+                            <Select value={selectedBankId} onValueChange={setSelectedBankId}>
+                                <SelectTrigger className="w-full">
+                                    <SelectValue placeholder="Selecione um banco..." />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {banks.map(bank => (
+                                        <SelectItem key={bank.id} value={bank.id}>
+                                            <div className="flex items-center gap-2">
+                                                <Landmark className="w-4 h-4 text-muted-foreground" />
+                                                {bank.name}
+                                            </div>
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
+                    </div>
+
+                    <DialogFooter className="flex-col sm:flex-row gap-2">
+                        <Button type="button" variant="outline" onClick={() => setIsPaymentModalOpen(false)}>
+                            Cancelar
+                        </Button>
+                        <Button onClick={confirmPayment} disabled={!selectedBankId}>
+                            Confirmar Pagamento
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
         </div>
     );
 };

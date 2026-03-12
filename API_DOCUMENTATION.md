@@ -14,7 +14,7 @@
 |---|----------|--------|-----------|
 | 1 | [get-user-by-phone](#1-get-user-by-phone) | GET | Buscar usuário + seus bancos e cartões |
 | 2 | [get-categories](#2-get-categories) | GET | Listar categorias (com filtros) |
-| 3 | [manage-accounts-by-phone](#3-manage-accounts-by-phone) | GET/POST | Listar/criar bancos e cartões |
+| 3 | [manage-accounts-by-phone](#3-manage-accounts-by-phone) | GET/POST | Listar/criar bancos, cartões e pagar faturas |
 | 4 | [add-transaction-by-phone](#4-add-transaction-by-phone) | POST | Criar transação (receita ou despesa) |
 | 5 | [get-transactions-by-phone](#5-get-transactions-by-phone) | GET | Listar transações + saldo |
 | 6 | [update-transaction-by-phone](#6-update-transaction-by-phone) | PUT | Editar transação existente |
@@ -177,18 +177,7 @@ GET /manage-accounts-by-phone?phone=5511999999999
   "name": "Nubank Crédito",
   "closing_day": 3,
   "due_day": 10,
-  "card_limit": 5000,
-  "bank_account_id": "uuid-do-banco"
-}
-```
-
-### POST — Vincular cartão ao banco
-```json
-{
-  "phone": "5511999999999",
-  "action": "link_card",
-  "card_id": "uuid-do-cartao",
-  "bank_account_id": "uuid-do-banco"
+  "card_limit": 5000
 }
 ```
 
@@ -198,6 +187,7 @@ GET /manage-accounts-by-phone?phone=5511999999999
   "phone": "5511999999999",
   "action": "pay_invoice",
   "card_id": "uuid-do-cartao",
+  "bank_account_id": "uuid-do-banco",
   "month_name": "Março 2026",
   "amount": 450.90
 }
@@ -208,22 +198,20 @@ GET /manage-accounts-by-phone?phone=5511999999999
 | Campo | Tipo | Obrigatório | Descrição |
 |-------|------|-------------|-----------|
 | `phone` | string | ✅ | Telefone |
-| `action` | string | ✅ | `"create_bank"` ou `"create_card"` |
-| `name` | string | ✅ | Nome do banco/cartão |
+| `action` | string | ✅ | `"create_bank"`, `"create_card"` ou `"pay_invoice"` |
+| `name` | string | ✅* | Nome do banco/cartão (* Obrigatório em criar banco/cartão) |
 | `color` | string | ❌ | Cor hex (auto-detecta se omitido) |
 | `closing_day` | number | ✅* | Dia fechamento fatura (1-31) |
 | `due_day` | number | ✅* | Dia vencimento fatura (1-31) |
 | `card_limit` | number | ❌ | Limite do cartão |
-| `bank_account_id` | string | ❌ | UUID do banco (usado em `create_card` ou `link_card`) |
-| `card_id` | string | ✅** | UUID do cartão (usado em `link_card` ou `pay_invoice`) |
-| `month_name` | string | ✅*** | Nome do mês + ano (Ex: "Março 2026") |
-| `amount` | number | ✅*** | Valor do pagamento |
+| `bank_account_id` | string | ✅** | UUID do banco (obrigatório em `pay_invoice`) |
+| `card_id` | string | ✅** | UUID do cartão (obrigatório em `pay_invoice`) |
+| `month_name` | string | ✅** | Nome do mês + ano (Ex: "Março 2026") |
+| `amount` | number | ✅** | Valor do pagamento |
 
-> \* Obrigatório apenas para `create_card`
+> \* Obrigatório apenas para `create_card` (name em create_bank e create_card)
 >
-> \** Obrigatório para `link_card` e `pay_invoice`
->
-> \*** Obrigatório para `pay_invoice`
+> \** Obrigatório para `pay_invoice`
 
 ### Response 200 (criar banco)
 ```json

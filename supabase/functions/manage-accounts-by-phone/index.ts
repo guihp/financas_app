@@ -171,8 +171,7 @@ serve(async (req) => {
                         closing_day: parseInt(closing_day),
                         due_day: parseInt(due_day),
                         card_limit: card_limit ? parseFloat(card_limit) : null,
-                        color: resolvedColor,
-                        bank_account_id: bank_account_id || null
+                        color: resolvedColor
                     })
                     .select()
                     .single();
@@ -193,50 +192,26 @@ serve(async (req) => {
                     { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
                 );
 
-            } else if (action === 'link_card') {
-                const { card_id, bank_account_id } = body;
-                if (!card_id || !bank_account_id) {
-                    return new Response(JSON.stringify({ error: 'Informe card_id e bank_account_id' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
-                }
-
-                const { data: updatedCard, error: updateErr } = await supabase
-                    .from('credit_cards')
-                    .update({ bank_account_id })
-                    .eq('id', card_id)
-                    .eq('user_id', userId)
-                    .select()
-                    .single();
-
-                if (updateErr) {
-                    return new Response(JSON.stringify({ error: 'Erro ao vincular cartão', details: updateErr.message }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
-                }
-
-                return new Response(JSON.stringify({ success: true, message: 'Cartão vinculado com sucesso!', credit_card: updatedCard }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
-
             } else if (action === 'pay_invoice') {
-                const { card_id, month_name, amount } = body;
-                if (!card_id || !month_name || amount === undefined) {
-                    return new Response(JSON.stringify({ error: 'Informe card_id, month_name e amount' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+                const { card_id, month_name, amount, bank_account_id } = body;
+                if (!card_id || !month_name || amount === undefined || !bank_account_id) {
+                    return new Response(JSON.stringify({ error: 'Informe card_id, month_name, amount e bank_account_id' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
                 }
 
                 if (amount <= 0) {
                     return new Response(JSON.stringify({ error: 'Valor da fatura deve ser maior que zero' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
                 }
 
-                // 1. Buscar o cartão para pegar name e bank_account_id
+                // 1. Buscar o cartão para validar existencia
                 const { data: card, error: cardErr } = await supabase
                     .from('credit_cards')
-                    .select('id, name, bank_account_id')
+                    .select('id, name')
                     .eq('id', card_id)
                     .eq('user_id', userId)
                     .single();
 
                 if (cardErr || !card) {
                     return new Response(JSON.stringify({ error: 'Cartão não encontrado' }), { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
-                }
-
-                if (!card.bank_account_id) {
-                    return new Response(JSON.stringify({ error: 'Cartão não possui conta bancária vinculada. Use link_card primeiro.' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
                 }
 
                 // 2. Verificar se já foi paga
@@ -264,7 +239,7 @@ serve(async (req) => {
                     date: today,
                     transaction_date: today,
                     payment_method: "debit",
-                    bank_account_id: card.bank_account_id,
+                    bank_account_id: bank_account_id,
                     total_installments: 1,
                     installment_number: 1
                 }).select().single();
@@ -277,7 +252,7 @@ serve(async (req) => {
 
             } else {
                 return new Response(
-                    JSON.stringify({ error: `Ação "${action}" inválida`, actions: ['create_bank', 'create_card', 'link_card', 'pay_invoice'] }),
+                    JSON.stringify({ error: `Ação "${action}" inválida`, actions: ['create_bank', 'create_card', 'pay_invoice'] }),
                     { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
                 );
             }
