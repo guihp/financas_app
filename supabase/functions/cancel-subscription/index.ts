@@ -95,6 +95,50 @@ serve(async (req) => {
             }
         }
 
+        // Delete all pending or overdue charges explicitly so they disappear
+        if (subscription.asaas_customer_id && ASAAS_API_KEY) {
+            try {
+                // Fetch PENDING and OVERDUE payments explicitly
+                let paymentsToDelete: any[] = [];
+                for (const status of ['PENDING', 'OVERDUE']) {
+                    const payRes = await fetch(
+                        `${ASAAS_BASE_URL}/payments?customer=${subscription.asaas_customer_id}&status=${status}`,
+                        {
+                            method: 'GET',
+                            headers: {
+                                'accept': 'application/json',
+                                'access_token': ASAAS_API_KEY
+                            }
+                        }
+                    );
+                    if (payRes.ok) {
+                        const payData = await payRes.json();
+                        if (payData.data && payData.data.length > 0) {
+                            paymentsToDelete = paymentsToDelete.concat(payData.data);
+                        }
+                    }
+                }
+
+                // Delete each pending payment
+                for (const pay of paymentsToDelete) {
+                    try {
+                        const delRes = await fetch(`${ASAAS_BASE_URL}/payments/${pay.id}`, {
+                            method: 'DELETE',
+                            headers: {
+                                'accept': 'application/json',
+                                'access_token': ASAAS_API_KEY
+                            }
+                        });
+                        console.log(`Deleted pending payment ${pay.id} on Asaas: ${delRes.status}`);
+                    } catch (err) {
+                        console.error(`Failed to delete pending payment ${pay.id}:`, err);
+                    }
+                }
+            } catch (e) {
+                console.error('Error fetching/deleting pending payments:', e);
+            }
+        }
+
         if (isTrial) {
             // Copy user to "desistentes" and delete their account as they are on trial
             const { data: profile } = await supabaseAdmin
