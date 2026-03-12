@@ -161,7 +161,7 @@ serve(async (req) => {
                 to: inviteeEmail,
                 userName: inviteeName,
                 requesterName: requesterName,
-                invitationLink: `https://app.iafeoficial.com/convite?id=${connection.id}`
+                invitationLink: `https://financas.iafeoficial.com/convite?id=${connection.id}`
             })
         });
 

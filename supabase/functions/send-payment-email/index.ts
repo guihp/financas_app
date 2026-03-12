@@ -6,7 +6,7 @@ const corsHeaders = {
 }
 
 const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY') ?? '';
-const FROM_EMAIL = 'IAFÉ Finanças <financeiro@iafeoficial.com>';
+const FROM_EMAIL = 'IAFÉ Finanças <comercial@iafeoficial.com>';
 
 // Base email template wrapper
 const getEmailWrapper = (content: string, preheader: string = '') => `
@@ -125,7 +125,7 @@ const getEmailWrapper = (content: string, preheader: string = '') => `
                       Dúvidas? Estamos aqui para ajudar!
                     </p>
                     <p style="margin: 8px 0 0 0;">
-                      <a href="mailto:financeiro@iafeoficial.com" style="color: #0ea5e9; text-decoration: none; font-size: 14px;">financeiro@iafeoficial.com</a>
+                      <a href="mailto:comercial@iafeoficial.com" style="color: #0ea5e9; text-decoration: none; font-size: 14px;">comercial@iafeoficial.com</a>
                     </p>
                   </td>
                 </tr>
@@ -395,7 +395,7 @@ const getWelcomeTrialEmailContent = (data: {
     <!-- CTA Button -->
     <tr>
       <td style="padding: 0 32px 32px; text-align: center;" class="mobile-padding">
-        <a href="https://app.iafeoficial.com/dash" class="btn btn-primary" style="display: inline-block; background: linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%); color: white; padding: 16px 40px; border-radius: 10px; text-decoration: none; font-weight: 600; font-size: 16px;">
+        <a href="https://financas.iafeoficial.com/dash" class="btn btn-primary" style="display: inline-block; background: linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%); color: white; padding: 16px 40px; border-radius: 10px; text-decoration: none; font-weight: 600; font-size: 16px;">
           🚀 Acessar Minha Conta
         </a>
       </td>
@@ -466,7 +466,7 @@ const getTrialExpiringEmailContent = (data: {
     <!-- CTA Button -->
     <tr>
       <td style="padding: 0 32px 32px; text-align: center;" class="mobile-padding">
-        <a href="https://app.iafeoficial.com/pagamento-pendente" class="btn btn-success" style="display: inline-block; background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%); color: white; padding: 16px 40px; border-radius: 10px; text-decoration: none; font-weight: 600; font-size: 16px;">
+        <a href="https://financas.iafeoficial.com/pagamento-pendente" class="btn btn-success" style="display: inline-block; background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%); color: white; padding: 16px 40px; border-radius: 10px; text-decoration: none; font-weight: 600; font-size: 16px;">
           💳 Assinar Agora
         </a>
         <p style="margin: 16px 0 0 0; color: #64748b; font-size: 13px;">
@@ -540,7 +540,7 @@ ${invoiceUrl ? `🔗 Ver fatura completa: ${invoiceUrl}` : ''}
 
 ───────────────────────────────
 Dúvidas? Entre em contato:
-financeiro@iafeoficial.com
+comercial@iafeoficial.com
 ───────────────────────────────
 
 © 2026 IAFÉ Finanças
@@ -583,11 +583,11 @@ O QUE VOCÊ PODE FAZER:
 ✓ Agendar compromissos financeiros
 ✓ Receber insights de IA sobre seus gastos
 
-🚀 Acesse sua conta: https://app.iafeoficial.com/dash
+🚀 Acesse sua conta: https://financas.iafeoficial.com/dash
 
 ───────────────────────────────
 Dúvidas? Entre em contato:
-financeiro@iafeoficial.com
+comercial@iafeoficial.com
 ───────────────────────────────
 
 © 2026 IAFÉ Finanças
@@ -676,7 +676,7 @@ const getInvitationAcceptedEmailContent = (data: {
     <!-- CTA Button -->
     <tr>
       <td style="padding: 0 32px 32px; text-align: center;" class="mobile-padding">
-        <a href="https://app.iafeoficial.com/dash" class="btn btn-primary" style="display: inline-block; background: linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%); color: white; padding: 16px 40px; border-radius: 10px; text-decoration: none; font-weight: 600; font-size: 16px;">
+        <a href="https://financas.iafeoficial.com/dash" class="btn btn-primary" style="display: inline-block; background: linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%); color: white; padding: 16px 40px; border-radius: 10px; text-decoration: none; font-weight: 600; font-size: 16px;">
           🚀 Acessar Painel
         </a>
       </td>
