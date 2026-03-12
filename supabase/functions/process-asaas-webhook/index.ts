@@ -182,54 +182,61 @@ serve(async (req) => {
         // Don't fail the webhook
       }
 
-      // Create user account (register-user with registrationId only), with 1 retry on failure
-      const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
-      const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
-      const invokeRegisterUser = async () => {
-        const regRes = await fetch(`${supabaseUrl}/functions/v1/register-user`, {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${serviceRoleKey}`,
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({ registrationId: registration.id })
-        });
-        const regResult = await regRes.json().catch(() => ({}));
-        return { ok: regRes.ok, status: regRes.status, result: regResult };
-      };
-      try {
-        let outcome = await invokeRegisterUser();
-        if (!outcome.ok && (outcome.status >= 500 || outcome.status === 408)) {
-          console.warn('register-user failed, retrying in 2s:', outcome.status, outcome.result);
-          await new Promise(r => setTimeout(r, 2000));
-          outcome = await invokeRegisterUser();
-        }
-        if (!outcome.ok) {
-          console.error('register-user failed after payment:', outcome.status, outcome.result);
+      let isUserRegistered = registration.status === 'registered';
+
+      if (!isUserRegistered) {
+        // Create user account (register-user with registrationId only), with 1 retry on failure
+        const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
+        const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+        const invokeRegisterUser = async () => {
+          const regRes = await fetch(`${supabaseUrl}/functions/v1/register-user`, {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${serviceRoleKey}`,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ registrationId: registration.id })
+          });
+          const regResult = await regRes.json().catch(() => ({}));
+          return { ok: regRes.ok, status: regRes.status, result: regResult };
+        };
+        try {
+          let outcome = await invokeRegisterUser();
+          if (!outcome.ok && (outcome.status >= 500 || outcome.status === 408)) {
+            console.warn('register-user failed, retrying in 2s:', outcome.status, outcome.result);
+            await new Promise(r => setTimeout(r, 2000));
+            outcome = await invokeRegisterUser();
+          }
+          if (!outcome.ok) {
+            console.error('register-user failed after payment:', outcome.status, outcome.result);
+            // Return 500 to trigger Asaas retry
+            return new Response(
+              JSON.stringify({
+                error: 'Erro ao criar conta de usuário. O webhook será retentado.',
+                details: outcome.result
+              }),
+              {
+                status: 500,
+                headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+              }
+            );
+          } else {
+            console.log('User created from paid registration:', registration.id);
+            isUserRegistered = true;
+          }
+        } catch (invokeError) {
+          console.error('Failed to invoke register-user:', invokeError);
           // Return 500 to trigger Asaas retry
           return new Response(
-            JSON.stringify({
-              error: 'Erro ao criar conta de usuário. O webhook será retentado.',
-              details: outcome.result
-            }),
+            JSON.stringify({ error: 'Erro de comunicação interna ao criar usuário' }),
             {
               status: 500,
               headers: { ...corsHeaders, 'Content-Type': 'application/json' }
             }
           );
-        } else {
-          console.log('User created from paid registration:', registration.id);
         }
-      } catch (invokeError) {
-        console.error('Failed to invoke register-user:', invokeError);
-        // Return 500 to trigger Asaas retry
-        return new Response(
-          JSON.stringify({ error: 'Erro de comunicação interna ao criar usuário' }),
-          {
-            status: 500,
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-          }
-        );
+      } else {
+        console.log('User is already registered, skipping user creation step for recurring payment:', registration.id);
       }
 
       // ============================================
