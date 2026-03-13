@@ -268,7 +268,7 @@ const Assinatura = () => {
               {isPaid && subscription && (
                 <div className="space-y-2">
                   <p className="text-sm text-muted-foreground">
-                    Plano Mensal - <span className="line-through text-muted-foreground/60">R$ 49,90</span>{" "}<span className="text-green-400">R$ 39,90</span>/mês{" "}<span className="text-[10px] bg-green-500/20 text-green-400 px-1.5 py-0.5 rounded-full font-bold">PROMOÇÃO</span>
+                    Plano Mensal - <span className="line-through text-muted-foreground/60">R$ 29,90</span>{" "}<span className="text-green-400">R$ 19,90</span>/mês{" "}<span className="text-[10px] bg-green-500/20 text-green-400 px-1.5 py-0.5 rounded-full font-bold">PROMOÇÃO</span>
                   </p>
                   {subscription.current_period_end && (
                     <p className="text-xs text-muted-foreground flex items-center gap-1">
@@ -318,8 +318,8 @@ const Assinatura = () => {
               </div>
               <div className="flex items-center gap-2 mb-3">
                 <div className="flex items-baseline gap-1">
-                  <span className="text-sm text-muted-foreground line-through">R$ 49,90</span>
-                  <span className="text-3xl font-bold text-green-400">R$ 39,90</span>
+                  <span className="text-sm text-muted-foreground line-through">R$ 29,90</span>
+                  <span className="text-3xl font-bold text-green-400">R$ 19,90</span>
                   <span className="text-sm text-muted-foreground">/mês</span>
                 </div>
                 <Badge className="bg-green-500/20 text-green-400 border-green-500/30 text-[10px]">
