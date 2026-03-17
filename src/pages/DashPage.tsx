@@ -36,7 +36,7 @@ const DashPage = () => {
   const navigate = useNavigate();
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [creditCards, setCreditCards] = useState<CreditCardInfo[]>([]);
-  const [paidInvoiceDescs, setPaidInvoiceDescs] = useState<string[]>([]);
+  const [paidInvoiceDescs, setPaidInvoiceDescs] = useState<{ description: string; amount: number }[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [dateFilter, setDateFilter] = useState<DateFilterOption>("thisMonth");
@@ -76,14 +76,19 @@ const DashPage = () => {
         .order("name");
       setCreditCards(cardsData || []);
 
-      // Load paid invoice descriptions
+      // Load paid invoice descriptions with amounts
       const { data: paidData } = await supabase
         .from("transactions")
-        .select("description")
+        .select("description, amount")
         .in("user_id", allUserIds)
         .eq("payment_method", "debit")
         .like("description", "Fatura %");
-      setPaidInvoiceDescs(paidData?.map(p => p.description || "") || []);
+      setPaidInvoiceDescs(
+        paidData?.map(p => ({
+          description: p.description || "",
+          amount: Number(p.amount) || 0
+        })) || []
+      );
     } catch (error) {
       console.error("Error loading transactions:", error);
     } finally {
@@ -139,18 +144,25 @@ const DashPage = () => {
       });
 
       const total = cardTxs.reduce((sum, t) => sum + Number(t.amount), 0);
-      const isPaid = paidInvoiceDescs.includes(`Fatura ${card.name} - ${currentMonthLabel}`);
 
-      // Check if overdue: due_day of current month has passed and not paid
+      // Calculate total paid for this invoice
+      const invoiceKey = `Fatura ${card.name} - ${currentMonthLabel}`;
+      const totalPaid = paidInvoiceDescs
+        .filter(p => p.description === invoiceKey)
+        .reduce((sum, p) => sum + p.amount, 0);
+      const remaining = total - totalPaid;
+      const isPaid = totalPaid >= total && total > 0;
+
+      // Check if overdue: due_day of current month has passed and not fully paid
       const dueDate = new Date(currentYear, currentMonth, card.due_day, 23, 59, 59);
       const isOverdue = !isPaid && total > 0 && now > dueDate;
 
-      return { card, total, isPaid, isOverdue, txCount: cardTxs.length };
+      return { card, total, isPaid, isOverdue, txCount: cardTxs.length, remaining: remaining > 0 ? remaining : 0 };
     });
   }, [creditCards, transactions, paidInvoiceDescs, currentMonth, currentYear, currentMonthLabel]);
 
   const totalFaturas = faturasPerCard.reduce((sum, f) => sum + f.total, 0);
-  const totalFaturasAbertas = faturasPerCard.filter(f => !f.isPaid).reduce((sum, f) => sum + f.total, 0);
+  const totalFaturasAbertas = faturasPerCard.filter(f => !f.isPaid).reduce((sum, f) => sum + f.remaining, 0);
   const allPaid = faturasPerCard.length > 0 && faturasPerCard.every(f => f.isPaid || f.total === 0);
   const hasOverdue = faturasPerCard.some(f => f.isOverdue);
 

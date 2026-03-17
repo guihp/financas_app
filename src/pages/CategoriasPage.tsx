@@ -1,10 +1,13 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { useOutletContext } from "react-router-dom";
 import { User } from "@supabase/supabase-js";
 import { Categories } from "@/components/Categories";
 import { supabase } from "@/integrations/supabase/client";
 import { Transaction } from "@/components/Dashboard";
 import { useToast } from "@/hooks/use-toast";
+import { DateRangeFilter } from "@/components/DateRangeFilter";
+import { filterTransactionsByDate } from "@/utils/dateFilter";
+import type { DateFilterOption, DateRange } from "@/utils/dateFilter";
 
 interface OutletContextType {
   user: User;
@@ -17,6 +20,8 @@ const CategoriasPage = () => {
   const [categories, setCategories] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const { toast } = useToast();
+  const [dateFilter, setDateFilter] = useState<DateFilterOption>("thisMonth");
+  const [dateRange, setDateRange] = useState<DateRange>({ start: null, end: null });
 
   const fetchTransactions = async () => {
     const { data } = await supabase
@@ -59,6 +64,11 @@ const CategoriasPage = () => {
       loadData();
     }
   }, [user?.id]);
+
+  const filteredTransactions = useMemo(
+    () => filterTransactionsByDate(transactions as any, dateFilter, dateRange) as unknown as Transaction[],
+    [transactions, dateFilter, dateRange]
+  );
 
   const addCategory = async (name: string, parentId?: string) => {
     // Verificar se categoria já existe (case insensitive)
@@ -114,9 +124,17 @@ const CategoriasPage = () => {
 
   return (
     <div className="space-y-6 pb-32 lg:pb-6">
-      <h1 className="text-2xl font-bold text-foreground">Categorias</h1>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <h1 className="text-xl sm:text-2xl font-bold text-foreground">Categorias</h1>
+        <DateRangeFilter
+          value={dateFilter}
+          dateRange={dateRange}
+          onValueChange={setDateFilter}
+          onDateRangeChange={setDateRange}
+        />
+      </div>
       <Categories
-        transactions={transactions}
+        transactions={filteredTransactions}
         categories={categories}
         onAddCategory={addCategory}
         onUpdateCategories={fetchCategories}

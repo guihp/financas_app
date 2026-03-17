@@ -62,7 +62,7 @@ const FaturasPage = () => {
     const { user } = useOutletContext<OutletContextType>();
     const [cards, setCards] = useState<CreditCardInfo[]>([]);
     const [transactions, setTransactions] = useState<FaturaTransaction[]>([]);
-    const [paidInvoices, setPaidInvoices] = useState<string[]>([]);
+    const [paidInvoices, setPaidInvoices] = useState<{ description: string; amount: number }[]>([]);
     const [banks, setBanks] = useState<{ id: string; name: string }[]>([]);
     const [loading, setLoading] = useState(true);
     const [selectedMonth, setSelectedMonth] = useState(() => {
@@ -115,16 +115,21 @@ const FaturasPage = () => {
             if (txError) throw txError;
             setTransactions(txData || []);
 
-            // Load explicit invoice payments
+            // Load explicit invoice payments (with amounts)
             const { data: paymentsData, error: paymentsError } = await supabase
                 .from("transactions")
-                .select("description")
+                .select("description, amount")
                 .eq("user_id", user.id)
                 .eq("payment_method", "debit")
                 .like("description", "Fatura %");
 
             if (paymentsError) throw paymentsError;
-            setPaidInvoices(paymentsData?.map(p => p.description || "") || []);
+            setPaidInvoices(
+                paymentsData?.map(p => ({
+                    description: p.description || "",
+                    amount: Number(p.amount) || 0
+                })) || []
+            );
         } catch (error) {
             console.error("Error loading faturas data:", error);
         } finally {
@@ -270,7 +275,7 @@ const FaturasPage = () => {
             });
 
             if (error) throw error;
-            setPaidInvoices(prev => [...prev, expenseDesc]);
+            setPaidInvoices(prev => [...prev, { description: expenseDesc, amount: paymentData.amount }]);
             toast({ title: "Fatura Paga", description: "✅ O valor da fatura foi debitado da sua conta bancária!" });
         } catch (err: any) {
             toast({ title: "Erro ao pagar", description: err.message, variant: "destructive" });
@@ -355,7 +360,18 @@ const FaturasPage = () => {
                             0
                         );
 
-                        const isPaid = paidInvoices.includes(`Fatura ${card.name} - ${monthLabel}`);
+                        const invoiceKey = `Fatura ${card.name} - ${monthLabel}`;
+                        const totalPaid = paidInvoices
+                            .filter(p => p.description === invoiceKey)
+                            .reduce((sum, p) => sum + p.amount, 0);
+                        const remaining = cardTotal - totalPaid;
+                        const isFullyPaid = totalPaid >= cardTotal && cardTotal > 0;
+                        const isPartiallyPaid = totalPaid > 0 && totalPaid < cardTotal;
+
+                        // Check if overdue
+                        const nowDate = new Date();
+                        const dueDate = new Date(selectedMonth.year, selectedMonth.month, card.due_day, 23, 59, 59);
+                        const isOverdue = !isFullyPaid && cardTotal > 0 && nowDate > dueDate;
 
                         return (
                             <Card
@@ -363,7 +379,7 @@ const FaturasPage = () => {
                                 className="overflow-hidden border-0 shadow-lg"
                                 style={{
                                     background: `linear-gradient(135deg, ${card.color}15, ${card.color}05)`,
-                                    borderLeft: `4px solid ${card.color}`,
+                                    borderLeft: isOverdue ? `4px solid #ef4444` : `4px solid ${card.color}`,
                                 }}
                             >
                                 <CardHeader className="pb-2">
@@ -387,7 +403,7 @@ const FaturasPage = () => {
                                         <div className="text-right">
                                             <p
                                                 className="text-xl font-bold"
-                                                style={{ color: card.color }}
+                                                style={{ color: isOverdue ? '#ef4444' : card.color }}
                                             >
                                                 {formatCurrency(cardTotal)}
                                             </p>
@@ -398,8 +414,25 @@ const FaturasPage = () => {
                                             )}
                                         </div>
                                     </div>
-                                    <div className="flex gap-2 mt-4 pt-3 border-t border-white/10">
-                                        {isPaid ? (
+
+                                    {/* Overdue indicator */}
+                                    {isOverdue && (
+                                        <div className="flex items-center gap-1.5 text-xs text-red-500 font-medium bg-red-500/10 rounded-lg px-3 py-1.5 mt-2">
+                                            <span>⚠️</span>
+                                            <span>Fatura vencida! Vencimento era dia {card.due_day}</span>
+                                        </div>
+                                    )}
+
+                                    {/* Partial paid indicator */}
+                                    {isPartiallyPaid && (
+                                        <div className="text-xs text-muted-foreground mt-2 px-1">
+                                            Já pago: {formatCurrency(totalPaid)} • Restante: <span className="text-orange-400 font-medium">{formatCurrency(remaining)}</span>
+                                        </div>
+                                    )}
+
+                                    {/* Pay button */}
+                                    <div className="flex gap-2 mt-3 pt-3 border-t border-white/10">
+                                        {isFullyPaid ? (
                                             <div className="w-full flex items-center justify-center gap-2 text-sm text-green-500 font-medium py-2">
                                                 <CheckCircle2 className="w-4 h-4" />
                                                 Fatura Paga
@@ -409,10 +442,14 @@ const FaturasPage = () => {
                                                 className="w-full text-xs gap-1.5 font-medium transition-all"
                                                 style={{ backgroundColor: card.color, color: "#fff" }}
                                                 disabled={payingCardId === card.id || cardTotal <= 0}
-                                                onClick={() => handlePayInvoice(card.id, monthLabel, cardTotal)}
+                                                onClick={() => handlePayInvoice(card.id, monthLabel, remaining > 0 ? remaining : cardTotal)}
                                             >
                                                 <CheckCircle2 className="w-4 h-4" />
-                                                {payingCardId === card.id ? "Pagando..." : "Pagar Fatura"}
+                                                {payingCardId === card.id
+                                                    ? "Pagando..."
+                                                    : isPartiallyPaid
+                                                        ? `Pagar Restante (${formatCurrency(remaining)})`
+                                                        : "Pagar Fatura"}
                                             </Button>
                                         )}
                                     </div>
