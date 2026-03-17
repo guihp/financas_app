@@ -12,8 +12,19 @@ import { Button } from "@/components/ui/button";
 import { DateRangeFilter } from "@/components/DateRangeFilter";
 import { filterTransactionsByDate } from "@/utils/dateFilter";
 import type { DateFilterOption, DateRange } from "@/utils/dateFilter";
-import { TrendingUp, TrendingDown, Wallet, Plus, Receipt } from "lucide-react";
+import { TrendingUp, TrendingDown, Wallet, Plus, Receipt, CheckCircle2, AlertTriangle, CreditCard } from "lucide-react";
 import { Transaction } from "@/components/Dashboard";
+import { Badge } from "@/components/ui/badge";
+import { useNavigate } from "react-router-dom";
+
+interface CreditCardInfo {
+  id: string;
+  name: string;
+  closing_day: number;
+  due_day: number;
+  card_limit: number;
+  color: string;
+}
 
 interface OutletContextType {
   user: User;
@@ -22,7 +33,10 @@ interface OutletContextType {
 
 const DashPage = () => {
   const { user } = useOutletContext<OutletContextType>();
+  const navigate = useNavigate();
   const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [creditCards, setCreditCards] = useState<CreditCardInfo[]>([]);
+  const [paidInvoiceDescs, setPaidInvoiceDescs] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [dateFilter, setDateFilter] = useState<DateFilterOption>("thisMonth");
@@ -32,6 +46,7 @@ const DashPage = () => {
   const loadTransactions = async () => {
     if (allUserIds.length === 0) return;
     try {
+      // Load transactions
       const { data, error } = await supabase
         .from("transactions")
         .select("*")
@@ -52,6 +67,23 @@ const DashPage = () => {
         installment_group_id: t.installment_group_id,
       }));
       setTransactions(mapped);
+
+      // Load credit cards
+      const { data: cardsData } = await supabase
+        .from("credit_cards")
+        .select("id, name, closing_day, due_day, card_limit, color")
+        .in("user_id", allUserIds)
+        .order("name");
+      setCreditCards(cardsData || []);
+
+      // Load paid invoice descriptions
+      const { data: paidData } = await supabase
+        .from("transactions")
+        .select("description")
+        .in("user_id", allUserIds)
+        .eq("payment_method", "debit")
+        .like("description", "Fatura %");
+      setPaidInvoiceDescs(paidData?.map(p => p.description || "") || []);
     } catch (error) {
       console.error("Error loading transactions:", error);
     } finally {
@@ -84,10 +116,43 @@ const DashPage = () => {
     .filter((t) => t.type === "expense")
     .reduce((sum, t) => sum + Number(t.amount), 0);
 
-  // Credit expenses (faturas)
-  const totalFaturas = filteredTransactions
-    .filter((t) => t.type === "expense" && t.payment_method === "credit")
-    .reduce((sum, t) => sum + Number(t.amount), 0);
+  // Credit expenses (faturas) — calculado por ciclo de fechamento do mês atual
+  const now = new Date();
+  const currentMonth = now.getMonth();
+  const currentYear = now.getFullYear();
+  const MONTH_NAMES = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
+  const currentMonthLabel = `${MONTH_NAMES[currentMonth]} ${currentYear}`;
+
+  const faturasPerCard = useMemo(() => {
+    return creditCards.map(card => {
+      const closing = card.closing_day;
+      // Cycle: from (closing+1) of previous month to closing of current month
+      const cycleStart = new Date(currentYear, currentMonth - 1, closing + 1, 0, 0, 0);
+      const lastDay = new Date(currentYear, currentMonth + 1, 0).getDate();
+      const cycleEndDay = Math.min(closing, lastDay);
+      const cycleEnd = new Date(currentYear, currentMonth, cycleEndDay, 23, 59, 59);
+
+      const cardTxs = transactions.filter(t => {
+        if (t.credit_card_id !== card.id || t.payment_method !== 'credit') return false;
+        const txDate = new Date(String(t.date) + 'T12:00:00');
+        return txDate >= cycleStart && txDate <= cycleEnd;
+      });
+
+      const total = cardTxs.reduce((sum, t) => sum + Number(t.amount), 0);
+      const isPaid = paidInvoiceDescs.includes(`Fatura ${card.name} - ${currentMonthLabel}`);
+
+      // Check if overdue: due_day of current month has passed and not paid
+      const dueDate = new Date(currentYear, currentMonth, card.due_day, 23, 59, 59);
+      const isOverdue = !isPaid && total > 0 && now > dueDate;
+
+      return { card, total, isPaid, isOverdue, txCount: cardTxs.length };
+    });
+  }, [creditCards, transactions, paidInvoiceDescs, currentMonth, currentYear, currentMonthLabel]);
+
+  const totalFaturas = faturasPerCard.reduce((sum, f) => sum + f.total, 0);
+  const totalFaturasAbertas = faturasPerCard.filter(f => !f.isPaid).reduce((sum, f) => sum + f.total, 0);
+  const allPaid = faturasPerCard.length > 0 && faturasPerCard.every(f => f.isPaid || f.total === 0);
+  const hasOverdue = faturasPerCard.some(f => f.isOverdue);
 
   // Balance: income - (debit + PIX expenses only)
   const balance = totalIncome - totalExpenseDebitPix;
@@ -180,20 +245,57 @@ const DashPage = () => {
           </CardContent>
         </Card>
 
-        <Card className="bg-gradient-card border-border" style={{ borderLeft: totalFaturas > 0 ? '3px solid #a855f7' : undefined }}>
+        <Card
+          className="bg-gradient-card border-border cursor-pointer hover:shadow-md transition-shadow"
+          style={{ borderLeft: hasOverdue ? '3px solid #ef4444' : totalFaturas > 0 ? '3px solid #a855f7' : undefined }}
+          onClick={() => navigate('/faturas')}
+        >
           <CardHeader className="flex flex-row items-center justify-between pb-1 sm:pb-2 p-3 sm:p-6">
             <CardTitle className="text-[10px] sm:text-sm font-medium text-muted-foreground">
               Faturas
             </CardTitle>
-            <Receipt className="h-3 w-3 sm:h-4 sm:w-4 text-purple-500" />
+            <Receipt className={`h-3 w-3 sm:h-4 sm:w-4 ${hasOverdue ? 'text-red-500' : 'text-purple-500'}`} />
           </CardHeader>
           <CardContent className="p-3 sm:p-6 pt-0">
-            <div className="text-sm sm:text-2xl font-bold text-purple-500">
-              {formatCurrency(totalFaturas)}
+            <div className={`text-sm sm:text-2xl font-bold ${allPaid ? 'text-green-500' : hasOverdue ? 'text-red-500' : 'text-purple-500'}`}>
+              {allPaid ? formatCurrency(0) : formatCurrency(totalFaturasAbertas)}
             </div>
-            <p className="text-[9px] sm:text-xs text-muted-foreground mt-0.5">
-              Crédito
-            </p>
+            {/* Status line */}
+            {allPaid ? (
+              <div className="flex items-center gap-1 mt-1">
+                <CheckCircle2 className="h-3 w-3 text-green-500" />
+                <span className="text-[9px] sm:text-xs text-green-500 font-medium">Tudo pago</span>
+              </div>
+            ) : hasOverdue ? (
+              <div className="flex items-center gap-1 mt-1">
+                <AlertTriangle className="h-3 w-3 text-red-500" />
+                <span className="text-[9px] sm:text-xs text-red-500 font-medium">Fatura vencida!</span>
+              </div>
+            ) : (
+              <p className="text-[9px] sm:text-xs text-muted-foreground mt-0.5">
+                Em aberto
+              </p>
+            )}
+            {/* Mini card breakdown */}
+            {faturasPerCard.length > 0 && (
+              <div className="mt-2 space-y-1 hidden sm:block">
+                {faturasPerCard.filter(f => f.total > 0).map(f => (
+                  <div key={f.card.id} className="flex items-center justify-between text-[10px]">
+                    <div className="flex items-center gap-1.5 truncate">
+                      <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: f.card.color }} />
+                      <span className="text-muted-foreground truncate">{f.card.name}</span>
+                    </div>
+                    <div className="flex items-center gap-1.5 flex-shrink-0 ml-2">
+                      <span className={f.isPaid ? 'text-green-500 line-through' : f.isOverdue ? 'text-red-500 font-semibold' : 'text-foreground'}>
+                        {formatCurrency(f.total)}
+                      </span>
+                      {f.isPaid && <CheckCircle2 className="h-2.5 w-2.5 text-green-500" />}
+                      {f.isOverdue && <AlertTriangle className="h-2.5 w-2.5 text-red-500" />}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>
