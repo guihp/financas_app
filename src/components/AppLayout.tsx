@@ -24,6 +24,7 @@ import {
   Moon,
   Sun,
   FileText,
+  ShoppingCart,
 } from "lucide-react";
 
 interface SubscriptionCheck {
@@ -214,6 +215,7 @@ export const AppLayout = () => {
     { path: "/agenda", icon: Calendar, label: "Agenda" },
     { path: "/categorias", icon: Tag, label: "Categorias" },
     { path: "/sharing", icon: Users, label: "Compartilhar" },
+    { path: "/lista-compras", icon: ShoppingCart, label: "Lista de Compras" },
     { path: "/assinatura", icon: CreditCard, label: "Assinatura" },
     { path: "/alterar-senha", icon: Key, label: "Alterar Senha" },
   ];

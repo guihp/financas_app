@@ -20,6 +20,7 @@ import Assinatura from "./pages/Assinatura";
 import SharingPage from "./pages/SharingPage";
 import CartoesPage from "./pages/CartoesPage";
 import FaturasPage from "./pages/FaturasPage";
+import ListaComprasPage from "./pages/ListaComprasPage";
 import ApiDocsPage from "./pages/ApiDocsPage";
 import ResetPassword from "./pages/ResetPassword";
 
@@ -59,6 +60,7 @@ const App = () => (
             <Route path="/sharing" element={<SharingPage />} />
             <Route path="/cartoes" element={<CartoesPage />} />
             <Route path="/faturas" element={<FaturasPage />} />
+            <Route path="/lista-compras" element={<ListaComprasPage />} />
             <Route path="/alterar-senha" element={<AlterarSenhaPage />} />
             <Route path="/assinatura" element={<Assinatura />} />
             <Route path="/admin/supremo/iafe/financas" element={<AdminSupremoFinancas />} />
