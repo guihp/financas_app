@@ -244,6 +244,8 @@ serve(async (req) => {
       // ============================================
       // Check if this payment belongs to an Asaas subscription
       const asaasSubscriptionId = payment?.subscription || body?.subscription;
+      let subscriptionUpdated = false;
+
       if (asaasSubscriptionId) {
         console.log('Payment from subscription:', asaasSubscriptionId);
         // Find subscription by asaas_subscription_id
@@ -269,6 +271,7 @@ serve(async (req) => {
             .eq('id', existingSub.id);
 
           console.log('Subscription renewed:', existingSub.id, 'new period_end:', periodEnd.toISOString());
+          subscriptionUpdated = true;
         } else {
           // Fallback: find by asaas_customer_id
           if (customerId || registration.asaas_customer_id) {
@@ -295,8 +298,40 @@ serve(async (req) => {
                 })
                 .eq('id', subByCust.id);
 
+              subscriptionUpdated = true;
             }
           }
+        }
+      }
+
+      // FALLBACK: If subscription was NOT updated and we have customerId,
+      // try to update by customerId directly (handles cases where Asaas 
+      // doesn't include subscription ID in the webhook payload)
+      if (!subscriptionUpdated && (customerId || registration.asaas_customer_id)) {
+        const custId = customerId || registration.asaas_customer_id;
+        const { data: subByCust } = await supabaseAdmin
+          .from('subscriptions')
+          .select('*')
+          .eq('asaas_customer_id', custId)
+          .maybeSingle();
+
+        if (subByCust) {
+          const periodEnd = new Date();
+          periodEnd.setMonth(periodEnd.getMonth() + 1);
+
+          await supabaseAdmin
+            .from('subscriptions')
+            .update({
+              is_trial: false,
+              status: 'active',
+              current_period_start: new Date().toISOString().split('T')[0],
+              current_period_end: periodEnd.toISOString().split('T')[0],
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', subByCust.id);
+
+          console.log('Subscription updated via customerId fallback:', subByCust.id);
+          subscriptionUpdated = true;
         }
       }
 
