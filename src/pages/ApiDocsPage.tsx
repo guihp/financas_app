@@ -441,6 +441,68 @@ Retorna também o balanço atualizado ("balance") que o banco tem com base nos c
         tips: "💡 Sempre chame esta API antes de criar transações para obter os IDs corretos.",
     },
 
+    // ── 8B. MANAGE ACCOUNTS: Resumo de Cartões ──
+    {
+        method: "GET",
+        path: "/manage-accounts-by-phone?action=get_card_summary",
+        summary: "Consulta limite disponível, gasto acumulado e histórico de transações por cartão de crédito.",
+        description: `Retorna um resumo financeiro detalhado para cada cartão de crédito do usuário:
+• Limite total (card_limit)
+• Total gasto (total_spent)
+• Limite disponível (available_limit)
+• Percentual de uso (usage_percentage)
+• Histórico completo de transações do cartão
+
+FILTROS DISPONÍVEIS (query params):
+• card_id → Filtra por um cartão específico
+• bank_account_id → Filtra transações associadas a um banco
+• month → Filtra por mês no formato YYYY-MM (ex: 2026-03)
+• limit → Máximo de transações retornadas (padrão: 100, máx: 500)
+
+Se nenhum filtro for passado, retorna o resumo de TODOS os cartões.`,
+        params: [
+            { name: "phone", type: "string", required: true, description: "Telefone do usuário (query param)." },
+            { name: "action", type: "string", required: true, description: "Deve ser 'get_card_summary'.", values: ["get_card_summary"] },
+            { name: "card_id", type: "uuid", required: false, description: "Filtrar por um cartão específico." },
+            { name: "bank_account_id", type: "uuid", required: false, description: "Filtrar transações vinculadas a um banco." },
+            { name: "month", type: "string", required: false, description: "Filtrar por mês (YYYY-MM). Ex: 2026-03." },
+            { name: "limit", type: "number", required: false, description: "Máximo de transações retornadas (padrão: 100, máx: 500)." },
+        ],
+        curlCommand: `# ── Resumo de TODOS os cartões ──
+curl -X GET "${BASE}/manage-accounts-by-phone?phone=5511999999999&action=get_card_summary" \\
+  -H "Authorization: Bearer <SUPABASE_ANON_KEY>" \\
+  -H "Content-Type: application/json"
+
+# ── Resumo de um cartão específico no mês de Março ──
+curl -X GET "${BASE}/manage-accounts-by-phone?phone=5511999999999&action=get_card_summary&card_id=uuid-do-cartao&month=2026-03" \\
+  -H "Authorization: Bearer <SUPABASE_ANON_KEY>" \\
+  -H "Content-Type: application/json"`,
+        responseExample: `{
+  "success": true,
+  "filters_applied": { "card_id": "todos", "bank_account_id": "todos", "month": "2026-03" },
+  "cards": [
+    {
+      "card_id": "uuid-cartao",
+      "card_name": "Nubank Crédito",
+      "card_limit": 5000.00,
+      "total_spent": 1280.50,
+      "available_limit": 3719.50,
+      "usage_percentage": 25.61,
+      "transaction_count": 8,
+      "transactions": [
+        { "id": "uuid", "amount": 85.90, "type": "expense", "description": "Supermercado", "category": "alimentacao", "date": "2026-03-10" }
+      ]
+    }
+  ],
+  "total_cards": 1
+}`,
+        errors: [
+            { code: 404, message: "Cartão não encontrado", cause: "O card_id informado não pertence ao usuário.", fix: "Obtenha os IDs via GET /manage-accounts-by-phone (sem action)." },
+            { code: 404, message: "Nenhum cartão cadastrado", cause: "O usuário não possui cartões de crédito.", fix: "Crie um cartão com action='create_card'." },
+        ],
+        tips: "💡 Sem filtro de mês, retorna transações de TODO o histórico. Use 'month=2026-03' para limitar ao mês. O 'usage_percentage' é nulo se o cartão não tem limite definido.",
+    },
+
     // ── 9. MANAGE ACCOUNTS: Criar Banco ─────
     {
         method: "POST",

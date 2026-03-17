@@ -63,6 +63,111 @@ serve(async (req) => {
                 );
             }
 
+            const action = url.searchParams.get('action');
+
+            // ── GET CARD SUMMARY ──────────────────
+            if (action === 'get_card_summary') {
+                const cardIdFilter = url.searchParams.get('card_id');
+                const bankFilter = url.searchParams.get('bank_account_id');
+                const monthFilter = url.searchParams.get('month'); // formato: YYYY-MM
+                const limitParam = url.searchParams.get('limit');
+                const maxRows = limitParam ? Math.min(parseInt(limitParam), 500) : 100;
+
+                // Buscar cartões do usuário (filtrado ou todos)
+                let cardsQuery = supabase
+                    .from('credit_cards')
+                    .select('id, name, closing_day, due_day, card_limit, color')
+                    .eq('user_id', userId);
+                if (cardIdFilter) cardsQuery = cardsQuery.eq('id', cardIdFilter);
+
+                const { data: userCards, error: cardsErr } = await cardsQuery.order('name');
+                if (cardsErr || !userCards || userCards.length === 0) {
+                    return new Response(
+                        JSON.stringify({ error: cardIdFilter ? 'Cartão não encontrado' : 'Nenhum cartão cadastrado' }),
+                        { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+                    );
+                }
+
+                const cardIds = userCards.map((c: any) => c.id);
+
+                // Buscar transações no cartão de crédito
+                let txQuery = supabase
+                    .from('transactions')
+                    .select('id, amount, type, description, category, date, transaction_date, credit_card_id, bank_account_id, installment_number, total_installments')
+                    .eq('user_id', userId)
+                    .in('credit_card_id', cardIds)
+                    .order('date', { ascending: false });
+
+                if (bankFilter) txQuery = txQuery.eq('bank_account_id', bankFilter);
+                if (monthFilter) {
+                    const [year, month] = monthFilter.split('-').map(Number);
+                    const startDate = `${year}-${String(month).padStart(2, '0')}-01`;
+                    const endMonth = month === 12 ? 1 : month + 1;
+                    const endYear = month === 12 ? year + 1 : year;
+                    const endDate = `${endYear}-${String(endMonth).padStart(2, '0')}-01`;
+                    txQuery = txQuery.gte('date', startDate).lt('date', endDate);
+                }
+
+                txQuery = txQuery.limit(maxRows);
+
+                const { data: cardTx } = await txQuery;
+
+                // Calcular resumo por cartão
+                const cardSummaries = userCards.map((card: any) => {
+                    const cardTransactions = (cardTx || []).filter((t: any) => t.credit_card_id === card.id);
+                    const totalSpent = cardTransactions.reduce((sum: number, t: any) => {
+                        return sum + (t.type === 'expense' ? Number(t.amount) || 0 : 0);
+                    }, 0);
+                    const totalIncome = cardTransactions.reduce((sum: number, t: any) => {
+                        return sum + (t.type === 'income' ? Number(t.amount) || 0 : 0);
+                    }, 0);
+
+                    const cardLimit = Number(card.card_limit) || 0;
+                    const netSpent = totalSpent - totalIncome;
+                    const availableLimit = cardLimit > 0 ? Math.max(0, cardLimit - netSpent) : null;
+
+                    return {
+                        card_id: card.id,
+                        card_name: card.name,
+                        color: card.color,
+                        closing_day: card.closing_day,
+                        due_day: card.due_day,
+                        card_limit: cardLimit || null,
+                        total_spent: Math.round(totalSpent * 100) / 100,
+                        total_income: Math.round(totalIncome * 100) / 100,
+                        net_spent: Math.round(netSpent * 100) / 100,
+                        available_limit: availableLimit !== null ? Math.round(availableLimit * 100) / 100 : null,
+                        usage_percentage: cardLimit > 0 ? Math.round((netSpent / cardLimit) * 10000) / 100 : null,
+                        transaction_count: cardTransactions.length,
+                        transactions: cardTransactions.map((t: any) => ({
+                            id: t.id,
+                            amount: t.amount,
+                            type: t.type,
+                            description: t.description,
+                            category: t.category,
+                            date: t.date,
+                            installment_number: t.installment_number,
+                            total_installments: t.total_installments,
+                        }))
+                    };
+                });
+
+                return new Response(
+                    JSON.stringify({
+                        success: true,
+                        filters_applied: {
+                            card_id: cardIdFilter || 'todos',
+                            bank_account_id: bankFilter || 'todos',
+                            month: monthFilter || 'todos',
+                        },
+                        cards: cardSummaries,
+                        total_cards: cardSummaries.length,
+                    }),
+                    { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+                );
+            }
+
+            // ── LISTAGEM PADRÃO (bancos + cartões) ──
             const { data: banks } = await supabase
                 .from('bank_accounts')
                 .select('id, name, color, created_at')
