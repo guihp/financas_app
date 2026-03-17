@@ -45,6 +45,7 @@ export const AppLayout = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { theme, setTheme } = useTheme();
+  const GRACE_PERIOD_HOURS = 12; // 12 hours after trial expires before blocking
 
   const checkSubscription = async (userId: string) => {
     try {
@@ -55,7 +56,6 @@ export const AppLayout = () => {
         .single();
 
       if (error && error.code === "PGRST116") {
-        // No subscription found - user needs to set up payment
         return { hasAccess: false, isExpired: false, daysExpiredAgo: 0 };
       }
 
@@ -65,65 +65,115 @@ export const AppLayout = () => {
       }
 
       if (!data) {
-        // No subscription data - user needs to set up payment
         return { hasAccess: false, isExpired: false, daysExpiredAgo: 0 };
       }
 
-      // Check if user has payment method configured (asaas_customer_id)
-      // Even for trial, user must configure payment method first
       if (!data.asaas_customer_id) {
-        // Trial without payment method - user needs to set up payment
         return { hasAccess: false, isExpired: false, daysExpiredAgo: 0 };
       }
 
       const now = new Date();
 
-      // PRIORITY 1: Active paid subscription (status = 'active' and NOT in trial, or trial expired but paid)
-      // This must come FIRST so that users who paid after trial are never blocked
-      if (data.status === "active") {
-        // If not trial, or if trial already expired but status is active (means payment was confirmed)
-        if (!data.is_trial) {
-          return { hasAccess: true, isExpired: false, daysExpiredAgo: 0 };
-        }
-        // is_trial=true but status=active — check if trial is still valid
-        if (data.trial_ends_at) {
-          const trialEnd = new Date(data.trial_ends_at);
-          if (trialEnd >= now) {
-            // Trial still active
-            return { hasAccess: true, isExpired: false, daysExpiredAgo: 0 };
-          }
-          // Trial expired BUT status is still 'active' — this means the payment was likely processed
-          // Check if current_period_end is in the future (paid subscription)
-          if (data.current_period_end) {
-            const periodEnd = new Date(data.current_period_end);
-            if (periodEnd >= new Date(now.toISOString().split("T")[0])) {
-              // Paid and current period is valid — grant access
-              return { hasAccess: true, isExpired: false, daysExpiredAgo: 0 };
-            }
-          }
-          // Trial expired and no valid period — check asaas_subscription_id as fallback
-          // If user has subscription ID, they have paid, grant access
-          if (data.asaas_subscription_id) {
-            return { hasAccess: true, isExpired: false, daysExpiredAgo: 0 };
-          }
-          // Truly expired trial
-          const daysAgo = Math.ceil(
-            (now.getTime() - trialEnd.getTime()) / (1000 * 60 * 60 * 24)
-          );
-          return { hasAccess: false, isExpired: true, daysExpiredAgo: daysAgo };
-        }
-        // No trial_ends_at but status active — grant access
+      // PRIORITY 1: Active paid subscription (not trial)
+      if (data.status === "active" && !data.is_trial) {
         return { hasAccess: true, isExpired: false, daysExpiredAgo: 0 };
       }
 
-      // PRIORITY 2: Trial check for non-active status
+      // PRIORITY 2: Active with trial
+      if (data.status === "active" && data.is_trial && data.trial_ends_at) {
+        const trialEnd = new Date(data.trial_ends_at);
+
+        // Trial still active → grant access
+        if (trialEnd >= now) {
+          return { hasAccess: true, isExpired: false, daysExpiredAgo: 0 };
+        }
+
+        // Trial expired — add 12h grace period
+        const graceEnd = new Date(trialEnd.getTime() + GRACE_PERIOD_HOURS * 60 * 60 * 1000);
+
+        // Check if current_period_end indicates payment was already processed
+        if (data.current_period_end) {
+          const periodEnd = new Date(data.current_period_end);
+          if (periodEnd >= new Date(now.toISOString().split("T")[0]) && periodEnd > trialEnd) {
+            // Period end is after trial end = payment was processed
+            return { hasAccess: true, isExpired: false, daysExpiredAgo: 0 };
+          }
+        }
+
+        // Within grace period: verify payment with Asaas
+        if (now <= graceEnd) {
+          console.log("Trial expired, within 12h grace period. Checking Asaas...");
+          try {
+            const { data: session } = await supabase.auth.getSession();
+            if (session?.session?.access_token) {
+              const res = await fetch(
+                `${import.meta.env.VITE_SUPABASE_URL || "https://dlbiwguzbiosaoyrcvay.supabase.co"}/functions/v1/check-subscription-status`,
+                {
+                  method: "POST",
+                  headers: {
+                    "Authorization": `Bearer ${session.session.access_token}`,
+                    "Content-Type": "application/json",
+                  },
+                }
+              );
+              const result = await res.json();
+              if (result?.paid) {
+                console.log("Asaas confirmed payment! Access granted.");
+                return { hasAccess: true, isExpired: false, daysExpiredAgo: 0 };
+              }
+            }
+          } catch (e) {
+            console.warn("Failed to check Asaas status:", e);
+          }
+          // Still within grace period and no payment confirmed yet — allow access
+          return { hasAccess: true, isExpired: false, daysExpiredAgo: 0 };
+        }
+
+        // Past grace period — one last Asaas check before blocking
+        try {
+          const { data: session } = await supabase.auth.getSession();
+          if (session?.session?.access_token) {
+            const res = await fetch(
+              `${import.meta.env.VITE_SUPABASE_URL || "https://dlbiwguzbiosaoyrcvay.supabase.co"}/functions/v1/check-subscription-status`,
+              {
+                method: "POST",
+                headers: {
+                  "Authorization": `Bearer ${session.session.access_token}`,
+                  "Content-Type": "application/json",
+                },
+              }
+            );
+            const result = await res.json();
+            if (result?.paid) {
+              console.log("Asaas confirmed payment after grace period! Access granted.");
+              return { hasAccess: true, isExpired: false, daysExpiredAgo: 0 };
+            }
+          }
+        } catch (e) {
+          console.warn("Failed to check Asaas status:", e);
+        }
+
+        // Truly expired — no payment found
+        const daysAgo = Math.ceil(
+          (now.getTime() - graceEnd.getTime()) / (1000 * 60 * 60 * 24)
+        );
+        return { hasAccess: false, isExpired: true, daysExpiredAgo: Math.max(daysAgo, 0) };
+      }
+
+      // Active status without trial_ends_at — grant access
+      if (data.status === "active") {
+        return { hasAccess: true, isExpired: false, daysExpiredAgo: 0 };
+      }
+
+      // Non-active status with trial
       if (data.is_trial && data.trial_ends_at) {
         const trialEnd = new Date(data.trial_ends_at);
-        if (trialEnd < now) {
+        const graceEnd = new Date(trialEnd.getTime() + GRACE_PERIOD_HOURS * 60 * 60 * 1000);
+        if (graceEnd < now) {
           const daysAgo = Math.ceil(
-            (now.getTime() - trialEnd.getTime()) / (1000 * 60 * 60 * 24)
+            (now.getTime() - graceEnd.getTime()) / (1000 * 60 * 60 * 24)
           );
-          return { hasAccess: false, isExpired: true, daysExpiredAgo: daysAgo };
+          return { hasAccess: false, isExpired: true, daysExpiredAgo: Math.max(daysAgo, 0) };
         }
         return { hasAccess: true, isExpired: false, daysExpiredAgo: 0 };
       }
