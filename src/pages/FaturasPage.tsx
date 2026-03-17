@@ -439,8 +439,7 @@ const FaturasPage = () => {
                                             </div>
                                         ) : (
                                             <Button
-                                                className="w-full text-xs gap-1.5 font-medium transition-all"
-                                                style={{ backgroundColor: card.color, color: "#fff" }}
+                                                className="w-full text-xs gap-1.5 font-medium transition-all bg-green-600 hover:bg-green-700 text-white"
                                                 disabled={payingCardId === card.id || cardTotal <= 0}
                                                 onClick={() => handlePayInvoice(card.id, monthLabel, remaining > 0 ? remaining : cardTotal)}
                                             >

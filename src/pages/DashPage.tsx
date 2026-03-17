@@ -121,21 +121,36 @@ const DashPage = () => {
     .filter((t) => t.type === "expense")
     .reduce((sum, t) => sum + Number(t.amount), 0);
 
-  // Credit expenses (faturas) — calculado por ciclo de fechamento do mês atual
+  // Credit expenses (faturas) — calculado por ciclo de fechamento baseado no filtro
   const now = new Date();
-  const currentMonth = now.getMonth();
-  const currentYear = now.getFullYear();
   const MONTH_NAMES = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
-  const currentMonthLabel = `${MONTH_NAMES[currentMonth]} ${currentYear}`;
+
+  // Determine which month/year to show faturas for based on the filter
+  const targetDate = useMemo(() => {
+    if (dateFilter === "lastMonth") {
+      const d = new Date();
+      d.setMonth(d.getMonth() - 1);
+      return d;
+    }
+    if (dateFilter === "custom" && dateRange.start) {
+      return dateRange.start;
+    }
+    // "thisMonth" or "all" → use current month
+    return new Date();
+  }, [dateFilter, dateRange.start]);
+
+  const targetMonth = targetDate.getMonth();
+  const targetYear = targetDate.getFullYear();
+  const targetMonthLabel = `${MONTH_NAMES[targetMonth]} ${targetYear}`;
 
   const faturasPerCard = useMemo(() => {
     return creditCards.map(card => {
       const closing = card.closing_day;
-      // Cycle: from (closing+1) of previous month to closing of current month
-      const cycleStart = new Date(currentYear, currentMonth - 1, closing + 1, 0, 0, 0);
-      const lastDay = new Date(currentYear, currentMonth + 1, 0).getDate();
+      // Cycle: from (closing+1) of previous month to closing of target month
+      const cycleStart = new Date(targetYear, targetMonth - 1, closing + 1, 0, 0, 0);
+      const lastDay = new Date(targetYear, targetMonth + 1, 0).getDate();
       const cycleEndDay = Math.min(closing, lastDay);
-      const cycleEnd = new Date(currentYear, currentMonth, cycleEndDay, 23, 59, 59);
+      const cycleEnd = new Date(targetYear, targetMonth, cycleEndDay, 23, 59, 59);
 
       const cardTxs = transactions.filter(t => {
         if (t.credit_card_id !== card.id || t.payment_method !== 'credit') return false;
@@ -146,20 +161,20 @@ const DashPage = () => {
       const total = cardTxs.reduce((sum, t) => sum + Number(t.amount), 0);
 
       // Calculate total paid for this invoice
-      const invoiceKey = `Fatura ${card.name} - ${currentMonthLabel}`;
+      const invoiceKey = `Fatura ${card.name} - ${targetMonthLabel}`;
       const totalPaid = paidInvoiceDescs
         .filter(p => p.description === invoiceKey)
         .reduce((sum, p) => sum + p.amount, 0);
       const remaining = total - totalPaid;
       const isPaid = totalPaid >= total && total > 0;
 
-      // Check if overdue: due_day of current month has passed and not fully paid
-      const dueDate = new Date(currentYear, currentMonth, card.due_day, 23, 59, 59);
+      // Check if overdue: due_day of target month has passed and not fully paid
+      const dueDate = new Date(targetYear, targetMonth, card.due_day, 23, 59, 59);
       const isOverdue = !isPaid && total > 0 && now > dueDate;
 
       return { card, total, isPaid, isOverdue, txCount: cardTxs.length, remaining: remaining > 0 ? remaining : 0 };
     });
-  }, [creditCards, transactions, paidInvoiceDescs, currentMonth, currentYear, currentMonthLabel]);
+  }, [creditCards, transactions, paidInvoiceDescs, targetMonth, targetYear, targetMonthLabel]);
 
   const totalFaturas = faturasPerCard.reduce((sum, f) => sum + f.total, 0);
   const totalFaturasAbertas = faturasPerCard.filter(f => !f.isPaid).reduce((sum, f) => sum + f.remaining, 0);
