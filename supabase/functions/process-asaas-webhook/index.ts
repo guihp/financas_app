@@ -112,33 +112,20 @@ serve(async (req) => {
       }
     }
 
-    if (regError || !registration) {
-      console.log('Registration not found:', { paymentId, externalReference, customerId, error: regError });
-
-      // Don't fail - webhook might be for a different payment type
-      return new Response(
-        JSON.stringify({
-          success: true,
-          message: 'Webhook recebido, mas registro não encontrado',
-          paymentId,
-          externalReference
-        }),
-        {
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-        }
-      );
-    }
-
-    console.log('Found registration:', registration.id, 'current status:', registration.status);
-
-    // Check if payment is confirmed
     const paidEvents = ['PAYMENT_CONFIRMED', 'PAYMENT_RECEIVED', 'PAYMENT_RECEIVED_IN_CASH'];
     const isPaidEvent = paidEvents.includes(eventType);
 
     const paidStatuses = ['CONFIRMED', 'RECEIVED', 'RECEIVED_IN_CASH'];
     const isPaidStatus = paidStatuses.includes(paymentStatus);
 
-    if (isPaidEvent || isPaidStatus) {
+    if (regError || !registration) {
+      console.log('Registration not found:', { paymentId, externalReference, customerId, error: regError });
+      console.log('Proceeding anyway to update existing subscription if applicable.');
+    } else {
+      console.log('Found registration:', registration.id, 'current status:', registration.status);
+    }
+
+    if (registration && (isPaidEvent || isPaidStatus)) {
       // Update registration to paid
       const { error: updateError } = await supabaseAdmin
         .from('pending_registrations')
@@ -168,13 +155,13 @@ serve(async (req) => {
         .from('payment_history')
         .insert({
           asaas_payment_id: paymentId,
-          asaas_customer_id: customerId || registration.asaas_customer_id,
+          asaas_customer_id: customerId || registration?.asaas_customer_id,
           amount: payment?.value || 0,
           status: paymentStatus || 'CONFIRMED',
-          payment_method: payment?.billingType || registration.payment_method,
+          payment_method: payment?.billingType || registration?.payment_method,
           paid_at: new Date().toISOString(),
           due_date: payment?.dueDate,
-          invoice_url: payment?.invoiceUrl || registration.invoice_url
+          invoice_url: payment?.invoiceUrl || registration?.invoice_url
         });
 
       if (historyError) {
@@ -182,9 +169,9 @@ serve(async (req) => {
         // Don't fail the webhook
       }
 
-      let isUserRegistered = registration.status === 'registered';
+      let isUserRegistered = registration?.status === 'registered';
 
-      if (!isUserRegistered) {
+      if (registration && !isUserRegistered) {
         // Create user account (register-user with registrationId only), with 1 retry on failure
         const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
         const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
@@ -235,7 +222,7 @@ serve(async (req) => {
             }
           );
         }
-      } else {
+      } else if (registration) {
         console.log('User is already registered, skipping user creation step for recurring payment:', registration.id);
       }
 
@@ -339,7 +326,7 @@ serve(async (req) => {
       // INJECT PLATFORM FEE EXPENSE
       // ============================================
       try {
-        if (registration.email) {
+        if (registration?.email) {
           const { data: profile } = await supabaseAdmin
             .from('profiles')
             .select('user_id, phone')
@@ -449,7 +436,7 @@ serve(async (req) => {
       }
     }
 
-    if (eventType === 'PAYMENT_OVERDUE') {
+    if (registration && eventType === 'PAYMENT_OVERDUE') {
       await supabaseAdmin
         .from('pending_registrations')
         .update({
@@ -461,7 +448,7 @@ serve(async (req) => {
       console.log('Registration marked as expired due to overdue payment:', registration.id);
     }
 
-    if (eventType === 'PAYMENT_DELETED' || eventType === 'PAYMENT_REFUNDED') {
+    if (registration && (eventType === 'PAYMENT_DELETED' || eventType === 'PAYMENT_REFUNDED')) {
       await supabaseAdmin
         .from('pending_registrations')
         .update({
@@ -476,9 +463,9 @@ serve(async (req) => {
     return new Response(
       JSON.stringify({
         success: true,
-        message: 'Webhook processado',
-        event: eventType,
-        registrationId: registration.id
+        message: 'Webhook processed successfully',
+        payment_id: paymentId,
+        registration_id: registration?.id
       }),
       {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
