@@ -170,7 +170,7 @@ serve(async (req) => {
             // ── LISTAGEM PADRÃO (bancos + cartões) ──
             const { data: banks } = await supabase
                 .from('bank_accounts')
-                .select('id, name, color, created_at')
+                .select('id, name, color, balance, created_at')
                 .eq('user_id', userId)
                 .order('name');
 
@@ -198,9 +198,12 @@ serve(async (req) => {
                     }
                 });
 
+                const initialBalance = Number(bank.balance) || 0;
+
                 return {
                     ...bank,
-                    balance: income - expense,
+                    initial_balance: initialBalance,
+                    calculated_balance: initialBalance + income - expense,
                     income,
                     expense
                 };
@@ -247,15 +250,16 @@ serve(async (req) => {
             }
 
             if (action === 'create_bank') {
-                // Auto-detect color from preset
                 const resolvedColor = color || BANK_PRESETS[name.toLowerCase()] || '#6B7280';
+                const initialBalance = body.balance !== undefined ? parseFloat(body.balance) : 0;
 
                 const { data: bank, error: bankErr } = await supabase
                     .from('bank_accounts')
                     .insert({
                         user_id: userId,
                         name,
-                        color: resolvedColor
+                        color: resolvedColor,
+                        balance: initialBalance
                     })
                     .select()
                     .single();
@@ -333,7 +337,6 @@ serve(async (req) => {
                     return new Response(JSON.stringify({ error: 'Valor da fatura deve ser maior que zero' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
                 }
 
-                // 1. Buscar o cartão para validar existencia
                 const { data: card, error: cardErr } = await supabase
                     .from('credit_cards')
                     .select('id, name')
@@ -345,7 +348,6 @@ serve(async (req) => {
                     return new Response(JSON.stringify({ error: 'Cartão não encontrado' }), { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
                 }
 
-                // 2. Verificar se já foi paga
                 const expenseDesc = `Fatura ${card.name} - ${month_name}`;
                 const { data: existingPayment } = await supabase
                     .from("transactions")
@@ -359,7 +361,6 @@ serve(async (req) => {
                     return new Response(JSON.stringify({ error: 'Esta fatura já foi paga' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
                 }
 
-                // 3. Inserir a despesa de pagamento
                 const today = new Date().toISOString().split("T")[0];
                 const { data: transaction, error: insertErr } = await supabase.from("transactions").insert({
                     user_id: userId,
@@ -384,6 +385,265 @@ serve(async (req) => {
             } else {
                 return new Response(
                     JSON.stringify({ error: `Ação "${action}" inválida`, actions: ['create_bank', 'create_card', 'pay_invoice'] }),
+                    { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+                );
+            }
+        }
+
+        // =====================
+        // PUT: Editar banco ou cartão
+        // =====================
+        if (req.method === 'PUT') {
+            const body = await req.json();
+            const { phone, action } = body;
+
+            if (!phone || !action) {
+                return new Response(
+                    JSON.stringify({
+                        error: 'Campos obrigatórios: phone, action',
+                        actions: ['edit_bank', 'edit_card'],
+                        exemplo_banco: { phone: '5511999999999', action: 'edit_bank', bank_id: 'uuid', name: 'Novo Nome', color: '#FF0000', balance: 1500.00 },
+                        exemplo_cartao: { phone: '5511999999999', action: 'edit_card', card_id: 'uuid', name: 'Novo Nome', card_limit: 5000, closing_day: 5, due_day: 15 }
+                    }),
+                    { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+                );
+            }
+
+            const userId = await getUserIdByPhone(supabase, phone);
+            if (!userId) {
+                return new Response(
+                    JSON.stringify({ error: 'Usuário não encontrado', phone }),
+                    { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+                );
+            }
+
+            if (action === 'edit_bank') {
+                const { bank_id, name, color, balance } = body;
+
+                if (!bank_id) {
+                    return new Response(
+                        JSON.stringify({
+                            error: 'Campo bank_id é obrigatório',
+                            campos_editaveis: {
+                                name: '(string, opcional) Novo nome do banco',
+                                color: '(string, opcional) Nova cor em hex (ex: #8B5CF6)',
+                                balance: '(number, opcional) Saldo inicial/atual da conta'
+                            }
+                        }),
+                        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+                    );
+                }
+
+                // Verify bank belongs to user
+                const { data: existingBank, error: findErr } = await supabase
+                    .from('bank_accounts')
+                    .select('id, name')
+                    .eq('id', bank_id)
+                    .eq('user_id', userId)
+                    .single();
+
+                if (findErr || !existingBank) {
+                    return new Response(
+                        JSON.stringify({ error: 'Banco não encontrado ou não pertence ao usuário' }),
+                        { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+                    );
+                }
+
+                const updateData: Record<string, any> = { updated_at: new Date().toISOString() };
+                if (name !== undefined) updateData.name = name;
+                if (color !== undefined) updateData.color = color;
+                if (balance !== undefined) updateData.balance = parseFloat(balance);
+
+                const { data: updated, error: updateErr } = await supabase
+                    .from('bank_accounts')
+                    .update(updateData)
+                    .eq('id', bank_id)
+                    .select()
+                    .single();
+
+                if (updateErr) {
+                    return new Response(
+                        JSON.stringify({ error: 'Erro ao atualizar banco', details: updateErr.message }),
+                        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+                    );
+                }
+
+                return new Response(
+                    JSON.stringify({
+                        success: true,
+                        message: `🏦 Banco "${updated.name}" atualizado com sucesso!`,
+                        bank_account: updated
+                    }),
+                    { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+                );
+
+            } else if (action === 'edit_card') {
+                const { card_id, name, color, card_limit, closing_day, due_day } = body;
+
+                if (!card_id) {
+                    return new Response(
+                        JSON.stringify({
+                            error: 'Campo card_id é obrigatório',
+                            campos_editaveis: {
+                                name: '(string, opcional) Novo nome do cartão',
+                                color: '(string, opcional) Nova cor em hex',
+                                card_limit: '(number, opcional) Novo limite do cartão',
+                                closing_day: '(number, opcional) Novo dia de fechamento (1-31)',
+                                due_day: '(number, opcional) Novo dia de vencimento (1-31)'
+                            }
+                        }),
+                        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+                    );
+                }
+
+                const { data: existingCard, error: findErr } = await supabase
+                    .from('credit_cards')
+                    .select('id, name')
+                    .eq('id', card_id)
+                    .eq('user_id', userId)
+                    .single();
+
+                if (findErr || !existingCard) {
+                    return new Response(
+                        JSON.stringify({ error: 'Cartão não encontrado ou não pertence ao usuário' }),
+                        { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+                    );
+                }
+
+                const updateData: Record<string, any> = { updated_at: new Date().toISOString() };
+                if (name !== undefined) updateData.name = name;
+                if (color !== undefined) updateData.color = color;
+                if (card_limit !== undefined) updateData.card_limit = parseFloat(card_limit);
+                if (closing_day !== undefined) updateData.closing_day = parseInt(closing_day);
+                if (due_day !== undefined) updateData.due_day = parseInt(due_day);
+
+                const { data: updated, error: updateErr } = await supabase
+                    .from('credit_cards')
+                    .update(updateData)
+                    .eq('id', card_id)
+                    .select()
+                    .single();
+
+                if (updateErr) {
+                    return new Response(
+                        JSON.stringify({ error: 'Erro ao atualizar cartão', details: updateErr.message }),
+                        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+                    );
+                }
+
+                return new Response(
+                    JSON.stringify({
+                        success: true,
+                        message: `💳 Cartão "${updated.name}" atualizado com sucesso!`,
+                        credit_card: updated
+                    }),
+                    { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+                );
+
+            } else {
+                return new Response(
+                    JSON.stringify({ error: `Ação "${action}" inválida`, actions: ['edit_bank', 'edit_card'] }),
+                    { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+                );
+            }
+        }
+
+        // =====================
+        // DELETE: Excluir banco ou cartão
+        // =====================
+        if (req.method === 'DELETE') {
+            const url2 = new URL(req.url);
+            const phone = url2.searchParams.get('phone');
+            const action = url2.searchParams.get('action');
+            const targetId = url2.searchParams.get('id');
+
+            if (!phone || !action || !targetId) {
+                return new Response(
+                    JSON.stringify({
+                        error: 'Parâmetros obrigatórios: phone, action, id',
+                        actions: ['delete_bank', 'delete_card'],
+                        exemplo: '?phone=5511999999999&action=delete_bank&id=uuid'
+                    }),
+                    { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+                );
+            }
+
+            const userId = await getUserIdByPhone(supabase, phone);
+            if (!userId) {
+                return new Response(
+                    JSON.stringify({ error: 'Usuário não encontrado', phone }),
+                    { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+                );
+            }
+
+            if (action === 'delete_bank') {
+                // Check if bank has any transactions
+                const { count } = await supabase
+                    .from('transactions')
+                    .select('id', { count: 'exact', head: true })
+                    .eq('bank_account_id', targetId)
+                    .eq('user_id', userId);
+
+                if (count && count > 0) {
+                    return new Response(
+                        JSON.stringify({ error: `Este banco tem ${count} transações vinculadas. Remova as transações antes de excluir.` }),
+                        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+                    );
+                }
+
+                const { error: delErr } = await supabase
+                    .from('bank_accounts')
+                    .delete()
+                    .eq('id', targetId)
+                    .eq('user_id', userId);
+
+                if (delErr) {
+                    return new Response(
+                        JSON.stringify({ error: 'Erro ao excluir banco', details: delErr.message }),
+                        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+                    );
+                }
+
+                return new Response(
+                    JSON.stringify({ success: true, message: '🏦 Banco excluído com sucesso!' }),
+                    { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+                );
+
+            } else if (action === 'delete_card') {
+                const { count } = await supabase
+                    .from('transactions')
+                    .select('id', { count: 'exact', head: true })
+                    .eq('credit_card_id', targetId)
+                    .eq('user_id', userId);
+
+                if (count && count > 0) {
+                    return new Response(
+                        JSON.stringify({ error: `Este cartão tem ${count} transações vinculadas. Remova as transações antes de excluir.` }),
+                        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+                    );
+                }
+
+                const { error: delErr } = await supabase
+                    .from('credit_cards')
+                    .delete()
+                    .eq('id', targetId)
+                    .eq('user_id', userId);
+
+                if (delErr) {
+                    return new Response(
+                        JSON.stringify({ error: 'Erro ao excluir cartão', details: delErr.message }),
+                        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+                    );
+                }
+
+                return new Response(
+                    JSON.stringify({ success: true, message: '💳 Cartão excluído com sucesso!' }),
+                    { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+                );
+
+            } else {
+                return new Response(
+                    JSON.stringify({ error: `Ação "${action}" inválida`, actions: ['delete_bank', 'delete_card'] }),
                     { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
                 );
             }
