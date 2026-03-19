@@ -271,6 +271,24 @@ serve(async (req) => {
                     );
                 }
 
+                // Cria a transação de "Saldo Inicial" para constar nos extratos e receitas do dashboard, se for > 0
+                if (initialBalance > 0) {
+                    const today = new Date().toISOString().split("T")[0];
+                    await supabase.from("transactions").insert({
+                        user_id: userId,
+                        type: "income",
+                        amount: initialBalance,
+                        category: "Saldo Inicial",
+                        description: "Saldo Inicial - " + name,
+                        date: today,
+                        transaction_date: today,
+                        payment_method: "transfer",
+                        bank_account_id: bank.id,
+                        total_installments: 1,
+                        installment_number: 1
+                    });
+                }
+
                 return new Response(
                     JSON.stringify({
                         success: true,
