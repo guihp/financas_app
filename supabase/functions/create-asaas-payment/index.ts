@@ -157,20 +157,25 @@ serve(async (req) => {
       .single();
 
     let originalPrice = Number(plan.price);
-    let promoPrice = originalPrice;
 
     if (appSettings) {
       if (appSettings.product_full_price) {
         originalPrice = Number(appSettings.product_full_price);
       }
-      if (appSettings.product_promo_price) {
-        promoPrice = Number(appSettings.product_promo_price);
-      }
     }
 
     const promoDaysDuration = appSettings?.promo_days || 0;
 
-    let finalPrice = promoPrice * (1 - (discountPercentage / 100));
+    let finalPrice = originalPrice;
+    
+    if (discountPercentage > 0) {
+      if (appSettings && appSettings.product_promo_price) {
+        finalPrice = Number(appSettings.product_promo_price);
+      } else {
+        finalPrice = finalPrice * (1 - (discountPercentage / 100));
+      }
+    }
+    
     finalPrice = Math.round(finalPrice * 100) / 100;
 
     let baseSubscriptionPrice = originalPrice;

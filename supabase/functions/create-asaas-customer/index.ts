@@ -221,7 +221,6 @@ serve(async (req) => {
 
     // Validate promo_code and calculate discount
     let originalPrice = Number(planData.price);
-    let finalPrice = originalPrice;
 
     // Override with dynamic pricing from app_settings
     const { data: appSettings } = await supabaseAdmin
@@ -234,11 +233,9 @@ serve(async (req) => {
       if (appSettings.product_full_price) {
         originalPrice = Number(appSettings.product_full_price);
       }
-      if (appSettings.product_promo_price) {
-        finalPrice = Number(appSettings.product_promo_price);
-      }
     }
 
+    let finalPrice = originalPrice;
     let appliedPromoId = null;
     let discountPercentage = 0; // Default 0% discount
 
@@ -253,11 +250,17 @@ serve(async (req) => {
       if (!promoError && promoData) {
         discountPercentage = Number(promoData.discount_percentage);
         appliedPromoId = promoData.id;
+        
+        // Se usuário aplicou cupom, injetamos preço Promocional (Fixo) se existir configuração global para ele
+        if (appSettings && appSettings.product_promo_price) {
+          finalPrice = Number(appSettings.product_promo_price);
+        } else {
+          // Senão, caímos no cálculo percentual
+          finalPrice = finalPrice * (1 - (discountPercentage / 100));
+        }
       }
     }
 
-    // Apply discount
-    finalPrice = finalPrice * (1 - (discountPercentage / 100));
     finalPrice = Math.round(finalPrice * 100) / 100; // Round to 2 decimal places
 
     // Calculate expiration (24 hours from now)
