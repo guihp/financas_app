@@ -1,3 +1,4 @@
+import { FIXED_CATEGORIES } from "@/constants/financialData";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { BarChart3, TrendingUp, TrendingDown, DollarSign, PieChart, Wallet, ArrowUpRight, ArrowDownRight } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Tooltip, Legend, CartesianGrid } from "recharts";
@@ -10,17 +11,11 @@ interface StatisticsProps {
 
 // Mapeamento de nomes de categorias
 const getCategoryDisplayName = (categoryName: string) => {
-  const names: Record<string, string> = {
-    alimentacao: "Alimentação",
-    transporte: "Transporte",
-    saude: "Saúde",
-    lazer: "Lazer",
-    educacao: "Educação",
-    casa: "Casa",
-    trabalho: "Trabalho",
-    geral: "Geral",
-  };
-  return names[categoryName] || categoryName.charAt(0).toUpperCase() + categoryName.slice(1);
+  if (!categoryName) return "Geral";
+  const fixed = FIXED_CATEGORIES.find(c => c.value === categoryName.toLowerCase());
+  if (fixed) return fixed.label;
+  
+  return categoryName.charAt(0).toUpperCase() + categoryName.slice(1);
 };
 
 export const Statistics = ({ transactions }: StatisticsProps) => {

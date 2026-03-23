@@ -23,7 +23,7 @@ const StatsPage = () => {
   const { allUserIds, loading: loadingConnections } = useConnectedUserIds(user?.id);
 
   const filteredTransactions = useMemo(
-    () => filterTransactionsByDate(transactions, dateFilter, dateRange),
+    () => filterTransactionsByDate(transactions as any, dateFilter, dateRange) as unknown as Transaction[],
     [transactions, dateFilter, dateRange]
   );
 
@@ -41,10 +41,11 @@ const StatsPage = () => {
 
         const mappedTransactions = (data || []).map(t => ({
           ...t,
+          category: t.category?.toLowerCase() || "",
           amount: Number(t.amount),
           date: t.date || t.created_at,
           type: t.type as "income" | "expense"
-        }));
+        })) as unknown as Transaction[];
 
         setTransactions(mappedTransactions);
       } catch (error) {

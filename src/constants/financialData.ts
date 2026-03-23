@@ -130,7 +130,7 @@ export const FIXED_CATEGORIES: CategoryItem[] = [
     // 💝 Doações e Contribuições
     { value: "doacoes", label: "Doações", group: "Doações", emoji: "💝", type: "expense" },
     { value: "dizimo_oferta", label: "Dízimo / Oferta", group: "Doações", emoji: "⛪", type: "expense" },
-    { value: "contribuicao_sindical", label: "Contribuição Sindical", group: "Doações", emoji: "🏷️", type: "expense" },
+    { value: "contribuicao_sindical", label: "Contribuição Sindical", group: "Impostos", emoji: "🏷️", type: "expense" },
 
     // 📦 Assinaturas e Mensalidades
     { value: "musica_streaming", label: "Spotify / Música", group: "Assinaturas", emoji: "🎵", type: "expense" },
