@@ -46,6 +46,7 @@ import {
   ShoppingBag,
   Pencil,
   CalendarCheck,
+  ClipboardList,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useConnectedUserIds } from "@/hooks/useConnectedUserIds";
@@ -112,7 +113,7 @@ const DEFAULT_CATEGORIES = [
 const ListaComprasPage = () => {
   const { toast } = useToast();
   const { user } = useOutletContext<OutletContextType>();
-  const { allUserIds, loading: loadingConnections } = useFamilyConnections(user?.id);
+  const { allUserIds, loading: loadingConnections } = useConnectedUserIds(user?.id);
 
   // View state: "lists" or "detail"
   const [view, setView] = useState<"lists" | "detail">("lists");
