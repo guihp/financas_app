@@ -717,7 +717,14 @@ curl -X POST "${BASE}/add-transaction-by-phone" \\
   }'`,
         responseExample: `{
   "success": true,
-  "transaction": { "id": "uuid", "type": "expense", "amount": 85.90, "date": "2026-03-10" }
+  "transaction": { "id": "uuid", "type": "expense", "amount": 85.90, "date": "2026-03-10" },
+  "budget_alert": {
+    "status": "warning",
+    "percentage": 85.9,
+    "message": "⚠️ Atenção! Você gastou 86% do seu teto de supermercado.",
+    "limit": 100,
+    "total_spent": 85.90
+  }
 }`,
         errors: [
             { code: 404, message: "Usuário não encontrado", cause: "Telefone incorreto.", fix: "Confirme com /get-user-by-phone." },

@@ -242,6 +242,28 @@ export const AddTransactionFab = ({ open, onOpenChange, onTransactionAdded }: Ad
         toast({ title: "Sucesso", description: `${type === "income" ? "Receita" : "Despesa"} adicionada!` });
       }
 
+      // Verifica Estouro do Teto de Gastos Orçamentário
+      if (type === "expense") {
+        const d = selectedDate ? new Date(selectedDate) : new Date();
+        const yyyyMm = selectedDate ? selectedDate.substring(0, 7) : `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+        const { data: bg } = await supabase.from("budgets").select("amount").eq("user_id", user.id).eq("category", sanitizedCategory).eq("month_year", yyyyMm).maybeSingle();
+        
+        if (bg) {
+          const { data: txs } = await supabase.from("transactions").select("amount").eq("user_id", user.id).eq("type", "expense").eq("category", sanitizedCategory).gte("date", `${yyyyMm}-01`).lte("date", `${yyyyMm}-31`);
+          const totalSpent = (txs || []).reduce((acc: number, curr: any) => acc + Number(curr.amount), 0);
+          const limit = Number(bg.amount);
+          
+          if (limit > 0) {
+            const perc = (totalSpent / limit) * 100;
+            if (perc >= 100) {
+              setTimeout(() => toast({ title: "🚨 TETO ESTOURADO", description: `Você excedeu o orçamento de ${getCategoryDisplayName(sanitizedCategory)} deste mês.`, variant: "destructive", duration: 8000 }), 600);
+            } else if (perc >= 85) {
+              setTimeout(() => toast({ title: "⚠️ ATENÇÃO COM O ORÇAMENTO", description: `Você já consumiu ${perc.toFixed(0)}% do limite de ${getCategoryDisplayName(sanitizedCategory)}.`, duration: 6000 }), 600);
+            }
+          }
+        }
+      }
+
       // Reset
       const now = new Date();
       setAmount(""); setDescription(""); setCategory("");

@@ -378,11 +378,55 @@ serve(async (req) => {
     const createdIds = transactionData?.map((t: { id: string }) => t.id) || [];
     const returnData = transactionsToInsert.length === 1 ? transactionData![0] : transactionData;
 
+    let budgetAlert = undefined;
+
+    if (type === 'expense') {
+      const d = baseDate ? new Date(baseDate) : new Date();
+      // Resolve Fuso e pega o Mês base extraindo da data raw 'YYYY-MM-DD' caso disponível
+      const currentMonthYear = baseDate ? baseDate.substring(0, 7) : `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      
+      const { data: budgetData } = await supabase
+        .from('budgets')
+        .select('amount')
+        .eq('user_id', userId)
+        .eq('category', category)
+        .eq('month_year', currentMonthYear)
+        .maybeSingle();
+        
+      if (budgetData) {
+        const { data: expenses } = await supabase
+           .from('transactions')
+           .select('amount')
+           .eq('user_id', userId)
+           .eq('type', 'expense')
+           .eq('category', category)
+           .gte('date', `${currentMonthYear}-01`)
+           .lte('date', `${currentMonthYear}-31`);
+           
+        const totalSpent = (expenses || []).reduce((acc: number, curr: any) => acc + Number(curr.amount), 0);
+        const limit = Number(budgetData.amount);
+        const perc = limit > 0 ? (totalSpent / limit) * 100 : 100;
+        
+        let status = "ok";
+        let msg = `Tudo sob controle, utilizou ${perc.toFixed(0)}% do orçamento de ${category}.`;
+        if (perc >= 100) {
+            status = "danger";
+            msg = `🚨 ESTOUROU! ${perc.toFixed(0)}% utilizado em ${category} (R$ ${totalSpent.toFixed(2)} de R$ ${limit.toFixed(2)}).`;
+        } else if (perc >= 90) {
+            status = "warning";
+            msg = `⚠️ Atenção! Você gastou ${perc.toFixed(0)}% do seu teto de ${category}.`;
+        }
+        
+        budgetAlert = { status, percentage: parseFloat(perc.toFixed(1)), message: msg, limit, total_spent: totalSpent };
+      }
+    }
+
     return new Response(
       JSON.stringify({
         message: transactionsToInsert.length > 1 ? `Criadas ${transactionsToInsert.length} transações fixas com sucesso!` : 'Transação criada com sucesso!',
         transaction_id: createdIds.length === 1 ? createdIds[0] : undefined,
         transaction_ids: createdIds.length > 1 ? createdIds : undefined,
+        budget_alert: budgetAlert,
         transaction_url: `https://dlbiwguzbiosaoyrcvay.supabase.co/rest/v1/transactions?id=in.(${createdIds.join(',')})`,
         data: returnData
       }),

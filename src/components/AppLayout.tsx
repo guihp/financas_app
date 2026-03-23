@@ -26,6 +26,7 @@ import {
   FileText,
   ShoppingCart,
   Wallet,
+  ShieldAlert,
 } from "lucide-react";
 
 interface SubscriptionCheck {
@@ -298,6 +299,7 @@ export const AppLayout = () => {
     { path: "/stats", icon: PieChart, label: "Estatísticas" },
     { path: "/agenda", icon: Calendar, label: "Agenda" },
     { path: "/categorias", icon: Tag, label: "Categorias" },
+    { path: "/orcamentos", icon: ShieldAlert, label: "Guarda-Costas" },
     { path: "/caixinha", icon: Wallet, label: "Caixinhas" },
     { path: "/sharing", icon: Users, label: "Compartilhar" },
     { path: "/lista-compras", icon: ShoppingCart, label: "Lista de Compras" },
