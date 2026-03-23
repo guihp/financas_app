@@ -79,9 +79,12 @@ serve(async (req) => {
     const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY') || '';
 
     if (!RESEND_API_KEY || !email) {
-      console.warn('RESEND_API_KEY or email missing, cannot send OTP via email');
-      // Continuamos retornando sucesso pro frontend não quebrar a lógica de UI, 
-      // mas na vida real o OTP não seria recebido.
+      const errMsg = `Falta configuração para envio de e-mail OTP. API Key Presente: ${!!RESEND_API_KEY}, Email Fornecido: ${!!email}`;
+      console.error(errMsg);
+      return new Response(
+        JSON.stringify({ error: errMsg }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     } else {
       try {
         const emailHtml = `
@@ -95,7 +98,7 @@ serve(async (req) => {
             
             <p style="font-size: 16px; margin-bottom: 30px;">
               Olá${full_name ? ' ' + full_name : ''},<br/>
-              Use o código de 6 dígitos abaixo para confirmar seu cadastro ou acesso:
+              Use o código de 6 dígitos abaixo para confirmar seu acesso:
             </p>
             
             <div style="background-color: #f4f4f5; border-radius: 8px; padding: 20px; margin-bottom: 30px;">
@@ -104,9 +107,6 @@ serve(async (req) => {
             
             <p style="font-size: 14px; color: #666; margin-bottom: 10px;">
               Este código expira em 15 minutos.
-            </p>
-            <p style="font-size: 12px; color: #999;">
-              Se você não solicitou este código, por favor, ignore este e-mail.
             </p>
           </div>
         `;
@@ -128,11 +128,16 @@ serve(async (req) => {
         if (!response.ok) {
           const errorText = await response.text();
           console.error('Failed to send email via Resend:', errorText);
+          throw new Error('Resend rejeitou o envio: ' + errorText);
         } else {
           console.log(`OTP Email successfully sent to ${email}`);
         }
-      } catch (emailError) {
+      } catch (emailError: any) {
         console.error('Error sending OTP email:', emailError);
+        return new Response(
+          JSON.stringify({ error: emailError.message || 'Erro inesperado com o Provedor de E-mail' }),
+          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
       }
     }
 
