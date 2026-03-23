@@ -54,13 +54,24 @@ const OrcamentosPage = () => {
   const [budgetAmount, setBudgetAmount] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Somente Despesas mescladas com Custom Categories
+  // Somente Despesas mescladas com Custom Categories filtrando as Nativas Ocultadas/Apagadas
   const allExpenseCategories = useMemo(() => {
-    const defaultExpenses = FIXED_CATEGORIES.filter(c => c.type === "expense").map(c => ({ value: c.value, label: c.label, emoji: c.emoji }));
+    let hiddenFixedSubcats: string[] = [];
+    try {
+      hiddenFixedSubcats = JSON.parse(localStorage.getItem('hidden_fixed_subcats') || '[]');
+    } catch {
+      // Ignora erro sintaxe
+    }
+
+    const defaultExpenses = FIXED_CATEGORIES
+      .filter(c => c.type === "expense" && !hiddenFixedSubcats.includes(c.value))
+      .map(c => ({ value: c.value, label: c.label, emoji: c.emoji }));
+      
     const customExpenses = customCategories
       .map(c => c.name)
-      .filter(name => !defaultExpenses.find(fc => fc.value === name))
+      .filter(name => !defaultExpenses.find(fc => fc.value === name) && !hiddenFixedSubcats.includes(name))
       .map(name => ({ value: name, label: name.charAt(0).toUpperCase() + name.slice(1), emoji: "🏷️" }));
+      
     return [...defaultExpenses, ...customExpenses].sort((a, b) => a.label.localeCompare(b.label));
   }, [customCategories]);
 
