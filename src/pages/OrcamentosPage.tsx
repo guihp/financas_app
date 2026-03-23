@@ -40,6 +40,7 @@ const OrcamentosPage = () => {
 
   const [budgets, setBudgets] = useState<Budget[]>([]);
   const [spentByCategory, setSpentByCategory] = useState<Record<string, number>>({});
+  const [customCategories, setCustomCategories] = useState<{name: string}[]>([]);
   const [loading, setLoading] = useState(true);
 
   // Filters (Month/Year)
@@ -53,8 +54,15 @@ const OrcamentosPage = () => {
   const [budgetAmount, setBudgetAmount] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Somente Despesas
-  const expenseCategories = FIXED_CATEGORIES.filter(c => c.type === "expense");
+  // Somente Despesas mescladas com Custom Categories
+  const allExpenseCategories = useMemo(() => {
+    const defaultExpenses = FIXED_CATEGORIES.filter(c => c.type === "expense").map(c => ({ value: c.value, label: c.label, emoji: c.emoji }));
+    const customExpenses = customCategories
+      .map(c => c.name)
+      .filter(name => !defaultExpenses.find(fc => fc.value === name))
+      .map(name => ({ value: name, label: name.charAt(0).toUpperCase() + name.slice(1), emoji: "🏷️" }));
+    return [...defaultExpenses, ...customExpenses].sort((a, b) => a.label.localeCompare(b.label));
+  }, [customCategories]);
 
   const currentMonthStr = useMemo(() => {
     return `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, '0')}`;
@@ -78,6 +86,15 @@ const OrcamentosPage = () => {
 
       if (bdgErr) throw bdgErr;
       setBudgets((bdgData || []) as Budget[]);
+
+      // Carregar Categorias Customizadas
+      const { data: catData, error: catErr } = await supabase
+        .from("categories")
+        .select("name")
+        .in("user_id", allUserIds);
+      if (!catErr && catData) {
+        setCustomCategories(catData as {name: string}[]);
+      }
 
       // 2. Fetch expenses from this month to map
       const { data: txData, error: txErr } = await supabase
@@ -201,7 +218,7 @@ const OrcamentosPage = () => {
         )}
 
         {budgets.map(b => {
-          const catInfo = expenseCategories.find(c => c.value === b.category);
+          const catInfo = allExpenseCategories.find(c => c.value === b.category);
           const icon = catInfo?.emoji || "🛒";
           const label = catInfo?.label || b.category;
           const spent = spentByCategory[b.category] || 0;
@@ -265,7 +282,7 @@ const OrcamentosPage = () => {
                 <Select value={selectedCat} onValueChange={setSelectedCat}>
                   <SelectTrigger><SelectValue placeholder="Selecione..." /></SelectTrigger>
                   <SelectContent>
-                    {expenseCategories.map(c => (
+                    {allExpenseCategories.map(c => (
                       <SelectItem key={c.value} value={c.value}>{c.emoji} {c.label}</SelectItem>
                     ))}
                   </SelectContent>
