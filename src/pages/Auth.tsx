@@ -247,7 +247,7 @@ const Auth = () => {
         setOtpSent(true);
         toast({
           title: "Código OTP enviado!",
-          description: "Verifique seu WhatsApp para receber o código de verificação.",
+          description: "Verifique sua caixa de e-mail (incluindo SPAM) para receber o código de verificação.",
         });
       } catch (error: any) {
         setMessage(error.message || "Erro ao enviar código OTP.");
@@ -728,7 +728,7 @@ const Auth = () => {
                       <div className="space-y-2 mt-4">
                         <Alert className="bg-primary/5 border-primary/20">
                           <AlertDescription className="text-sm">
-                            Código OTP enviado para seu WhatsApp! Digite o código abaixo.
+                            Código OTP enviado para o seu E-mail! Digite o código abaixo.
                           </AlertDescription>
                         </Alert>
                         <Label htmlFor="signup-otp">Código de Verificação *</Label>

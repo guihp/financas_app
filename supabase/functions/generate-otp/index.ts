@@ -76,45 +76,70 @@ serve(async (req) => {
       );
     }
 
-    // Send OTP via webhook to WhatsApp
-    // Get webhook base URL from environment variable, default to empty if not set
-    const webhookBaseUrl = Deno.env.get('WEBHOOK_BASE_URL') || '';
-    const webhookUrl = webhookBaseUrl ? `${webhookBaseUrl}/webhook/CODIGO-OTP` : null;
+    const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY') || '';
 
-    if (!webhookUrl) {
-      console.warn('WEBHOOK_BASE_URL not configured, skipping webhook call');
+    if (!RESEND_API_KEY || !email) {
+      console.warn('RESEND_API_KEY or email missing, cannot send OTP via email');
+      // Continuamos retornando sucesso pro frontend não quebrar a lógica de UI, 
+      // mas na vida real o OTP não seria recebido.
     } else {
       try {
-        const payload = {
-          codigo_usuario: cleanPhone,
-          email: email || null,
-          nome: full_name || null,
-          codigo_verificacao: code,
-          pais: pais || null // Brasil, EUA, Portugal, Irlanda, Espanha
-        };
-        console.log('Sending OTP Webhook payload:', JSON.stringify(payload));
+        const emailHtml = `
+          <div style="font-family: sans-serif; text-align: center; padding: 20px; max-width: 600px; margin: 0 auto; color: #333;">
+            <div style="margin-bottom: 30px;">
+              <h1 style="color: #f97316; margin: 0;">IAFÉ Finanças</h1>
+              <p style="color: #666; font-size: 14px; margin-top: 5px;">Seu parceiro de gestão financeira</p>
+            </div>
+            
+            <h2 style="font-size: 24px; margin-bottom: 20px;">Código de Verificação</h2>
+            
+            <p style="font-size: 16px; margin-bottom: 30px;">
+              Olá${full_name ? ' ' + full_name : ''},<br/>
+              Use o código de 6 dígitos abaixo para confirmar seu cadastro ou acesso:
+            </p>
+            
+            <div style="background-color: #f4f4f5; border-radius: 8px; padding: 20px; margin-bottom: 30px;">
+              <span style="font-size: 36px; font-weight: bold; letter-spacing: 8px; color: #18181b;">${code}</span>
+            </div>
+            
+            <p style="font-size: 14px; color: #666; margin-bottom: 10px;">
+              Este código expira em 15 minutos.
+            </p>
+            <p style="font-size: 12px; color: #999;">
+              Se você não solicitou este código, por favor, ignore este e-mail.
+            </p>
+          </div>
+        `;
 
-        const webhookResponse = await fetch(webhookUrl, {
+        const response = await fetch('https://api.resend.com/emails', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
+            'Authorization': `Bearer ${RESEND_API_KEY}`
           },
-          body: JSON.stringify(payload)
+          body: JSON.stringify({
+            from: "IAFÉ Finanças <nao-responda@iafefinancas.com.br>",
+            to: email,
+            subject: "Seu Código de Acesso - IAFÉ Finanças",
+            html: emailHtml
+          })
         });
 
-        if (!webhookResponse.ok) {
-          console.error('Webhook error:', await webhookResponse.text());
+        if (!response.ok) {
+          const errorText = await response.text();
+          console.error('Failed to send email via Resend:', errorText);
+        } else {
+          console.log(`OTP Email successfully sent to ${email}`);
         }
-      } catch (webhookError) {
-        console.error('Error calling webhook:', webhookError);
-        // Don't fail the request if webhook fails
+      } catch (emailError) {
+        console.error('Error sending OTP email:', emailError);
       }
     }
 
     return new Response(
       JSON.stringify({
         success: true,
-        message: 'OTP code sent to WhatsApp',
+        message: 'OTP code sent to Email',
         expires_at: expiresAt.toISOString()
       }),
       {
