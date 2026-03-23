@@ -482,23 +482,21 @@ const Auth = () => {
                 /* Regular Signup Form - only after accepting terms */
                 <form onSubmit={handleSignUp} className="space-y-4">
                   {/* Trial Banner */}
-                  {!otpSent && (
-                    <div className="bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-950/30 dark:to-emerald-950/30 rounded-xl p-4 border border-green-200 dark:border-green-800">
-                      <div className="flex items-center gap-3">
-                        <div className="w-12 h-12 bg-gradient-to-br from-green-400 to-emerald-500 rounded-full flex items-center justify-center flex-shrink-0">
-                          <Gift className="h-6 w-6 text-white" />
-                        </div>
-                        <div>
-                          <p className="font-semibold text-green-700 dark:text-green-400">
-                            {TRIAL_DAYS} dias grátis!
-                          </p>
-                          <p className="text-sm text-green-600 dark:text-green-500">
-                            Teste todas as funcionalidades sem compromisso
-                          </p>
-                        </div>
+                  <div className="bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-950/30 dark:to-emerald-950/30 rounded-xl p-4 border border-green-200 dark:border-green-800">
+                    <div className="flex items-center gap-3">
+                      <div className="w-12 h-12 bg-gradient-to-br from-green-400 to-emerald-500 rounded-full flex items-center justify-center flex-shrink-0">
+                        <Gift className="h-6 w-6 text-white" />
+                      </div>
+                      <div>
+                        <p className="font-semibold text-green-700 dark:text-green-400">
+                          {TRIAL_DAYS} dias grátis!
+                        </p>
+                        <p className="text-sm text-green-600 dark:text-green-500">
+                          Teste todas as funcionalidades sem compromisso
+                        </p>
                       </div>
                     </div>
-                  )}
+                  </div>
 
                   <div className="space-y-2">
                     <Label htmlFor="signup-name">Nome Completo *</Label>
@@ -512,7 +510,6 @@ const Auth = () => {
                         onChange={(e) => setFullName(e.target.value)}
                         className="pl-10"
                         required
-                        disabled={otpVerified}
                       />
                     </div>
                   </div>
@@ -529,7 +526,6 @@ const Auth = () => {
                         onChange={(e) => setEmail(e.target.value)}
                         className="pl-10"
                         required
-                        disabled={otpVerified}
                       />
                     </div>
                   </div>
@@ -540,7 +536,6 @@ const Auth = () => {
                       <Select
                         value={phoneCountry}
                         onValueChange={handlePhoneCountryChange}
-                        disabled={otpVerified}
                       >
                         <SelectTrigger className="w-[120px] shrink-0">
                           <SelectValue />
