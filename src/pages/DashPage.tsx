@@ -103,21 +103,28 @@ const DashPage = () => {
   }, [user?.id, allUserIds, loadingConnections]);
 
   const filteredTransactions = useMemo(
-    () => filterTransactionsByDate(transactions, dateFilter, dateRange),
+    () => filterTransactionsByDate(transactions, dateFilter, dateRange) as Transaction[],
     [transactions, dateFilter, dateRange]
   );
 
-  const totalIncome = filteredTransactions
+  // Filtro puro para exibição visual (Pizza, Barras, TotalExpense e Income), ignorando duplicidades
+  const validDisplayTransactions = useMemo(() => {
+    return filteredTransactions.filter(t => 
+      t.category !== "transferencia" && t.category !== "pagamento_fatura"
+    );
+  }, [filteredTransactions]);
+
+  const totalIncome = validDisplayTransactions
     .filter((t) => t.type === "income")
     .reduce((sum, t) => sum + Number(t.amount), 0);
 
-  // Expenses from debit/PIX (affects balance)
-  const totalExpenseDebitPix = filteredTransactions
+  // Expenses from debit/PIX (affects balance, so we keep using filteredTransactions)
+  const totalExpenseDebitPix = (filteredTransactions as Transaction[])
     .filter((t) => t.type === "expense" && t.payment_method !== "credit")
     .reduce((sum, t) => sum + Number(t.amount), 0);
 
   // All expenses (for display)
-  const totalExpense = filteredTransactions
+  const totalExpense = validDisplayTransactions
     .filter((t) => t.type === "expense")
     .reduce((sum, t) => sum + Number(t.amount), 0);
 
@@ -335,7 +342,7 @@ const DashPage = () => {
             <CardTitle className="text-base sm:text-lg">Gastos por Categoria</CardTitle>
           </CardHeader>
           <CardContent>
-            <TransactionPieChart transactions={filteredTransactions} type="expenses" />
+            <TransactionPieChart transactions={validDisplayTransactions} type="expenses" />
           </CardContent>
         </Card>
 
@@ -345,7 +352,7 @@ const DashPage = () => {
             <CardTitle className="text-base sm:text-lg">Visão Geral</CardTitle>
           </CardHeader>
           <CardContent>
-            <TransactionChart transactions={filteredTransactions} />
+            <TransactionChart transactions={validDisplayTransactions} />
           </CardContent>
         </Card>
       </div>

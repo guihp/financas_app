@@ -25,18 +25,23 @@ const getCategoryDisplayName = (categoryName: string) => {
 
 export const Statistics = ({ transactions }: StatisticsProps) => {
   const stats = useMemo(() => {
-    const totalIncome = transactions
+    // Ignorar Pagamentos de Faturas e Transferências nas métricas visuais
+    const validTransactions = transactions.filter(t => 
+      t.category !== "transferencia" && t.category !== "pagamento_fatura"
+    );
+
+    const totalIncome = validTransactions
       .filter(t => t.type === "income")
       .reduce((sum, t) => sum + Number(t.amount), 0);
 
-    const totalExpenses = transactions
+    const totalExpenses = validTransactions
       .filter(t => t.type === "expense")
       .reduce((sum, t) => sum + Number(t.amount), 0);
 
     const balance = totalIncome - totalExpenses;
 
     // Gastos por categoria
-    const expensesByCategory = transactions
+    const expensesByCategory = validTransactions
       .filter(t => t.type === "expense")
       .reduce((acc, t) => {
         acc[t.category] = (acc[t.category] || 0) + Number(t.amount);
@@ -44,7 +49,7 @@ export const Statistics = ({ transactions }: StatisticsProps) => {
       }, {} as Record<string, number>);
 
     // Receitas por categoria
-    const incomeByCategory = transactions
+    const incomeByCategory = validTransactions
       .filter(t => t.type === "income")
       .reduce((acc, t) => {
         acc[t.category] = (acc[t.category] || 0) + Number(t.amount);
@@ -52,7 +57,7 @@ export const Statistics = ({ transactions }: StatisticsProps) => {
       }, {} as Record<string, number>);
 
     // Transações por mês
-    const transactionsByMonth = transactions.reduce((acc, t) => {
+    const transactionsByMonth = validTransactions.reduce((acc, t) => {
       const date = new Date(t.date || t.created_at);
       const month = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
       if (!acc[month]) {
@@ -73,9 +78,9 @@ export const Statistics = ({ transactions }: StatisticsProps) => {
       expensesByCategory,
       incomeByCategory,
       transactionsByMonth,
-      averageExpense: totalExpenses / Math.max(transactions.filter(t => t.type === "expense").length, 1),
-      averageIncome: totalIncome / Math.max(transactions.filter(t => t.type === "income").length, 1),
-      transactionCount: transactions.length,
+      averageExpense: totalExpenses / Math.max(validTransactions.filter(t => t.type === "expense").length, 1),
+      averageIncome: totalIncome / Math.max(validTransactions.filter(t => t.type === "income").length, 1),
+      transactionCount: validTransactions.length,
     };
   }, [transactions]);
 

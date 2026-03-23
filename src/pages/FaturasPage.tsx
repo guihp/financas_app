@@ -264,7 +264,7 @@ const FaturasPage = () => {
                 user_id: user.id,
                 type: "expense",
                 amount: paymentData.amount,
-                category: "geral",
+                category: "pagamento_fatura",
                 description: expenseDesc,
                 date: today,
                 transaction_date: today,

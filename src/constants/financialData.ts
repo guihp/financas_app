@@ -103,6 +103,7 @@ export const FIXED_CATEGORIES: CategoryItem[] = [
 
     // 🏦 Financeiro
     { value: "tarifa_bancaria", label: "Tarifa Bancária", group: "Financeiro", emoji: "🏦", type: "expense" },
+    { value: "pagamento_fatura", label: "Pagamento de Fatura", group: "Financeiro", emoji: "💳", type: "expense" },
     { value: "anuidade_cartao", label: "Anuidade de Cartão", group: "Financeiro", emoji: "💳", type: "expense" },
     { value: "emprestimo", label: "Empréstimo", group: "Financeiro", emoji: "📊", type: "expense" },
     { value: "financiamento", label: "Financiamento", group: "Financeiro", emoji: "🏡", type: "expense" },
