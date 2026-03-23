@@ -4,8 +4,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, Save, RefreshCw } from "lucide-react";
+import { Loader2, Save, RefreshCw, CalendarIcon, Power, PowerOff } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
+import { addDays, format } from "date-fns";
+import { ptBR } from "date-fns/locale";
 
 export const AdminAppSettings = () => {
     const [loading, setLoading] = useState(true);
@@ -15,6 +17,7 @@ export const AdminAppSettings = () => {
     const [promoPrice, setPromoPrice] = useState("");
     const [trialDays, setTrialDays] = useState("");
     const [promoDays, setPromoDays] = useState("");
+    const [isPromoActive, setIsPromoActive] = useState(false);
     const [enablePromoCode, setEnablePromoCode] = useState(true);
     const { toast } = useToast();
 
@@ -43,6 +46,7 @@ export const AdminAppSettings = () => {
                 setTrialDays(data.trial_days.toString());
                 if (data.promo_days !== null && data.promo_days !== undefined) {
                     setPromoDays(data.promo_days.toString());
+                    setIsPromoActive(data.promo_days > 0);
                 }
                 if (data.enable_promo_code !== undefined) {
                     setEnablePromoCode(data.enable_promo_code);
@@ -67,7 +71,7 @@ export const AdminAppSettings = () => {
                 product_full_price: parseFloat(fullPrice),
                 product_promo_price: parseFloat(promoPrice),
                 trial_days: parseInt(trialDays, 10),
-                promo_days: promoDays ? parseInt(promoDays, 10) : null,
+                promo_days: isPromoActive && promoDays ? parseInt(promoDays, 10) : 0,
                 enable_promo_code: enablePromoCode,
             };
 
@@ -157,6 +161,13 @@ export const AdminAppSettings = () => {
         );
     }
 
+    const getPromoEndDateStr = () => {
+        if (!promoDays || !isPromoActive) return null;
+        const days = parseInt(promoDays, 10);
+        if (isNaN(days) || days <= 0) return null;
+        return format(addDays(new Date(), days), "dd 'de' MMMM 'de' yyyy", { locale: ptBR });
+    };
+
     return (
         <div className="max-w-2xl bg-card rounded-xl border border-border p-6 shadow-sm">
             <h2 className="text-xl font-semibold mb-6">Valores e Trial do Sistema</h2>
@@ -204,17 +215,49 @@ export const AdminAppSettings = () => {
                         <p className="text-xs text-muted-foreground">Período gratuito para compras com cartão de crédito.</p>
                     </div>
 
-                    <div className="space-y-2">
-                        <Label htmlFor="promoDays">Duração do Valor Promocional (Dias)</Label>
-                        <Input
-                            id="promoDays"
-                            type="number"
-                            step="1"
-                            value={promoDays}
-                            onChange={(e) => setPromoDays(e.target.value)}
-                            placeholder="Ex: 90"
-                        />
-                        <p className="text-xs text-muted-foreground">Opcional: Quantos dias a fatura ficará no valor em promoção antes de voltar ao valor cheio.</p>
+                    <div className="space-y-4 rounded-xl border border-orange-500/30 bg-orange-500/5 p-4 col-span-1 md:col-span-2 relative overflow-hidden">
+                        <div className="absolute top-0 right-0 p-4 opacity-5">
+                            {isPromoActive ? <Power className="w-24 h-24" /> : <PowerOff className="w-24 h-24" />}
+                        </div>
+                        <div className="flex items-center justify-between border-b border-orange-500/20 pb-4 relative z-10">
+                            <div>
+                                <Label className="text-base text-orange-600 font-bold flex items-center gap-2">
+                                    Status da Promoção Relâmpago
+                                </Label>
+                                <p className="text-sm text-muted-foreground mt-1">Ligue para limitar o valor promocional por alguns dias no checkout.</p>
+                            </div>
+                            <Switch
+                                checked={isPromoActive}
+                                onCheckedChange={setIsPromoActive}
+                                className="data-[state=checked]:bg-orange-500"
+                            />
+                        </div>
+
+                        {isPromoActive && (
+                            <div className="space-y-3 pt-2 relative z-10">
+                                <Label htmlFor="promoDays" className="text-sm font-semibold">Duração da Promoção (Dias)</Label>
+                                <div className="flex gap-4 items-center">
+                                    <Input
+                                        id="promoDays"
+                                        type="number"
+                                        step="1"
+                                        min="1"
+                                        value={promoDays}
+                                        onChange={(e) => setPromoDays(e.target.value)}
+                                        placeholder="Ex: 90"
+                                        className="w-32 bg-background"
+                                        required={isPromoActive}
+                                    />
+                                    {getPromoEndDateStr() && (
+                                        <div className="flex items-center gap-2 text-sm text-emerald-600 bg-emerald-500/10 px-3 py-1.5 rounded-full font-medium">
+                                            <CalendarIcon className="w-4 h-4" />
+                                            Encerra em {getPromoEndDateStr()}
+                                        </div>
+                                    )}
+                                </div>
+                                <p className="text-xs text-muted-foreground">Após o período configurado, novos clientes pagarão o valor integral no lugar da oferta.</p>
+                            </div>
+                        )}
                     </div>
                 </div>
 

@@ -173,8 +173,7 @@ serve(async (req) => {
     let finalPrice = promoPrice * (1 - (discountPercentage / 100));
     finalPrice = Math.round(finalPrice * 100) / 100;
 
-    let baseSubscriptionPrice = originalPrice * (1 - (discountPercentage / 100));
-    baseSubscriptionPrice = Math.round(baseSubscriptionPrice * 100) / 100;
+    let baseSubscriptionPrice = originalPrice;
 
     // PIX: resolve CPF/CNPJ - from body or fallback to Asaas customer
     let cpfCnpjForPix = cpfCnpj ? String(cpfCnpj).replace(/\D/g, '') : '';
@@ -282,7 +281,8 @@ serve(async (req) => {
       // If promo duration applies, the recurring value should revert to baseSubscriptionPrice
       // By updating the subscription with updatePendingPayments: false, the first charge (just created) remains at finalPrice
       // but future charges will be baseSubscriptionPrice.
-      if (promoDaysDuration > 0 && subData.id && baseSubscriptionPrice > finalPrice) {
+      // se há promo ativa ou Cupom aplicado, ajusta recorrente pro preço cheio futuro
+      if ((promoDaysDuration > 0 || discountPercentage > 0) && subData.id && baseSubscriptionPrice > finalPrice) {
         try {
           const updateRes = await fetch(`${ASAAS_BASE_URL}/subscriptions/${subData.id}`, {
             method: 'PUT',

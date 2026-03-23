@@ -31,7 +31,7 @@ export const AdminPromotionalCodes = () => {
             setLoading(true);
             const { data, error } = await supabase
                 .from('promotional_codes')
-                .select('*')
+                .select('*, subscriptions(id)')
                 .order('created_at', { ascending: false });
 
             if (error) throw error;
@@ -208,6 +208,7 @@ export const AdminPromotionalCodes = () => {
                             <TableRow>
                                 <TableHead>Código</TableHead>
                                 <TableHead>Desconto</TableHead>
+                                <TableHead>Usos/Cadastros</TableHead>
                                 <TableHead>Influenciador</TableHead>
                                 <TableHead>Status</TableHead>
                                 <TableHead className="text-right">Ações</TableHead>
@@ -228,6 +229,11 @@ export const AdminPromotionalCodes = () => {
                                         </TableCell>
                                         <TableCell>
                                             {code.discount_percentage}%
+                                        </TableCell>
+                                        <TableCell>
+                                            <Badge variant="outline" className="font-mono">
+                                                {code.subscriptions ? code.subscriptions.length : 0} usos
+                                            </Badge>
                                         </TableCell>
                                         <TableCell>
                                             {code.influencer_name || <span className="text-muted-foreground italic">Nenhum</span>}
