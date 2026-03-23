@@ -46,9 +46,10 @@ import {
   ShoppingBag,
   Pencil,
   CalendarCheck,
-  ClipboardList,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { useConnectedUserIds } from "@/hooks/useConnectedUserIds";
+import { motion } from "framer-motion";
 
 interface OutletContextType {
   user: User;
@@ -111,6 +112,7 @@ const DEFAULT_CATEGORIES = [
 const ListaComprasPage = () => {
   const { toast } = useToast();
   const { user } = useOutletContext<OutletContextType>();
+  const { allUserIds, loading: loadingConnections } = useFamilyConnections(user?.id);
 
   // View state: "lists" or "detail"
   const [view, setView] = useState<"lists" | "detail">("lists");
@@ -173,17 +175,17 @@ const ListaComprasPage = () => {
         supabase
           .from("shopping_lists")
           .select("*")
-          .eq("user_id", user.id)
+          .in("user_id", allUserIds)
           .order("created_at", { ascending: false }),
         supabase
           .from("bank_accounts")
           .select("id, name")
-          .eq("user_id", user.id)
+          .in("user_id", allUserIds)
           .order("name"),
         supabase
           .from("credit_cards")
           .select("id, name, color")
-          .eq("user_id", user.id)
+          .in("user_id", allUserIds)
           .order("name"),
       ]);
 
@@ -195,18 +197,18 @@ const ListaComprasPage = () => {
     } finally {
       setLoading(false);
     }
-  }, [user.id]);
+  }, [allUserIds]);
 
   useEffect(() => {
-    if (user?.id) loadLists();
-  }, [user?.id, loadLists]);
+    if (user?.id && !loadingConnections && allUserIds.length > 0) loadLists();
+  }, [user?.id, allUserIds, loadingConnections, loadLists]);
 
   const loadItems = async (listId: string) => {
     const { data } = await supabase
       .from("shopping_items")
       .select("*")
       .eq("list_id", listId)
-      .eq("user_id", user.id)
+      .in("user_id", allUserIds)
       .order("checked")
       .order("category")
       .order("name");
@@ -483,6 +485,31 @@ const ListaComprasPage = () => {
     setNewItemUnitType("un"); setShowCustomCategoryInput(false); setNewCustomCategory("");
     setShowAddDialog(false);
     toast({ title: "Item adicionado!" });
+  };
+
+  const handleItemNameBlur = async () => {
+    if (!newItemName.trim() || allUserIds.length === 0) return;
+    
+    const { data } = await supabase
+      .from("shopping_items")
+      .select("price, unit_type, weight_per_unit")
+      .in("user_id", allUserIds)
+      .ilike("name", newItemName.trim())
+      .order("created_at", { ascending: false })
+      .limit(1);
+
+    if (data && data.length > 0) {
+      const last = data[0];
+      if (last.price > 0 && (!newItemPrice || parseFloat(newItemPrice.replace(",", ".")) === 0)) {
+        setNewItemPrice(String(last.price));
+        setNewItemUnitType(last.unit_type);
+        if (last.weight_per_unit) setNewItemWeight(String(last.weight_per_unit));
+        toast({ 
+          title: "Memória de Preço 🧠", 
+          description: "Preenchemos o valor com sua última compra." 
+        });
+      }
+    }
   };
 
   const handleDeleteItem = async () => {
@@ -807,7 +834,20 @@ const ListaComprasPage = () => {
                   <CardContent className="p-0">
                     <div className="divide-y divide-border">
                       {catItems.map(item => (
-                        <div key={item.id} className={`px-4 py-3 transition-colors ${item.checked ? "bg-muted/30" : "hover:bg-muted/20"}`}>
+                        <motion.div 
+                          key={item.id} 
+                          className={`px-4 py-3 transition-colors ${item.checked ? "bg-muted/30" : "hover:bg-muted/20"}`}
+                          drag="x"
+                          dragConstraints={{ left: 0, right: 0 }}
+                          dragElastic={0.1}
+                          onDragEnd={(e, { offset, velocity }) => {
+                            if (offset.x > 50 || velocity.x > 300) {
+                              if (!isFinished) handleToggleCheck(item);
+                            } else if (offset.x < -50 || velocity.x < -300) {
+                              if (!isFinished) setDeleteItemId(item.id);
+                            }
+                          }}
+                        >
                           <div className="flex items-center gap-3">
                             <button onClick={() => !isFinished && handleToggleCheck(item)} className="flex-shrink-0" disabled={isFinished}>
                               {item.checked ? <CheckCircle2 className="h-5 w-5 text-green-500" /> : <Circle className="h-5 w-5 text-muted-foreground hover:text-primary transition-colors" />}
@@ -843,7 +883,7 @@ const ListaComprasPage = () => {
                               )}
                             </div>
                           </div>
-                        </div>
+                        </motion.div>
                       ))}
                     </div>
                   </CardContent>
@@ -868,7 +908,13 @@ const ListaComprasPage = () => {
         <DialogContent className="sm:max-w-md">
           <DialogHeader><DialogTitle className="flex items-center gap-2"><Plus className="h-5 w-5 text-pink-500" /> Adicionar Produto</DialogTitle></DialogHeader>
           <div className="space-y-4 py-2">
-            <Input placeholder="Nome do produto" value={newItemName} onChange={e => setNewItemName(e.target.value)} autoFocus />
+            <Input 
+              placeholder="Nome do produto" 
+              value={newItemName} 
+              onChange={e => setNewItemName(e.target.value)} 
+              onBlur={handleItemNameBlur}
+              autoFocus 
+            />
             <Select value={showCustomCategoryInput ? "__custom__" : newItemCategory} onValueChange={v => { if (v === "__custom__") { setShowCustomCategoryInput(true); } else { setShowCustomCategoryInput(false); setNewItemCategory(v); } }}>
               <SelectTrigger><SelectValue placeholder="Categoria" /></SelectTrigger>
               <SelectContent>{allCategories.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}<SelectItem value="__custom__">+ Nova categoria...</SelectItem></SelectContent>
