@@ -23,6 +23,7 @@ import FaturasPage from "./pages/FaturasPage";
 import ListaComprasPage from "./pages/ListaComprasPage";
 import ApiDocsPage from "./pages/ApiDocsPage";
 import ResetPassword from "./pages/ResetPassword";
+import CaixinhasPage from "./pages/CaixinhasPage";
 
 // Components
 import { ProtectedRoute } from "./components/ProtectedRoute";
@@ -58,6 +59,7 @@ const App = () => (
             <Route path="/agenda" element={<AgendaPage />} />
             <Route path="/categorias" element={<CategoriasPage />} />
             <Route path="/sharing" element={<SharingPage />} />
+            <Route path="/caixinha" element={<CaixinhasPage />} />
             <Route path="/cartoes" element={<CartoesPage />} />
             <Route path="/faturas" element={<FaturasPage />} />
             <Route path="/lista-compras" element={<ListaComprasPage />} />
