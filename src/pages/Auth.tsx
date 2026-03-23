@@ -42,11 +42,6 @@ const Auth = () => {
   const [phoneCountry, setPhoneCountry] = useState<PhoneCountry>("BR");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [promoCode, setPromoCode] = useState("");
-  const [otpCode, setOtpCode] = useState("");
-  const [otpSent, setOtpSent] = useState(false);
-  const [resendTimer, setResendTimer] = useState(0);
-  const [otpVerified, setOtpVerified] = useState(false);
-  const [verifyingOtp, setVerifyingOtp] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -64,47 +59,13 @@ const Auth = () => {
   const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const formatted = formatPhoneForCountry(e.target.value, phoneCountry);
     setPhone(formatted);
-    if (otpSent) {
-      setOtpSent(false);
-      setOtpVerified(false);
-      setOtpCode("");
-      setResendTimer(0);
-    }
   };
 
   const handlePhoneCountryChange = (value: string) => {
     const country = value as PhoneCountry;
     setPhoneCountry(country);
-    // Reformatar dígitos existentes para o novo formato do país
     const digits = phone.replace(/\D/g, '');
     setPhone(formatPhoneForCountry(digits, country));
-    if (otpSent) {
-      setOtpSent(false);
-      setOtpVerified(false);
-      setOtpCode("");
-      setResendTimer(0);
-    }
-  };
-
-  const handleGenerateOTP = async (cleanPhone: string) => {
-    try {
-      const { data, error } = await supabase.functions.invoke('generate-otp', {
-        body: {
-          phone: cleanPhone,
-          email: email,
-          full_name: fullName,
-          pais: PHONE_COUNTRY_NAMES[phoneCountry]
-        }
-      });
-
-      if (error) {
-        throw new Error(error.message || "Erro ao gerar código OTP.");
-      }
-
-      return true;
-    } catch (error: any) {
-      throw error;
-    }
   };
 
   const resetSignupForm = () => {
@@ -115,10 +76,6 @@ const Auth = () => {
     setPhoneCountry("BR");
     setConfirmPassword("");
     setPromoCode("");
-    setOtpCode("");
-    setOtpSent(false);
-    setResendTimer(0);
-    setOtpVerified(false);
     setRegistrationComplete(false);
   };
 
@@ -130,13 +87,6 @@ const Auth = () => {
       }
     };
     checkUser();
-
-    let interval: NodeJS.Timeout;
-    if (resendTimer > 0) {
-      interval = setInterval(() => {
-        setResendTimer((prev) => prev - 1);
-      }, 1000);
-    }
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if (session) {
@@ -163,9 +113,8 @@ const Auth = () => {
 
     return () => {
       subscription.unsubscribe();
-      if (interval) clearInterval(interval);
     };
-  }, [navigate, resendTimer]);
+  }, [navigate]);
 
   const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -253,155 +202,62 @@ const Auth = () => {
     const sanitizedEmail = email.trim().toLowerCase();
     const sanitizedFullName = sanitizeText(fullName, 100);
 
-    // Step 1: Send OTP
-    if (!otpSent) {
-      setLoading(true);
-      try {
-        await handleGenerateOTP(cleanPhone);
-        setOtpSent(true);
-        setResendTimer(60);
-        toast({
-          title: "Código OTP enviado!",
-          description: "Verifique sua caixa de e-mail (incluindo SPAM) para receber o código de verificação.",
-        });
-      } catch (error: any) {
-        setMessage(error.message || "Erro ao enviar código OTP.");
-        toast({
-          title: "Erro",
-          description: error.message || "Erro ao enviar código OTP.",
-          variant: "destructive"
-        });
-      } finally {
-        setLoading(false);
-      }
-      return;
-    }
+    setLoading(true);
 
-    // Step 2: Verify OTP and create account
-    if (otpSent && !otpVerified) {
-      if (!otpCode || otpCode.length !== 6) {
-        setMessage("Por favor, informe o código de 6 dígitos.");
-        return;
+    try {
+      const { data: customerData, error: customerError } = await supabase.functions.invoke('create-asaas-customer', {
+        body: {
+          email: sanitizedEmail,
+          full_name: sanitizedFullName,
+          phone: cleanPhone,
+          password: password,
+          terms_accepted: acceptedTerms,
+          promo_code: promoCode || undefined
+        }
+      });
+
+      if (customerError) {
+        let errorMessage = "Erro ao iniciar cadastro.";
+        if (customerError.message) errorMessage = customerError.message;
+        else if (customerError.context?.body) {
+          try {
+            const body = typeof customerError.context.body === 'string'
+              ? JSON.parse(customerError.context.body) : customerError.context.body;
+            if (body?.error) errorMessage = body.error;
+          } catch (_) {}
+        }
+        throw new Error(errorMessage);
       }
 
-      setVerifyingOtp(true);
-      try {
-        const trimmedCode = otpCode.trim();
-
-        if (!trimmedCode || trimmedCode.length !== 6) {
-          setMessage("Por favor, informe um código de 6 dígitos.");
-          setVerifyingOtp(false);
-          return;
-        }
-
-        // OTP verification - sensitive data not logged
-
-        const { data, error } = await supabase.functions.invoke('verify-otp', {
-          body: {
-            phone: cleanPhone,
-            code: trimmedCode
-          }
-        });
-
-        if (error) {
-          console.error('OTP verification error:', error);
-          const errorMessage = error.message || "Código inválido ou expirado.";
-          setMessage(errorMessage);
-          toast({
-            title: "Erro na verificação",
-            description: errorMessage,
-            variant: "destructive"
-          });
-          setVerifyingOtp(false);
-          return;
-        }
-
-        if (!data || !data.success) {
-          console.error('OTP verification failed:', data);
-          setMessage("Código inválido ou expirado. Por favor, solicite um novo código.");
-          toast({
-            title: "Erro na verificação",
-            description: "Código inválido ou expirado. Por favor, solicite um novo código.",
-            variant: "destructive"
-          });
-          setVerifyingOtp(false);
-          return;
-        }
-
-        // OTP verified! Create Asaas customer and pending registration (no user yet)
-        setOtpVerified(true);
-        toast({
-          title: "Código verificado!",
-          description: "Redirecionando para pagamento...",
-        });
-
-        try {
-          const { data: customerData, error: customerError } = await supabase.functions.invoke('create-asaas-customer', {
-            body: {
-              email: sanitizedEmail,
-              full_name: sanitizedFullName,
-              phone: cleanPhone,
-              password: password,
-              terms_accepted: acceptedTerms,
-              promo_code: promoCode || undefined
-            }
-          });
-
-          if (customerError) {
-            let errorMessage = "Erro ao iniciar cadastro.";
-            if (customerError.message) errorMessage = customerError.message;
-            else if (customerError.context?.body) {
-              try {
-                const body = typeof customerError.context.body === 'string'
-                  ? JSON.parse(customerError.context.body) : customerError.context.body;
-                if (body?.error) errorMessage = body.error;
-              } catch (_) { }
-            }
-            throw new Error(errorMessage);
-          }
-
-          if (customerData?.error) {
-            throw new Error(customerData.error);
-          }
-
-          setRegistrationComplete(true);
-          toast({
-            title: "Cadastro iniciado",
-            description: "Conclua o pagamento para ativar sua conta.",
-          });
-
-          // Redirecting with parsed plan data correctly injected into the route state URL
-          let checkoutUrl = `/pagamento-pendente?email=${encodeURIComponent(sanitizedEmail)}`;
-          if (customerData?.plan) {
-            checkoutUrl += `&originalPrice=${customerData.plan.original_price}&finalPrice=${customerData.plan.price}&discount=${customerData.plan.applied_discount}`;
-            if (customerData.plan.promo_code_id) {
-              checkoutUrl += `&promoCodeApplied=true`;
-            }
-          }
-
-          navigate(checkoutUrl);
-        } catch (err: any) {
-          console.error('create-asaas-customer error:', err);
-          setMessage(err.message || "Erro ao iniciar cadastro.");
-          toast({
-            title: "Erro",
-            description: err.message || "Erro ao iniciar cadastro.",
-            variant: "destructive"
-          });
-          setOtpVerified(false);
-        }
-
-        setVerifyingOtp(false);
-      } catch (error: any) {
-        setMessage("Erro inesperado ao verificar código.");
-        toast({
-          title: "Erro",
-          description: "Erro inesperado ao verificar código.",
-          variant: "destructive"
-        });
-        setVerifyingOtp(false);
+      if (customerData?.error) {
+        throw new Error(customerData.error);
       }
-      return;
+
+      setRegistrationComplete(true);
+      toast({
+        title: "Cadastro iniciado",
+        description: "Conclua o pagamento para ativar sua conta.",
+      });
+
+      let checkoutUrl = `/pagamento-pendente?email=${encodeURIComponent(sanitizedEmail)}`;
+      if (customerData?.plan) {
+        checkoutUrl += `&originalPrice=${customerData.plan.original_price}&finalPrice=${customerData.plan.price}&discount=${customerData.plan.applied_discount}`;
+        if (customerData.plan.promo_code_id) {
+          checkoutUrl += `&promoCodeApplied=true`;
+        }
+      }
+
+      navigate(checkoutUrl);
+    } catch (err: any) {
+      console.error('create-asaas-customer error:', err);
+      setMessage(err.message || "Erro ao iniciar cadastro.");
+      toast({
+        title: "Erro",
+        description: err.message || "Erro ao iniciar cadastro.",
+        variant: "destructive"
+      });
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -461,12 +317,8 @@ const Auth = () => {
           <Tabs value={activeTab} onValueChange={(v) => {
             setActiveTab(v as "login" | "signup" | "forgot");
             setMessage("");
-            setResetEmailSent(false);
-            setOtpSent(false);
-            setResendTimer(0);
-            setOtpVerified(false);
-            setOtpCode("");
-            setRegistrationComplete(false);
+          setResetEmailSent(false);
+          setRegistrationComplete(false);
             if (v !== "signup") {
               setTermsStepDone(false);
               setTermsScrolledToBottom(false);
@@ -736,51 +588,9 @@ const Auth = () => {
                             phoneCountry === "US" ? 14 : 11
                         }
                         required
-                        disabled={otpVerified}
                         className="flex-1"
                       />
                     </div>
-                    {otpSent && !otpVerified && (
-                      <div className="space-y-2 mt-4">
-                        <Alert className="bg-primary/5 border-primary/20">
-                          <AlertDescription className="text-sm">
-                            Código OTP enviado para o seu E-mail! Digite o código abaixo.
-                          </AlertDescription>
-                        </Alert>
-                        <Label htmlFor="signup-otp">Código de Verificação *</Label>
-                        <Input
-                          id="signup-otp"
-                          type="text"
-                          placeholder="000000"
-                          value={otpCode}
-                          onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                          maxLength={6}
-                          className="text-center text-lg font-mono tracking-widest"
-                          required
-                        />
-                        <div className="flex justify-between items-center mt-2">
-                          <p className="text-sm text-muted-foreground mr-2">Não recebeu?</p>
-                          <Button 
-                            variant="ghost" 
-                            size="sm" 
-                            type="button"
-                            disabled={resendTimer > 0 || verifyingOtp}
-                            onClick={async () => {
-                              try {
-                                setResendTimer(60);
-                                await handleGenerateOTP(getCleanPhoneForBackend(phone, phoneCountry));
-                                toast({ title: "Novo código enviado!", description: "Verifique seu E-mail novamente." });
-                              } catch (e: any) {
-                                toast({ title: "Erro", description: e.message || "Tente novamente.", variant: "destructive" });
-                                setResendTimer(0);
-                              }
-                            }}
-                          >
-                            {resendTimer > 0 ? `Aguarde ${resendTimer}s` : "Reenviar código"}
-                          </Button>
-                        </div>
-                      </div>
-                    )}
                   </div>
 
                   <div className="space-y-2">
@@ -796,7 +606,6 @@ const Auth = () => {
                         className="pl-10 pr-10"
                         required
                         minLength={6}
-                        disabled={otpVerified}
                       />
                       <button
                         type="button"
@@ -821,7 +630,6 @@ const Auth = () => {
                         className="pl-10 pr-10"
                         required
                         minLength={6}
-                        disabled={otpVerified}
                       />
                       <button
                         type="button"
@@ -845,7 +653,6 @@ const Auth = () => {
                           value={promoCode}
                           onChange={(e) => setPromoCode(e.target.value.toUpperCase())}
                           className="pl-10 uppercase"
-                          disabled={otpVerified}
                         />
                       </div>
                     </div>
@@ -860,26 +667,14 @@ const Auth = () => {
                   <Button
                     type="submit"
                     className="w-full bg-primary hover:bg-primary/90"
-                    disabled={loading || verifyingOtp}
+                    disabled={loading}
                   >
-                    {loading && !otpSent ? "Enviando código..." :
-                      verifyingOtp ? "Criando sua conta..." :
-                        otpSent && !otpVerified ? "Verificar e Criar Conta" :
-                          "Começar Grátis"}
+                    {loading ? "Criando sua conta..." : "Começar Grátis"}
                   </Button>
 
-                  {otpSent && !otpVerified && (
-                    <p className="text-sm text-muted-foreground text-center">
-                      Digite o código recebido no WhatsApp e clique em "Verificar e Criar Conta".
-                    </p>
-                  )}
-
-                  {!otpSent && (
-                    <p className="text-xs text-muted-foreground text-center">
-                      Ao continuar, você receberá um código de verificação no WhatsApp.
-                      Sem compromisso, cancele quando quiser.
-                    </p>
-                  )}
+                  <p className="text-xs text-muted-foreground text-center">
+                    Ao criar sua conta você recebe nosso trial sem compromisso e cancela quando quiser.
+                  </p>
                 </form>
               ) : null}
             </TabsContent>
