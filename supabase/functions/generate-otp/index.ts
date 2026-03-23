@@ -118,8 +118,8 @@ serve(async (req) => {
             'Authorization': `Bearer ${RESEND_API_KEY}`
           },
           body: JSON.stringify({
-            from: "IAFÉ Finanças <nao-responda@iafefinancas.com.br>",
-            to: email,
+            from: "IAFÉ Finanças <comercial@iafeoficial.com>",
+            to: [email],
             subject: "Seu Código de Acesso - IAFÉ Finanças",
             html: emailHtml
           })

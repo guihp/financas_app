@@ -44,6 +44,7 @@ const Auth = () => {
   const [promoCode, setPromoCode] = useState("");
   const [otpCode, setOtpCode] = useState("");
   const [otpSent, setOtpSent] = useState(false);
+  const [resendTimer, setResendTimer] = useState(0);
   const [otpVerified, setOtpVerified] = useState(false);
   const [verifyingOtp, setVerifyingOtp] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
@@ -67,6 +68,7 @@ const Auth = () => {
       setOtpSent(false);
       setOtpVerified(false);
       setOtpCode("");
+      setResendTimer(0);
     }
   };
 
@@ -80,6 +82,7 @@ const Auth = () => {
       setOtpSent(false);
       setOtpVerified(false);
       setOtpCode("");
+      setResendTimer(0);
     }
   };
 
@@ -114,6 +117,7 @@ const Auth = () => {
     setPromoCode("");
     setOtpCode("");
     setOtpSent(false);
+    setResendTimer(0);
     setOtpVerified(false);
     setRegistrationComplete(false);
   };
@@ -126,6 +130,13 @@ const Auth = () => {
       }
     };
     checkUser();
+
+    let interval: NodeJS.Timeout;
+    if (resendTimer > 0) {
+      interval = setInterval(() => {
+        setResendTimer((prev) => prev - 1);
+      }, 1000);
+    }
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if (session) {
@@ -150,8 +161,11 @@ const Auth = () => {
     };
     fetchPromoSettings();
 
-    return () => subscription.unsubscribe();
-  }, [navigate]);
+    return () => {
+      subscription.unsubscribe();
+      if (interval) clearInterval(interval);
+    };
+  }, [navigate, resendTimer]);
 
   const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -245,6 +259,7 @@ const Auth = () => {
       try {
         await handleGenerateOTP(cleanPhone);
         setOtpSent(true);
+        setResendTimer(60);
         toast({
           title: "Código OTP enviado!",
           description: "Verifique sua caixa de e-mail (incluindo SPAM) para receber o código de verificação.",
@@ -448,6 +463,7 @@ const Auth = () => {
             setMessage("");
             setResetEmailSent(false);
             setOtpSent(false);
+            setResendTimer(0);
             setOtpVerified(false);
             setOtpCode("");
             setRegistrationComplete(false);
@@ -742,6 +758,27 @@ const Auth = () => {
                           className="text-center text-lg font-mono tracking-widest"
                           required
                         />
+                        <div className="flex justify-between items-center mt-2">
+                          <p className="text-sm text-muted-foreground mr-2">Não recebeu?</p>
+                          <Button 
+                            variant="ghost" 
+                            size="sm" 
+                            type="button"
+                            disabled={resendTimer > 0 || verifyingOtp}
+                            onClick={async () => {
+                              try {
+                                setResendTimer(60);
+                                await handleGenerateOTP(getCleanPhoneForBackend(phone, phoneCountry));
+                                toast({ title: "Novo código enviado!", description: "Verifique seu E-mail novamente." });
+                              } catch (e: any) {
+                                toast({ title: "Erro", description: e.message || "Tente novamente.", variant: "destructive" });
+                                setResendTimer(0);
+                              }
+                            }}
+                          >
+                            {resendTimer > 0 ? `Aguarde ${resendTimer}s` : "Reenviar código"}
+                          </Button>
+                        </div>
                       </div>
                     )}
                   </div>
