@@ -527,7 +527,7 @@ const ListaComprasPage = () => {
             </div>
             <h1 className="text-xl sm:text-2xl font-bold">Lista de Compras</h1>
           </div>
-          <Button onClick={() => setShowCreateDialog(true)} className="bg-pink-500 hover:bg-pink-600 gap-1.5">
+          <Button onClick={() => setShowCreateDialog(true)} className="gap-1.5">
             <Plus className="h-4 w-4" /> Nova Lista
           </Button>
         </div>
@@ -574,7 +574,7 @@ const ListaComprasPage = () => {
               <ShoppingCart className="h-12 w-12 text-muted-foreground mb-4" />
               <h3 className="text-lg font-semibold mb-1">Nenhuma lista ativa</h3>
               <p className="text-sm text-muted-foreground mb-4">Crie uma nova lista para começar suas compras.</p>
-              <Button onClick={() => setShowCreateDialog(true)} className="bg-pink-500 hover:bg-pink-600 gap-1.5">
+              <Button onClick={() => setShowCreateDialog(true)} className="gap-1.5">
                 <Plus className="h-4 w-4" /> Criar Lista
               </Button>
             </CardContent>
@@ -662,7 +662,7 @@ const ListaComprasPage = () => {
             </div>
             <DialogFooter>
               <Button variant="outline" onClick={() => setShowCreateDialog(false)}>Cancelar</Button>
-              <Button onClick={handleCreateList} className="bg-pink-500 hover:bg-pink-600">Criar Lista</Button>
+              <Button onClick={handleCreateList}>Criar Lista</Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>
