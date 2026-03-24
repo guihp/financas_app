@@ -484,7 +484,8 @@ serve(async (req) => {
                     return new Response(JSON.stringify({ error: 'Cartão não encontrado' }), { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
                 }
 
-                const expenseDesc = `Fatura ${card.name} - ${month_name}`;
+                const currentYear = new Date().getFullYear();
+                const expenseDesc = `Fatura ${card.name} - ${month_name} ${currentYear}`;
                 const { data: existingPayment } = await supabase
                     .from("transactions")
                     .select("id")
@@ -502,7 +503,7 @@ serve(async (req) => {
                     user_id: userId,
                     type: "expense",
                     amount: amount,
-                    category: "geral",
+                    category: "pagamento_fatura",
                     description: expenseDesc,
                     date: today,
                     transaction_date: today,
