@@ -390,6 +390,7 @@ serve(async (req) => {
                     transaction_date: today,
                     payment_method: "debit",
                     bank_account_id: bank_account_id,
+                    credit_card_id: card_id,
                     total_installments: 1,
                     installment_number: 1
                 }).select().single();
