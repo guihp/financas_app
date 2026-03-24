@@ -126,6 +126,11 @@ serve(async (req) => {
                     const netSpent = totalSpent - totalIncome;
                     const availableLimit = cardLimit > 0 ? Math.max(0, cardLimit - netSpent) : null;
 
+                    // Calcular total_fatura = todas as despesas do cartão no período (excluindo pagamentos de fatura)
+                    const totalFatura = cardTransactions
+                        .filter((t: any) => t.type === 'expense' && t.category !== 'pagamento_fatura')
+                        .reduce((sum: number, t: any) => sum + (Number(t.amount) || 0), 0);
+
                     return {
                         card_id: card.id,
                         card_name: card.name,
@@ -133,6 +138,7 @@ serve(async (req) => {
                         closing_day: card.closing_day,
                         due_day: card.due_day,
                         card_limit: cardLimit || null,
+                        total_fatura: Math.round(totalFatura * 100) / 100,
                         total_spent: Math.round(totalSpent * 100) / 100,
                         total_income: Math.round(totalIncome * 100) / 100,
                         net_spent: Math.round(netSpent * 100) / 100,
@@ -162,6 +168,118 @@ serve(async (req) => {
                         },
                         cards: cardSummaries,
                         total_cards: cardSummaries.length,
+                    }),
+                    { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+                );
+            }
+
+            // ── GET FATURA DETALHADA (texto ou PDF) ──────────────
+            if (action === 'get_fatura') {
+                const cardIdFilter = url.searchParams.get('card_id');
+                const monthFilter = url.searchParams.get('month'); // YYYY-MM
+                const forcePdf = url.searchParams.get('format') === 'pdf';
+
+                if (!cardIdFilter) {
+                    return new Response(
+                        JSON.stringify({ error: 'Parâmetro card_id é obrigatório para get_fatura' }),
+                        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+                    );
+                }
+
+                const { data: card } = await supabase
+                    .from('credit_cards')
+                    .select('id, name, closing_day, due_day, card_limit, color')
+                    .eq('id', cardIdFilter)
+                    .eq('user_id', userId)
+                    .single();
+
+                if (!card) {
+                    return new Response(
+                        JSON.stringify({ error: 'Cartão não encontrado' }),
+                        { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+                    );
+                }
+
+                let txQuery = supabase
+                    .from('transactions')
+                    .select('id, amount, type, description, category, date, transaction_date, installment_number, total_installments')
+                    .eq('user_id', userId)
+                    .eq('credit_card_id', cardIdFilter)
+                    .neq('category', 'pagamento_fatura')
+                    .order('date', { ascending: false });
+
+                if (monthFilter) {
+                    const [year, month] = monthFilter.split('-').map(Number);
+                    const startDate = `${year}-${String(month).padStart(2, '0')}-01`;
+                    const endMonth = month === 12 ? 1 : month + 1;
+                    const endYear = month === 12 ? year + 1 : year;
+                    const endDate = `${endYear}-${String(endMonth).padStart(2, '0')}-01`;
+                    txQuery = txQuery.gte('date', startDate).lt('date', endDate);
+                }
+
+                const { data: txList } = await txQuery.limit(200);
+                const transactions = txList || [];
+
+                const totalFatura = transactions
+                    .filter((t: any) => t.type === 'expense')
+                    .reduce((sum: number, t: any) => sum + (Number(t.amount) || 0), 0);
+
+                const formatBRL = (v: number) => `R$ ${v.toFixed(2).replace('.', ',')}`;
+                const monthLabel = monthFilter || 'Geral';
+
+                // ─── Retorno em TEXTO (até 4 transações e sem flag pdf) ───
+                if (!forcePdf && transactions.length < 5) {
+                    const lines = transactions.map((t: any, i: number) => {
+                        const parcel = t.total_installments > 1 ? ` (${t.installment_number}/${t.total_installments})` : '';
+                        return `${i + 1}. ${t.description}${parcel} — ${formatBRL(Number(t.amount))} em ${t.date}`;
+                    });
+                    const body = [
+                        `📋 Fatura ${card.name} — ${monthLabel}`,
+                        `─────────────────────────`,
+                        ...lines,
+                        `─────────────────────────`,
+                        `💳 Total da fatura: ${formatBRL(totalFatura)}`,
+                    ].join('\n');
+                    return new Response(
+                        JSON.stringify({ success: true, format: 'text', card_name: card.name, month: monthLabel, total_fatura: Math.round(totalFatura * 100) / 100, transaction_count: transactions.length, summary: body }),
+                        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+                    );
+                }
+
+                // ─── Retorno em PDF (>=5 transações ou format=pdf) ───
+                const rows = transactions.map((t: any) => {
+                    const parcel = t.total_installments > 1 ? ` (${t.installment_number}/${t.total_installments})` : '';
+                    return `<tr><td>${t.date}</td><td>${t.description}${parcel}</td><td>${t.category}</td><td style="text-align:right">${formatBRL(Number(t.amount))}</td></tr>`;
+                }).join('');
+
+                const html = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><style>
+                body{font-family:Arial,sans-serif;margin:32px;color:#222}
+                h1{color:#1a1a2e;font-size:20px}h2{font-size:14px;color:#555;margin-bottom:16px}
+                table{width:100%;border-collapse:collapse;font-size:13px}
+                th{background:#1a1a2e;color:#fff;padding:8px;text-align:left}
+                td{padding:7px 8px;border-bottom:1px solid #eee}
+                tr:nth-child(even) td{background:#f9f9f9}
+                .total{font-weight:bold;font-size:15px;text-align:right;margin-top:16px;color:#1a1a2e}
+                </style></head><body>
+                <h1>💳 Fatura — ${card.name}</h1>
+                <h2>Período: ${monthLabel} &nbsp;|&nbsp; Fechamento dia ${card.closing_day} &nbsp;|&nbsp; Vencimento dia ${card.due_day}</h2>
+                <table><thead><tr><th>Data</th><th>Descrição</th><th>Categoria</th><th>Valor</th></tr></thead><tbody>${rows}</tbody></table>
+                <p class="total">Total da Fatura: ${formatBRL(totalFatura)}</p>
+                </body></html>`;
+
+                // Gerar PDF via api de impressão (puppeteer não disponível — retornamos HTML como base64 para o agente renderizar)
+                const htmlBase64 = btoa(unescape(encodeURIComponent(html)));
+
+                return new Response(
+                    JSON.stringify({
+                        success: true,
+                        format: 'pdf_html',
+                        card_name: card.name,
+                        month: monthLabel,
+                        total_fatura: Math.round(totalFatura * 100) / 100,
+                        transaction_count: transactions.length,
+                        message: `Para gerar o PDF, salve o conteúdo de 'html_content' como arquivo .html e abra no navegador (Ctrl+P → Salvar como PDF).`,
+                        html_content: htmlBase64,
                     }),
                     { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
                 );

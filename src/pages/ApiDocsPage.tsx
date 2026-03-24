@@ -485,6 +485,7 @@ curl -X GET "${BASE}/manage-accounts-by-phone?phone=5511999999999&action=get_car
       "card_id": "uuid-cartao",
       "card_name": "Nubank Crédito",
       "card_limit": 5000.00,
+      "total_fatura": 1280.50,
       "total_spent": 1280.50,
       "available_limit": 3719.50,
       "usage_percentage": 25.61,
@@ -500,7 +501,64 @@ curl -X GET "${BASE}/manage-accounts-by-phone?phone=5511999999999&action=get_car
             { code: 404, message: "Cartão não encontrado", cause: "O card_id informado não pertence ao usuário.", fix: "Obtenha os IDs via GET /manage-accounts-by-phone (sem action)." },
             { code: 404, message: "Nenhum cartão cadastrado", cause: "O usuário não possui cartões de crédito.", fix: "Crie um cartão com action='create_card'." },
         ],
-        tips: "💡 Sem filtro de mês, retorna transações de TODO o histórico. Use 'month=2026-03' para limitar ao mês. O 'usage_percentage' é nulo se o cartão não tem limite definido.",
+        tips: "💡 Sem filtro de mês, retorna transações de TODO o histórico. Use 'month=2026-03' para limitar ao mês. O campo 'total_fatura' exclui pagamentos de fatura para evitar duplicidade. O 'usage_percentage' é nulo se o cartão não tem limite definido.",
+    },
+
+    // ── 8C. MANAGE ACCOUNTS: Consultar Fatura Detalhada ──
+    {
+        method: "GET",
+        path: "/manage-accounts-by-phone?action=get_fatura",
+        summary: "Consulta a fatura de um cartão com total e detalhe das transações. Retorna texto ou HTML/PDF dependendo do volume.",
+        description: `Retorna a fatura detalhada de um cartão. O formato da resposta é automático:
+
+• ≤ 4 transações → Retorna JSON com campo "summary" em texto legível (pronto para enviar no WhatsApp).
+• ≥ 5 transações ou format=pdf → Retorna HTML codificado em base64 para gerar PDF no navegador.
+
+FILTROS DISPONÍVEIS (query params):
+• card_id → (Obrigatório) UUID do cartão
+• month → Filtrar por mês no formato YYYY-MM (ex: 2026-03)
+• format=pdf → Forçar retorno em PDF mesmo com poucas transações`,
+        params: [
+            { name: "phone", type: "string", required: true, description: "Telefone do usuário (query param)." },
+            { name: "action", type: "string", required: true, description: "Deve ser 'get_fatura'.", values: ["get_fatura"] },
+            { name: "card_id", type: "uuid", required: true, description: "UUID do cartão a consultar." },
+            { name: "month", type: "string", required: false, description: "Filtrar por mês (YYYY-MM). Ex: 2026-03." },
+            { name: "format", type: "string", required: false, description: "Use 'pdf' para forçar retorno em HTML/PDF.", values: ["pdf"] },
+        ],
+        curlCommand: `# ── Consulta de fatura (texto, até 4 transações) ──
+curl -X GET "${BASE}/manage-accounts-by-phone?phone=5511999999999&action=get_fatura&card_id=uuid-do-cartao&month=2026-03" \\
+  -H "Authorization: Bearer <SUPABASE_ANON_KEY>"
+
+# ── Consulta forçando retorno em PDF ──
+curl -X GET "${BASE}/manage-accounts-by-phone?phone=5511999999999&action=get_fatura&card_id=uuid-do-cartao&month=2026-03&format=pdf" \\
+  -H "Authorization: Bearer <SUPABASE_ANON_KEY>"`,
+        responseExample: `// ─── Resposta TEXTO (≤4 transações) ───
+{
+  "success": true,
+  "format": "text",
+  "card_name": "Inter",
+  "month": "2026-03",
+  "total_fatura": 850.00,
+  "transaction_count": 3,
+  "summary": "📋 Fatura Inter — 2026-03\\n─────────────────────────\\n1. Compra de celular (1/2) — R$ 300,00 em 2026-03-23\\n2. Supermercado — R$ 250,00 em 2026-03-18\\n3. Gasolina — R$ 300,00 em 2026-03-10\\n─────────────────────────\\n💳 Total da fatura: R$ 850,00"
+}
+
+// ─── Resposta PDF (≥5 transações ou format=pdf) ───
+{
+  "success": true,
+  "format": "pdf_html",
+  "card_name": "Inter",
+  "month": "2026-03",
+  "total_fatura": 2350.00,
+  "transaction_count": 8,
+  "message": "Para gerar o PDF, salve o conteúdo de 'html_content' como .html e abra no navegador (Ctrl+P → Salvar como PDF).",
+  "html_content": "<base64 do HTML da fatura>"
+}`,
+        errors: [
+            { code: 400, message: "card_id obrigatório", cause: "Parâmetro card_id não informado.", fix: "Passe card_id=uuid-do-cartao na query string." },
+            { code: 404, message: "Cartão não encontrado", cause: "UUID inválido ou não pertence ao usuário.", fix: "Obtenha os IDs via GET sem action." },
+        ],
+        tips: "💡 O campo 'summary' da resposta texto está formatado para envio direto pelo WhatsApp. Para o PDF, decodifique o 'html_content' (base64) e abra o HTML no navegador para imprimir como PDF.",
     },
 
     // ── 9. MANAGE ACCOUNTS: Criar Banco ─────
