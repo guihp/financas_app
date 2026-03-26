@@ -44,7 +44,8 @@ const StatsPage = () => {
           category: t.category?.toLowerCase() || "",
           amount: Number(t.amount),
           date: t.date || t.created_at,
-          type: t.type as "income" | "expense"
+          type: t.type as "income" | "expense",
+          payment_method: t.payment_method
         })) as unknown as Transaction[];
 
         setTransactions(mappedTransactions);

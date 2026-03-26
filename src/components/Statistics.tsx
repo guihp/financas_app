@@ -33,7 +33,12 @@ export const Statistics = ({ transactions }: StatisticsProps) => {
       .filter(t => t.type === "expense")
       .reduce((sum, t) => sum + Number(t.amount), 0);
 
-    const balance = totalIncome - totalExpenses;
+    // Saldo: receitas - (despesas de débito/PIX apenas)
+    const totalExpensesDebitPix = transactions
+      .filter(t => t.type === "expense" && t.payment_method !== "credit")
+      .reduce((sum, t) => sum + Number(t.amount), 0);
+
+    const balance = totalIncome - totalExpensesDebitPix;
 
     // Gastos por categoria
     const expensesByCategory = validTransactions
