@@ -31,10 +31,16 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+
 const TRIAL_DAYS = 7;
 
-const Auth = () => {
-  const [activeTab, setActiveTab] = useState<"login" | "signup" | "forgot">("login");
+interface AuthProps {
+  defaultTab?: "login" | "signup" | "forgot";
+}
+
+const Auth = ({ defaultTab = "login" }: AuthProps) => {
+  const [activeTab, setActiveTab] = useState<"login" | "signup" | "forgot">(defaultTab);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [fullName, setFullName] = useState("");
@@ -48,10 +54,8 @@ const Auth = () => {
   const [message, setMessage] = useState("");
   const [resetEmailSent, setResetEmailSent] = useState(false);
   const [registrationComplete, setRegistrationComplete] = useState(false);
-  const [termsStepDone, setTermsStepDone] = useState(false);
-  const [termsScrolledToBottom, setTermsScrolledToBottom] = useState(false);
-  const [acceptedTerms, setAcceptedTerms] = useState(false);
-  const [showPromoField, setShowPromoField] = useState(false);
+  const [acceptedTerms, setAcceptedTerms] = useState(true);
+  const [showTerms, setShowTerms] = useState(false);
 
   const navigate = useNavigate();
   const { toast } = useToast();
@@ -75,7 +79,6 @@ const Auth = () => {
     setPhone("");
     setPhoneCountry("BR");
     setConfirmPassword("");
-    setPromoCode("");
     setRegistrationComplete(false);
   };
 
@@ -93,23 +96,6 @@ const Auth = () => {
         navigate("/");
       }
     });
-
-    const fetchPromoSettings = async () => {
-      try {
-        const { data } = await supabase
-          .from("app_settings" as any)
-          .select("enable_promo_code")
-          .limit(1)
-          .single();
-        const typedData: any = data;
-        if (typedData && typedData.enable_promo_code === true) {
-          setShowPromoField(true);
-        }
-      } catch (e) {
-        console.error("Failed to fetch promo settings:", e);
-      }
-    };
-    fetchPromoSettings();
 
     return () => {
       subscription.unsubscribe();
@@ -157,6 +143,24 @@ const Auth = () => {
       setMessage("Erro inesperado. Tente novamente.");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handlePartialLeadSave = async () => {
+    // Only save if we have at least an email and it looks roughly like an email
+    if (email && email.includes("@")) {
+      try {
+        const cleanPhone = phone ? getCleanPhoneForBackend(phone, phoneCountry) : null;
+        await supabase.from("partial_leads").upsert({
+          email: email.trim().toLowerCase(),
+          full_name: fullName.trim() || null,
+          phone: cleanPhone || null,
+          updated_at: new Date().toISOString()
+        }, { onConflict: 'email' });
+      } catch (err) {
+        // Silent fail for partial leads
+        console.warn("Failed to capture partial lead:", err);
+      }
     }
   };
 
@@ -211,8 +215,7 @@ const Auth = () => {
           full_name: sanitizedFullName,
           phone: cleanPhone,
           password: password,
-          terms_accepted: acceptedTerms,
-          promo_code: promoCode || undefined
+          terms_accepted: acceptedTerms
         }
       });
 
@@ -242,9 +245,6 @@ const Auth = () => {
       let checkoutUrl = `/pagamento-pendente?email=${encodeURIComponent(sanitizedEmail)}`;
       if (customerData?.plan) {
         checkoutUrl += `&originalPrice=${customerData.plan.original_price}&finalPrice=${customerData.plan.price}&discount=${customerData.plan.applied_discount}`;
-        if (customerData.plan.promo_code_id) {
-          checkoutUrl += `&promoCodeApplied=true`;
-        }
       }
 
       navigate(checkoutUrl);
@@ -295,6 +295,20 @@ const Auth = () => {
 
   return (
     <div className="min-h-screen bg-background flex items-center justify-center p-4">
+      <Dialog open={showTerms} onOpenChange={setShowTerms}>
+        <DialogContent className="max-w-2xl max-h-[85vh] flex flex-col">
+          <DialogHeader>
+            <DialogTitle>Termos de Uso</DialogTitle>
+            <DialogDescription>Leia nossos termos de uso abaixo.</DialogDescription>
+          </DialogHeader>
+          <div className="flex-1 overflow-y-auto p-4 border rounded-md">
+            <TermsOfUseContent />
+          </div>
+          <div className="flex justify-end pt-4">
+            <Button onClick={() => setShowTerms(false)}>Fechar</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
       <Card className="w-full max-w-md bg-gradient-card shadow-card border-border">
         <CardHeader className="space-y-4">
           <div className="flex justify-center">
@@ -319,10 +333,8 @@ const Auth = () => {
             setMessage("");
           setResetEmailSent(false);
           setRegistrationComplete(false);
+          setRegistrationComplete(false);
             if (v !== "signup") {
-              setTermsStepDone(false);
-              setTermsScrolledToBottom(false);
-              setAcceptedTerms(false);
               setPhone("");
               setPhoneCountry("BR");
             }
@@ -393,60 +405,6 @@ const Auth = () => {
 
             {/* Signup Tab */}
             <TabsContent value="signup" className="space-y-4 mt-4">
-              {/* Step 1: Accept Terms of Use */}
-              {!termsStepDone && !registrationComplete && (
-                <div className="space-y-4">
-                  <div className="flex items-center gap-2 text-muted-foreground">
-                    <FileText className="h-5 w-5 text-primary" />
-                    <p className="text-sm font-medium">
-                      Leia os Termos de Uso até o final para continuar
-                    </p>
-                  </div>
-                  <div
-                    className="rounded-xl border border-border bg-muted/30 overflow-y-auto px-4 py-3 max-h-[280px] scroll-smooth"
-                    onScroll={(e) => {
-                      const el = e.currentTarget;
-                      const threshold = 40;
-                      const isAtBottom = el.scrollHeight - el.scrollTop - el.clientHeight < threshold;
-                      if (isAtBottom) setTermsScrolledToBottom(true);
-                    }}
-                  >
-                    <TermsOfUseContent className="pr-2" />
-                  </div>
-                  {!termsScrolledToBottom && (
-                    <p className="text-xs text-amber-600 dark:text-amber-500 flex items-center gap-1">
-                      <ChevronDown className="h-3.5 w-3.5" />
-                      Role até o final dos termos para habilitar a opção abaixo
-                    </p>
-                  )}
-                  <div className="flex items-start gap-3 rounded-lg border border-border bg-card p-3">
-                    <Checkbox
-                      id="accept-terms"
-                      checked={acceptedTerms}
-                      onCheckedChange={(v) => setAcceptedTerms(v === true)}
-                      disabled={!termsScrolledToBottom}
-                      className="mt-0.5"
-                    />
-                    <label
-                      htmlFor="accept-terms"
-                      className={`text-sm cursor-pointer select-none ${termsScrolledToBottom
-                        ? "text-foreground"
-                        : "text-muted-foreground cursor-not-allowed"
-                        }`}
-                    >
-                      Li e aceito integralmente os Termos de Uso da IAFÉ Finanças
-                    </label>
-                  </div>
-                  <Button
-                    type="button"
-                    className="w-full bg-primary hover:bg-primary/90"
-                    disabled={!acceptedTerms}
-                    onClick={() => setTermsStepDone(true)}
-                  >
-                    Continuar para o cadastro
-                  </Button>
-                </div>
-              )}
 
               {/* Registration Complete */}
               {registrationComplete ? (
@@ -478,7 +436,7 @@ const Auth = () => {
                     <span className="text-sm">Entrando automaticamente...</span>
                   </div>
                 </div>
-              ) : termsStepDone ? (
+              ) : (
                 /* Regular Signup Form - only after accepting terms */
                 <form onSubmit={handleSignUp} className="space-y-4">
                   {/* Trial Banner */}
@@ -508,6 +466,7 @@ const Auth = () => {
                         placeholder="Seu nome completo"
                         value={fullName}
                         onChange={(e) => setFullName(e.target.value)}
+                        onBlur={handlePartialLeadSave}
                         className="pl-10"
                         required
                       />
@@ -524,6 +483,7 @@ const Auth = () => {
                         placeholder="seu@email.com"
                         value={email}
                         onChange={(e) => setEmail(e.target.value)}
+                        onBlur={handlePartialLeadSave}
                         className="pl-10"
                         required
                       />
@@ -578,6 +538,7 @@ const Auth = () => {
                         }
                         value={phone}
                         onChange={handlePhoneChange}
+                        onBlur={handlePartialLeadSave}
                         maxLength={
                           phoneCountry === "BR" ? 17 :
                             phoneCountry === "US" ? 14 : 11
@@ -636,22 +597,28 @@ const Auth = () => {
                     </div>
                   </div>
 
-                  {showPromoField && (
-                    <div className="space-y-2">
-                      <Label htmlFor="signup-promo-code">Código Promocional (Opcional)</Label>
-                      <div className="relative">
-                        <Gift className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                        <Input
-                          id="signup-promo-code"
-                          type="text"
-                          placeholder="Ex: IAFERAP10"
-                          value={promoCode}
-                          onChange={(e) => setPromoCode(e.target.value.toUpperCase())}
-                          className="pl-10 uppercase"
-                        />
-                      </div>
-                    </div>
-                  )}
+                  <div className="flex items-start gap-3 rounded-lg border border-border bg-card p-3">
+                    <Checkbox
+                      id="accept-terms"
+                      checked={acceptedTerms}
+                      onCheckedChange={(v) => setAcceptedTerms(v === true)}
+                      className="mt-0.5"
+                    />
+                    <label
+                      htmlFor="accept-terms"
+                      className="text-sm cursor-pointer select-none text-foreground"
+                    >
+                      Li e aceito os{" "}
+                      <button
+                        type="button"
+                        onClick={() => setShowTerms(true)}
+                        className="text-primary hover:underline font-medium"
+                      >
+                        termos de uso
+                      </button>
+                      {" "}da IAFÉ Finanças
+                    </label>
+                  </div>
 
                   {message && (
                     <Alert>
@@ -662,7 +629,7 @@ const Auth = () => {
                   <Button
                     type="submit"
                     className="w-full bg-primary hover:bg-primary/90"
-                    disabled={loading}
+                    disabled={loading || !acceptedTerms}
                   >
                     {loading ? "Criando sua conta..." : "Começar Grátis"}
                   </Button>
@@ -671,7 +638,7 @@ const Auth = () => {
                     Ao criar sua conta você recebe nosso trial sem compromisso e cancela quando quiser.
                   </p>
                 </form>
-              ) : null}
+              )}
             </TabsContent>
 
             {/* Forgot Password Tab */}

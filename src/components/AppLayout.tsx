@@ -38,6 +38,7 @@ interface SubscriptionCheck {
 export const AppLayout = () => {
   const [user, setUser] = useState<User | null>(null);
   const [isSuperAdmin, setIsSuperAdmin] = useState(false);
+  const [isAdminRole, setIsAdminRole] = useState(false);
   const [loading, setLoading] = useState(true);
   const [subscriptionCheck, setSubscriptionCheck] = useState<SubscriptionCheck>({
     hasAccess: true,
@@ -220,20 +221,33 @@ export const AppLayout = () => {
           setUser(session.user);
         }
 
-        // Check if super admin
-        let isAdmin = false;
+        // Check if super admin or admin
+        let isSuperAdminStatus = false;
+        let isAdminStatus = false;
         try {
           const { data: roleData } = await supabase.rpc('is_super_admin');
-          isAdmin = roleData === true;
+          isSuperAdminStatus = roleData === true;
           if (mounted) {
-            setIsSuperAdmin(isAdmin);
+            setIsSuperAdmin(isSuperAdminStatus);
+          }
+          
+          if (!isSuperAdminStatus) {
+            const { data: roles } = await supabase
+              .from('user_roles')
+              .select('role')
+              .eq('user_id', session.user.id);
+            const userIsAdmin = roles?.some(r => r.role === 'admin');
+            isAdminStatus = userIsAdmin === true;
+            if (mounted) {
+              setIsAdminRole(isAdminStatus);
+            }
           }
         } catch (e) {
           console.warn("Could not check super admin status");
         }
 
-        // Check subscription (skip for super admin)
-        if (!isAdmin) {
+        // Check subscription (skip for super admin or admin)
+        if (!isSuperAdminStatus && !isAdminStatus) {
           const subCheck = await checkSubscription(session.user.id);
           if (mounted) {
             setSubscriptionCheck(subCheck);
@@ -309,6 +323,8 @@ export const AppLayout = () => {
 
   if (isSuperAdmin) {
     menuItems.push({ path: "/admin/supremo/iafe/financas", icon: Shield, label: "Super Admin" });
+  } else if (isAdminRole) {
+    menuItems.push({ path: "/admin/supremo/iafe/financas", icon: Shield, label: "Administração" });
   }
 
   const isActive = (path: string) => location.pathname === path;
@@ -328,10 +344,11 @@ export const AppLayout = () => {
     return null;
   }
 
-  // Redirect to subscription page if no access and not already there (skip for super admin)
+  // Redirect to subscription page if no access and not already there (skip for super admin or admin)
   if (
     !subscriptionCheck.hasAccess &&
     !isSuperAdmin &&
+    !isAdminRole &&
     location.pathname !== "/assinatura"
   ) {
     // If expired, show expired wall, otherwise redirect to subscription setup
@@ -360,7 +377,7 @@ export const AppLayout = () => {
     <div className="min-h-screen bg-background">
       <div className="flex flex-col lg:flex-row">
         {/* Desktop Sidebar - visible only on lg (1024px+) */}
-        <div className="hidden lg:flex w-64 flex-col bg-sidebar border-r border-sidebar-border p-6 min-h-screen sticky top-0 max-h-screen overflow-y-auto">
+        <div className="hidden lg:flex w-64 flex-shrink-0 flex-col bg-sidebar border-r border-sidebar-border p-6 min-h-screen sticky top-0 max-h-screen overflow-y-auto">
           <div className="mb-8">
             <Logo size="lg" />
           </div>
@@ -427,8 +444,8 @@ export const AppLayout = () => {
         </div>
 
         {/* Main Content */}
-        <div className="flex-1 p-4 lg:p-6 mobile-content lg:pb-6 mobile-scroll">
-          <Outlet context={{ user, isSuperAdmin }} />
+        <div className="flex-1 min-w-0 overflow-hidden p-4 lg:p-6 mobile-content lg:pb-6 mobile-scroll">
+          <Outlet context={{ user, isSuperAdmin, isAdminRole }} />
         </div>
 
         {/* Mobile/Tablet Bottom Navigation - visible below lg (1024px) */}

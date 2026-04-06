@@ -2,71 +2,192 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import {
-    Table,
-    TableBody,
-    TableCell,
-    TableHead,
-    TableHeader,
-    TableRow,
-} from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { AlertCircle, Clock, Phone, UserX } from "lucide-react";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Copy, UserX, Clock, CreditCard, Gift, CheckCircle2, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
+interface KanbanCard {
+    id: string;
+    name: string;
+    email?: string;
+    phone: string;
+    date: string;
+    tag?: string;
+}
+
 export const AdminLeadsList = () => {
-    const [leadsSemOtp, setLeadsSemOtp] = useState<any[]>([]);
-    const [leadsSemPagar, setLeadsSemPagar] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
+    
+    const [col1, setCol1] = useState<KanbanCard[]>([]);
+    const [col2, setCol2] = useState<KanbanCard[]>([]);
+    const [col3, setCol3] = useState<KanbanCard[]>([]);
+    const [col4, setCol4] = useState<KanbanCard[]>([]);
+    const [col5, setCol5] = useState<KanbanCard[]>([]);
 
     useEffect(() => {
-        fetchLeads();
+        fetchKanbanData();
     }, []);
 
-    const fetchLeads = async () => {
+    const fetchKanbanData = async () => {
         setLoading(true);
         try {
-            // 1. Leads sem OTP (Abandoned at first step)
-            const { data: noOtpData, error: noOtpError } = await supabase
-                .from('otp_codes')
-                .select('*')
-                .eq('verified', false)
-                .order('created_at', { ascending: false })
-                .limit(50);
+            // 1. Fetch global profiles
+            const { data: profiles } = await supabase.from('profiles').select('*').order('created_at', { ascending: false });
+            const profileEmails = new Set(profiles?.map(p => p.email?.toLowerCase()));
+            const profileUserIds = new Set(profiles?.map(p => p.user_id));
 
-            if (noOtpError) throw noOtpError;
-            setLeadsSemOtp(noOtpData || []);
+            // 2. Fetch partial leads
+            const { data: partialLeads } = await supabase.from('partial_leads').select('*').order('updated_at', { ascending: false });
+            
+            // 3. Fetch Pending Registrations
+            const { data: pendingRegs } = await supabase.from('pending_registrations').select('*').order('created_at', { ascending: false });
 
-            // 2. Leads que criaram perfil (passaram OTP) mas não têm assinatura ativa
-            // Fazemos um fetch de profiles que não tenham assinatura "active"
-            // (Para simplificar no front, buscamos users e conferimos as subscriptions)
-            const { data: profilesData, error: profilesError } = await supabase
-                .from('profiles')
-                .select('user_id, full_name, created_at, phone')
-                .order('created_at', { ascending: false })
-                .limit(200);
+            // 4. Fetch Subscriptions (without implicit join due to missing FK constraint)
+            const { data: subscriptions, error: subsError } = await supabase.from('subscriptions').select('*').order('created_at', { ascending: false });
+            if (subsError) console.error("Error fetching subscriptions:", subsError);
+            
+            // 5. Fetch Desistentes
+            const { data: desistentes } = await supabase.from('desistentes').select('*').order('canceled_at', { ascending: false });
 
-            if (profilesError) throw profilesError;
+            // --- BUILD COLUMNS ---
+            
+            // Col 1: Formulário Incompleto (Partial Leads not in profiles and not in pending regs by email or phone)
+            const pendingRegEmails = new Set(pendingRegs?.map(pr => pr.email?.toLowerCase()));
+            const pendingRegPhones = new Set(pendingRegs?.filter(pr => pr.phone).map(pr => pr.phone));
+            const profilePhones = new Set(profiles?.filter(p => p.phone).map(p => p.phone));
+            
+            const c1: KanbanCard[] = [];
+            partialLeads?.forEach(pl => {
+                const hasEmail = profileEmails.has(pl.email?.toLowerCase()) || pendingRegEmails.has(pl.email?.toLowerCase());
+                const hasPhone = pl.phone && (profilePhones.has(pl.phone) || pendingRegPhones.has(pl.phone));
+                
+                if (!hasEmail && !hasPhone) {
+                    c1.push({
+                        id: pl.id,
+                        name: pl.full_name || "Sem Nome",
+                        email: pl.email,
+                        phone: pl.phone || "",
+                        date: pl.updated_at
+                    });
+                }
+            });
 
-            // Busca as assinaturas ativas para cruzar
-            const { data: activeSubs, error: subsError } = await supabase
-                .from('subscriptions')
-                .select('user_id')
-                .eq('status', 'active');
+            // Col 2: Abandonados (Trial/Checkout) 
+            // - pending_registrations that are not paid OR profiles without any active subscription
+            // - subscriptions where trial expired and they haven't paid
+            
+            const now = new Date();
+            const activeSubUserIds = new Set(subscriptions?.filter(s => {
+                const isActive = s.status === 'active' || s.status === 'ACTIVE';
+                const isExpiredTrial = s.is_trial && s.trial_ends_at && new Date(s.trial_ends_at) < now;
+                return isActive && !isExpiredTrial;
+            }).map(s => s.user_id));
+            
+            const canceledUserIds = new Set(desistentes?.map(d => d.user_id));
+            const c2: KanbanCard[] = [];
+            
+            // Add pending regs that never became a profile
+            pendingRegs?.forEach(pr => {
+                if (pr.status !== 'paid' && !profileEmails.has(pr.email?.toLowerCase())) {
+                    c2.push({
+                        id: pr.id,
+                        name: pr.full_name || "Sem Nome",
+                        email: pr.email,
+                        phone: pr.phone || "",
+                        date: pr.created_at,
+                        tag: pr.payment_method === 'CREDIT_CARD' ? 'Cartão Rejeitado' : 'Pix Pendente'
+                    });
+                }
+            });
+            // Add profiles that have no active sub and are not explicitly cancelled
+            profiles?.forEach(p => {
+                if (!activeSubUserIds.has(p.user_id) && !canceledUserIds.has(p.user_id)) {
+                    // check if they have inactive subs
+                    const hasInactive = subscriptions?.some(s => s.user_id === p.user_id);
+                    if (!hasInactive) {
+                        c2.push({
+                            id: p.user_id,
+                            name: p.full_name || "Sem Nome",
+                            email: p.email,
+                            phone: p.phone || "",
+                            date: p.created_at,
+                            tag: 'Perfil Sem Pagto'
+                        });
+                    }
+                }
+            });
 
-            if (subsError) throw subsError;
+            // Col 3: Nos 7 Dias Gratuitos (is_trial = true & status = active)
+            const c3: KanbanCard[] = [];
+            // Col 4: Pagantes Oficiais (is_trial = false & status = active)
+            const c4: KanbanCard[] = [];
+            
+            subscriptions?.forEach(s => {
+                const isActiveStatus = s.status === 'active' || s.status === 'ACTIVE';
+                const isExpiredTrial = s.is_trial && s.trial_ends_at && new Date(s.trial_ends_at) < now;
+                
+                if (isActiveStatus) {
+                    const prof = profiles?.find(p => p.user_id === s.user_id);
+                    const card = {
+                        id: s.id,
+                        name: prof?.full_name || "Sem Nome",
+                        email: prof?.email,
+                        phone: prof?.phone || "",
+                        date: s.created_at,
+                        tag: s.is_trial ? 'Trial' : 'Assinante'
+                    };
+                    
+                    if (isExpiredTrial) {
+                        card.tag = 'Trial Expirado';
+                        c2.push(card);
+                    } else if (s.is_trial) {
+                        c3.push(card);
+                    } else {
+                        c4.push(card);
+                    }
+                }
+            });
 
-            const activeUserIds = new Set(activeSubs?.map(sub => sub.user_id));
+            // Col 5: Cancelados (Desistentes + Subscriptions Inactive)
+            const c5: KanbanCard[] = [];
+            desistentes?.forEach(d => {
+                c5.push({
+                    id: d.id,
+                    name: d.full_name || "Sem Nome",
+                    email: d.email,
+                    phone: d.phone || "",
+                    date: d.canceled_at,
+                    tag: 'Desistente'
+                });
+            });
+            subscriptions?.forEach(s => {
+                const isActiveStatus = s.status === 'active' || s.status === 'ACTIVE';
+                // Expired trials already pushed to C2
+                if (!isActiveStatus && !canceledUserIds.has(s.user_id)) {
+                    const prof = profiles?.find(p => p.user_id === s.user_id);
+                    c5.push({
+                        id: s.id,
+                        name: prof?.full_name || "Sem Nome",
+                        email: prof?.email,
+                        phone: prof?.phone || "",
+                        date: s.created_at,
+                        tag: s.status === 'canceled' || s.status === 'CANCELED' ? 'Cancelado' : 'Inativo'
+                    });
+                }
+            });
 
-            // Filtra perfis que NÃO estão na lista de ativos e têm telefone (indica que passaram do inicio)
-            const droppedCheckout = (profilesData || [])
-                .filter(p => !activeUserIds.has(p.user_id))
-                .slice(0, 50); // limitamos aos últimos 50
+            // Sort all by date desc
+            const sorter = (a: KanbanCard, b: KanbanCard) => new Date(b.date).getTime() - new Date(a.date).getTime();
 
-            setLeadsSemPagar(droppedCheckout);
+            setCol1(c1.sort(sorter));
+            setCol2(c2.sort(sorter));
+            setCol3(c3.sort(sorter));
+            setCol4(c4.sort(sorter));
+            setCol5(c5.sort(sorter));
+
         } catch (error) {
-            console.error("Erro ao buscar leads:", error);
+            console.error("Erro ao buscar leads do funil:", error);
         } finally {
             setLoading(false);
         }
@@ -86,120 +207,110 @@ export const AdminLeadsList = () => {
         navigator.clipboard.writeText(text);
     };
 
+    const KanbanColumn = ({ title, icon, items, colorClass }: { title: string, icon: React.ReactNode, items: KanbanCard[], colorClass: string }) => (
+        <div className="flex-shrink-0 w-[300px] flex flex-col bg-muted/20 border rounded-xl overflow-hidden snap-center">
+            <div className={`p-4 border-b flex items-center gap-2 ${colorClass} bg-opacity-10`}>
+                {icon}
+                <h3 className="font-semibold text-sm flex-1">{title}</h3>
+                <Badge variant="secondary" className="font-mono">{items.length}</Badge>
+            </div>
+            <div className="p-3 flex flex-col gap-3 overflow-y-auto max-h-[600px] customized-scrollbar">
+                {items.length === 0 ? (
+                    <p className="text-muted-foreground text-xs text-center py-8">Vazio</p>
+                ) : (
+                    items.map(item => (
+                        <Card key={item.id} className="cursor-default hover:border-primary/50 transition-colors">
+                            <CardContent className="p-4 space-y-3">
+                                <div className="flex justify-between items-start gap-2">
+                                    <h4 className="text-sm font-semibold truncate" title={item.name}>{item.name}</h4>
+                                    {item.tag && (
+                                        <Badge variant="outline" className="text-[10px] px-1 py-0 h-4 shrink-0">
+                                            {item.tag}
+                                        </Badge>
+                                    )}
+                                </div>
+                                {item.email && <p className="text-xs text-muted-foreground truncate" title={item.email}>{item.email}</p>}
+                                <div className="text-xs text-muted-foreground flex items-center gap-1">
+                                    <Clock className="h-3 w-3" />
+                                    {format(new Date(item.date), "dd/MM 'às' HH:mm", { locale: ptBR })}
+                                </div>
+                                <div className="pt-2 border-t flex justify-between items-center">
+                                    <span className="text-xs font-mono">{formatPhone(item.phone)}</span>
+                                    {item.phone && (
+                                        <Button
+                                            variant="ghost"
+                                            size="icon"
+                                            className="h-6 w-6 rounded-md hover:bg-primary/20"
+                                            onClick={() => copyToClipboard(item.phone)}
+                                            title="Copiar Celular"
+                                        >
+                                            <Copy className="h-3 w-3" />
+                                        </Button>
+                                    )}
+                                </div>
+                            </CardContent>
+                        </Card>
+                    ))
+                )}
+            </div>
+        </div>
+    );
+
     if (loading) {
         return <div className="animate-pulse space-y-4">
-            <div className="h-40 bg-muted/20 rounded-xl" />
-            <div className="h-40 bg-muted/20 rounded-xl" />
+            <div className="h-8 w-64 bg-muted/20 rounded mb-6" />
+            <div className="flex gap-4">
+                <div className="h-[400px] w-[300px] bg-muted/20 rounded-xl" />
+                <div className="h-[400px] w-[300px] bg-muted/20 rounded-xl" />
+                <div className="h-[400px] w-[300px] bg-muted/20 rounded-xl" />
+            </div>
         </div>;
     }
 
     return (
-        <div className="space-y-6">
-            <Card className="border-border">
-                <CardHeader>
-                    <CardTitle className="flex items-center gap-2 text-lg">
-                        <UserX className="h-5 w-5 text-destructive" />
-                        Abandonos no Checkout (Falta Pagar)
-                    </CardTitle>
-                    <CardDescription>
-                        Passaram do OTP e criaram o perfil, mas não possuem assinatura ativa. Ótimo público para remarketing e suporte manual.
-                    </CardDescription>
-                </CardHeader>
-                <CardContent>
-                    {leadsSemPagar.length === 0 ? (
-                        <p className="text-muted-foreground text-sm text-center py-4">Nenhum abandono de checkout recente.</p>
-                    ) : (
-                        <div className="rounded-md border border-border">
-                            <Table>
-                                <TableHeader>
-                                    <TableRow className="bg-muted/30">
-                                        <TableHead>Data</TableHead>
-                                        <TableHead>Nome</TableHead>
-                                        <TableHead>Telefone</TableHead>
-                                        <TableHead className="text-right">Ação</TableHead>
-                                    </TableRow>
-                                </TableHeader>
-                                <TableBody>
-                                    {leadsSemPagar.map((lead) => (
-                                        <TableRow key={lead.user_id || lead.created_at}>
-                                            <TableCell className="text-sm">
-                                                <div className="flex items-center gap-1 text-muted-foreground">
-                                                    <Clock className="h-3 w-3" />
-                                                    {format(new Date(lead.created_at), "dd/MM 'às' HH:mm", { locale: ptBR })}
-                                                </div>
-                                            </TableCell>
-                                            <TableCell className="font-medium text-sm">
-                                                {lead.full_name || "Sem Nome"}
-                                            </TableCell>
-                                            <TableCell>
-                                                <div className="flex items-center gap-2">
-                                                    <Badge variant="outline" className="font-mono bg-background">
-                                                        {formatPhone(lead.phone)}
-                                                    </Badge>
-                                                </div>
-                                            </TableCell>
-                                            <TableCell className="text-right">
-                                                <Button
-                                                    variant="secondary"
-                                                    size="sm"
-                                                    className="h-8 shadow-sm flex items-center gap-1 ml-auto"
-                                                    onClick={() => copyToClipboard(lead.phone)}
-                                                    disabled={!lead.phone}
-                                                >
-                                                    <Phone className="h-3 w-3" />
-                                                    <span className="hidden sm:inline text-xs">Copiar Celular</span>
-                                                </Button>
-                                            </TableCell>
-                                        </TableRow>
-                                    ))}
-                                </TableBody>
-                            </Table>
-                        </div>
-                    )}
-                </CardContent>
-            </Card>
+        <div className="space-y-4 w-full min-w-0 flex flex-col">
+            <div>
+                <h2 className="text-xl font-bold flex items-center gap-2">
+                    <UserX className="h-5 w-5 text-orange-500" />
+                    Funil de Conversão e Abandonos
+                </h2>
+                <p className="text-sm text-muted-foreground mt-1">
+                    Visualize em qual etapa os leads estão parando e faça contato ativo pelo WhatsApp.
+                </p>
+            </div>
 
-            <Card className="border-border opacity-90">
-                <CardHeader>
-                    <CardTitle className="flex items-center gap-2 text-lg">
-                        <AlertCircle className="h-5 w-5 text-orange-500" />
-                        Leads Frios (Não enviaram OTP)
-                    </CardTitle>
-                    <CardDescription>
-                        Inseriram o celular no primeiro passo mas não confirmaram o código.
-                    </CardDescription>
-                </CardHeader>
-                <CardContent>
-                    {leadsSemOtp.length === 0 ? (
-                        <p className="text-muted-foreground text-sm text-center py-4">Nenhum lead frio recente.</p>
-                    ) : (
-                        <div className="rounded-md border border-border">
-                            <Table>
-                                <TableHeader>
-                                    <TableRow className="bg-muted/30">
-                                        <TableHead>Data / Hora</TableHead>
-                                        <TableHead>Celular Inserido</TableHead>
-                                    </TableRow>
-                                </TableHeader>
-                                <TableBody>
-                                    {leadsSemOtp.map((lead) => (
-                                        <TableRow key={lead.id}>
-                                            <TableCell className="text-sm text-muted-foreground">
-                                                {format(new Date(lead.created_at), "dd/MM/yyyy HH:mm")}
-                                            </TableCell>
-                                            <TableCell>
-                                                <Badge variant="outline" className="font-mono bg-background text-muted-foreground">
-                                                    {formatPhone(lead.phone_number)}
-                                                </Badge>
-                                            </TableCell>
-                                        </TableRow>
-                                    ))}
-                                </TableBody>
-                            </Table>
-                        </div>
-                    )}
-                </CardContent>
-            </Card>
+            <div className="flex overflow-x-auto gap-4 pb-4 snap-x w-full max-w-full">
+                <KanbanColumn 
+                    title="Formulário Incompleto" 
+                    icon={<AlertCircle className="h-4 w-4 text-orange-500" />} 
+                    items={col1} 
+                    colorClass="text-orange-500"
+                />
+                <KanbanColumn 
+                    title="Abandonos (Trial/Checkout)" 
+                    icon={<CreditCard className="h-4 w-4 text-rose-500" />} 
+                    items={col2} 
+                    colorClass="text-rose-500"
+                />
+                <KanbanColumn 
+                    title="No Trial (7 Dias)" 
+                    icon={<Gift className="h-4 w-4 text-primary" />} 
+                    items={col3} 
+                    colorClass="text-primary"
+                />
+                <KanbanColumn 
+                    title="Pagantes Oficiais" 
+                    icon={<CheckCircle2 className="h-4 w-4 text-green-500" />} 
+                    items={col4} 
+                    colorClass="text-green-500"
+                />
+                <KanbanColumn 
+                    title="Cancelados/Inativos" 
+                    icon={<UserX className="h-4 w-4 text-muted-foreground" />} 
+                    items={col5} 
+                    colorClass="text-muted-foreground"
+                />
+            </div>
         </div>
     );
 };

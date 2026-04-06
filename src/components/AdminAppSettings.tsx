@@ -19,6 +19,12 @@ export const AdminAppSettings = () => {
     const [promoDays, setPromoDays] = useState("");
     const [isPromoActive, setIsPromoActive] = useState(false);
     const [enablePromoCode, setEnablePromoCode] = useState(true);
+    const [adminPermissions, setAdminPermissions] = useState({
+        leads: true,
+        users: false,
+        promo_codes: false,
+        settings: false,
+    });
     const { toast } = useToast();
 
     useEffect(() => {
@@ -60,6 +66,14 @@ export const AdminAppSettings = () => {
                 if (data.enable_promo_code !== undefined) {
                     setEnablePromoCode(data.enable_promo_code);
                 }
+                if (data.admin_permissions) {
+                    setAdminPermissions({
+                        leads: data.admin_permissions.leads ?? true,
+                        users: data.admin_permissions.users ?? false,
+                        promo_codes: data.admin_permissions.promo_codes ?? false,
+                        settings: data.admin_permissions.settings ?? false,
+                    });
+                }
             }
         } catch (error: any) {
             toast({
@@ -86,6 +100,7 @@ export const AdminAppSettings = () => {
                 trial_days: parseInt(trialDays, 10),
                 promo_days: isPromoActive && promoDays ? parseInt(promoDays, 10) : 0,
                 enable_promo_code: enablePromoCode,
+                admin_permissions: adminPermissions,
             };
 
             let error;
@@ -291,6 +306,67 @@ export const AdminAppSettings = () => {
                             <Switch
                                 checked={enablePromoCode}
                                 onCheckedChange={setEnablePromoCode}
+                            />
+                        </div>
+                    </div>
+                </div>
+
+                <div className="space-y-4 pt-6 border-t border-border">
+                    <div>
+                        <h3 className="text-lg font-semibold text-primary">Permissões Globais da Equipe (Cargo Admin)</h3>
+                        <p className="text-sm text-muted-foreground">Aqui você escolhe em tempo real o que os usuários atribuídos com a função `admin` lá na tela de Cadastros vão poder ver dentro do painel deles.</p>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="flex flex-row items-center justify-between rounded-lg border border-border p-4">
+                            <div className="space-y-0.5">
+                                <Label className="text-base">Acesso: Funil de Vendas</Label>
+                                <p className="text-xs text-muted-foreground">
+                                    Pode acessar o CRM para ajudar a reciclar leads e faturar.
+                                </p>
+                            </div>
+                            <Switch
+                                checked={adminPermissions.leads}
+                                onCheckedChange={(val) => setAdminPermissions(prev => ({ ...prev, leads: val }))}
+                            />
+                        </div>
+
+                        <div className="flex flex-row items-center justify-between rounded-lg border border-border p-4">
+                            <div className="space-y-0.5">
+                                <Label className="text-base">Acesso: Controle de Usuários</Label>
+                                <p className="text-xs text-muted-foreground">
+                                    Pode ver a lista de clientes, alterar banimentos ou trocar senhas.
+                                </p>
+                            </div>
+                            <Switch
+                                checked={adminPermissions.users}
+                                onCheckedChange={(val) => setAdminPermissions(prev => ({ ...prev, users: val }))}
+                            />
+                        </div>
+
+                        <div className="flex flex-row items-center justify-between rounded-lg border border-border p-4">
+                            <div className="space-y-0.5">
+                                <Label className="text-base">Acesso: Códigos Promocionais</Label>
+                                <p className="text-xs text-muted-foreground">
+                                    Pode criar, pausar ou alterar os códigos de marketing ativos.
+                                </p>
+                            </div>
+                            <Switch
+                                checked={adminPermissions.promo_codes}
+                                onCheckedChange={(val) => setAdminPermissions(prev => ({ ...prev, promo_codes: val }))}
+                            />
+                        </div>
+
+                        <div className="flex flex-row items-center justify-between rounded-lg border border-red-500/30 bg-red-500/5 p-4">
+                            <div className="space-y-0.5">
+                                <Label className="text-base text-red-600">Acesso: Configurações Vitais</Label>
+                                <p className="text-xs text-muted-foreground">
+                                    Pode alterar o preço, valor do trial e tudo o que há de mais sensível no sistema inteiro. Recomenda-se DESLIGAR!
+                                </p>
+                            </div>
+                            <Switch
+                                checked={adminPermissions.settings}
+                                onCheckedChange={(val) => setAdminPermissions(prev => ({ ...prev, settings: val }))}
                             />
                         </div>
                     </div>

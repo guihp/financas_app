@@ -21,6 +21,13 @@ const AdminSupremoFinancas = () => {
     const [user, setUser] = useState<User | null>(null);
     const [loading, setLoading] = useState(true);
     const [isSuperAdmin, setIsSuperAdmin] = useState(false);
+    const [isAdmin, setIsAdmin] = useState(false);
+    const [adminPermissions, setAdminPermissions] = useState<any>({
+        leads: false,
+        users: false,
+        promo_codes: false,
+        settings: false,
+    });
     const [kpiStats, setKpiStats] = useState({
         totalUsers: 0,
         partialRegistrations: 0,
@@ -87,17 +94,28 @@ const AdminSupremoFinancas = () => {
 
             const hasSuperAdminRole =
                 userRoles?.some((role) => role.role === "super_admin") || false;
+            const hasAdminRole =
+                userRoles?.some((role) => role.role === "admin") || false;
 
-            if (!hasSuperAdminRole) {
-                toast.error("Acesso negado - Apenas super administradores");
+            if (!hasSuperAdminRole && !hasAdminRole) {
+                toast.error("Acesso negado - Acesso Restrito");
                 navigate("/");
                 return;
             }
 
-            setIsSuperAdmin(true);
+            setIsSuperAdmin(hasSuperAdminRole);
+            setIsAdmin(hasAdminRole);
+
+            if (hasAdminRole && !hasSuperAdminRole) {
+                const { data: settings } = await supabase.from('app_settings').select('admin_permissions').single();
+                if (settings?.admin_permissions) {
+                    setAdminPermissions(settings.admin_permissions);
+                }
+            }
+
             fetchKpis();
         } catch (error) {
-            console.error("Error in super admin check:", error);
+            console.error("Error in admin access check:", error);
             navigate("/");
         } finally {
             setLoading(false);
@@ -252,12 +270,12 @@ const AdminSupremoFinancas = () => {
         );
     }
 
-    if (!isSuperAdmin) {
+    if (!isSuperAdmin && !isAdmin) {
         return null;
     }
 
     return (
-        <div className="space-y-6 pb-24 lg:pb-6">
+        <div className="space-y-6 pb-24 lg:pb-6 w-full min-w-0 max-w-full overflow-x-hidden">
             {/* Header */}
             <div className="flex items-center gap-3">
                 <div className="h-10 w-10 rounded-lg bg-orange-500/20 flex items-center justify-center">
@@ -273,27 +291,35 @@ const AdminSupremoFinancas = () => {
 
             {/* Tabs */}
             <Tabs defaultValue="overview" className="space-y-6">
-                <TabsList className="grid w-full grid-cols-2 md:grid-cols-4 lg:w-auto overflow-x-auto bg-card border rounded-lg p-1 h-auto">
-                    <TabsTrigger value="overview" className="flex items-center justify-center gap-2 py-2.5">
+                <TabsList className="flex w-full overflow-x-auto bg-card border rounded-lg p-1 h-auto no-scrollbar scroll-smooth justify-start md:justify-center">
+                    <TabsTrigger value="overview" className="flex items-center justify-center gap-2 py-2.5 whitespace-nowrap min-w-[max-content] px-4">
                         <Activity className="h-4 w-4" />
                         <span className="text-sm font-medium">Métricas & Assinantes</span>
                     </TabsTrigger>
-                    <TabsTrigger value="leads" className="flex items-center justify-center gap-2 py-2.5">
-                        <CircleUser className="h-4 w-4 text-orange-500" />
-                        <span className="text-sm font-medium text-orange-500">Funil (Abandonos)</span>
-                    </TabsTrigger>
-                    <TabsTrigger value="users" className="flex items-center justify-center gap-2 py-2.5">
-                        <Users className="h-4 w-4" />
-                        <span className="text-sm font-medium">Usuários & Cadastros</span>
-                    </TabsTrigger>
-                    <TabsTrigger value="promo_codes" className="flex items-center justify-center gap-2 py-2.5">
-                        <Gift className="h-4 w-4" />
-                        <span className="text-sm font-medium">Marketing & Códigos</span>
-                    </TabsTrigger>
-                    <TabsTrigger value="settings" className="flex items-center justify-center gap-2 py-2.5">
-                        <Settings className="h-4 w-4 text-purple-500" />
-                        <span className="text-sm font-medium text-purple-500">Configurações</span>
-                    </TabsTrigger>
+                    {(isSuperAdmin || adminPermissions.leads) && (
+                        <TabsTrigger value="leads" className="flex items-center justify-center gap-2 py-2.5 whitespace-nowrap min-w-[max-content] px-4">
+                            <CircleUser className="h-4 w-4 text-orange-500" />
+                            <span className="text-sm font-medium text-orange-500">Funil</span>
+                        </TabsTrigger>
+                    )}
+                    {(isSuperAdmin || adminPermissions.users) && (
+                        <TabsTrigger value="users" className="flex items-center justify-center gap-2 py-2.5 whitespace-nowrap min-w-[max-content] px-4">
+                            <Users className="h-4 w-4" />
+                            <span className="text-sm font-medium">Usuários & Cadastros</span>
+                        </TabsTrigger>
+                    )}
+                    {(isSuperAdmin || adminPermissions.promo_codes) && (
+                        <TabsTrigger value="promo_codes" className="flex items-center justify-center gap-2 py-2.5 whitespace-nowrap min-w-[max-content] px-4">
+                            <Gift className="h-4 w-4" />
+                            <span className="text-sm font-medium">Marketing & Códigos</span>
+                        </TabsTrigger>
+                    )}
+                    {(isSuperAdmin || adminPermissions.settings) && (
+                        <TabsTrigger value="settings" className="flex items-center justify-center gap-2 py-2.5 whitespace-nowrap min-w-[max-content] px-4">
+                            <Settings className="h-4 w-4 text-purple-500" />
+                            <span className="text-sm font-medium text-purple-500">Configurações</span>
+                        </TabsTrigger>
+                    )}
                 </TabsList>
 
                 <TabsContent value="overview" className="space-y-6">
@@ -427,36 +453,44 @@ const AdminSupremoFinancas = () => {
                     </div>
                 </TabsContent>
 
-                <TabsContent value="leads">
-                    <AdminLeadsList />
-                </TabsContent>
+                {(isSuperAdmin || adminPermissions.leads) && (
+                    <TabsContent value="leads" className="w-full min-w-0 overflow-x-auto no-scrollbar">
+                        <AdminLeadsList />
+                    </TabsContent>
+                )}
 
-                <TabsContent value="users" className="space-y-6">
-                    <div className="grid grid-cols-1 gap-6">
-                        <div className="p-4 rounded-xl border bg-card/50">
-                            <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
-                                <UserPlus className="h-5 w-5 text-primary" />
-                                Adicionar Novo Perfil Interno
-                            </h3>
-                            <AdminCreateUser />
+                {(isSuperAdmin || adminPermissions.users) && (
+                    <TabsContent value="users" className="space-y-6">
+                        <div className="grid grid-cols-1 gap-6">
+                            <div className="p-4 rounded-xl border bg-card/50">
+                                <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
+                                    <UserPlus className="h-5 w-5 text-primary" />
+                                    Adicionar Novo Perfil Interno
+                                </h3>
+                                <AdminCreateUser />
+                            </div>
+                            <div className="pt-2">
+                                <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
+                                    <Users className="h-5 w-5 text-primary" />
+                                    Lista de Perfis Sociais
+                                </h3>
+                                <AdminUserList />
+                            </div>
                         </div>
-                        <div className="pt-2">
-                            <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
-                                <Users className="h-5 w-5 text-primary" />
-                                Lista de Perfis Sociais
-                            </h3>
-                            <AdminUserList />
-                        </div>
-                    </div>
-                </TabsContent>
+                    </TabsContent>
+                )}
 
-                <TabsContent value="promo_codes">
-                    <AdminPromotionalCodes />
-                </TabsContent>
+                {(isSuperAdmin || adminPermissions.promo_codes) && (
+                    <TabsContent value="promo_codes">
+                        <AdminPromotionalCodes />
+                    </TabsContent>
+                )}
 
-                <TabsContent value="settings" className="space-y-6">
-                    <AdminAppSettings />
-                </TabsContent>
+                {(isSuperAdmin || adminPermissions.settings) && (
+                    <TabsContent value="settings" className="space-y-6">
+                        <AdminAppSettings />
+                    </TabsContent>
+                )}
             </Tabs>
         </div>
     );

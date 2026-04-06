@@ -37,7 +37,9 @@ serve(async (req) => {
       // CPF/CNPJ for PIX (required - Asaas exige no cliente)
       cpfCnpj,
       // Address (optional; saved to DB for both PIX and Cartão)
-      address
+      address,
+      // Promo Code locally applied from frontend (optional)
+      promoCode
     } = body;
 
     // Check if API key is configured
@@ -145,8 +147,34 @@ serve(async (req) => {
     }
 
     let discountPercentage = 0; // Default 0%
-    if (registration.promotional_codes) {
+    let appliedPromoId: string | null = null;
+    
+    // Validate promoCode if provided by frontend, or fallback to previously attached code
+    if (promoCode) {
+      const { data: promoData, error: promoError } = await supabaseAdmin
+        .from('promotional_codes')
+        .select('*')
+        .eq('code', String(promoCode).toUpperCase())
+        .single();
+        
+      const now = new Date();
+      if (!promoError && promoData && promoData.status && (!promoData.expires_at || new Date(promoData.expires_at) > now) && (!promoData.usage_limit || promoData.usage_count < promoData.usage_limit)) {
+        // Valid promo code applied at checkout!
+        discountPercentage = Number(promoData.discount_percentage);
+        appliedPromoId = promoData.id;
+        
+        // Log valid promo application
+        console.log(`Promo code ${promoCode} securely validated with ${discountPercentage}% discount.`);
+      } else {
+        console.warn(`Attempted to use invalid or expired promo code: ${promoCode}`);
+        return new Response(
+          JSON.stringify({ error: 'O cupom informado é inválido, expirado ou atingiu o limite.' }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+    } else if (registration.promotional_codes) {
       discountPercentage = Number(registration.promotional_codes.discount_percentage);
+      appliedPromoId = registration.promotional_codes.id;
     }
 
     // Override with dynamic pricing from app_settings
@@ -319,6 +347,9 @@ serve(async (req) => {
         status: 'card_registered',
         updated_at: new Date().toISOString()
       };
+      if (appliedPromoId) {
+        subUpdateData.promo_code_id = appliedPromoId;
+      }
       if (address && typeof address === 'object') {
         if (address.postalCode != null) subUpdateData.address_postal_code = String(address.postalCode).replace(/\D/g, '');
         if (address.street != null) subUpdateData.address_street = address.street;
@@ -503,6 +534,9 @@ serve(async (req) => {
       invoice_url: paymentData.invoiceUrl,
       updated_at: new Date().toISOString()
     };
+    if (appliedPromoId) {
+      updateData.promo_code_id = appliedPromoId;
+    }
     if (address && typeof address === 'object') {
       if (address.postalCode != null) updateData.address_postal_code = String(address.postalCode).replace(/\D/g, '');
       if (address.street != null) updateData.address_street = address.street;

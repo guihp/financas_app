@@ -41,6 +41,7 @@ const App = () => (
         <Routes>
           {/* Rotas públicas */}
           <Route path="/auth" element={<Auth />} />
+          <Route path="/cadastro" element={<Auth defaultTab="signup" />} />
           <Route path="/pagamento-pendente" element={<PagamentoPendente />} />
           <Route path="/reset-password" element={<ResetPassword />} />
           <Route path="/api-docs" element={<ApiDocsPage />} />

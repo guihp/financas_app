@@ -14,7 +14,9 @@ import {
   Clock,
   AlertCircle,
   ExternalLink,
-  Shield
+  Shield,
+  Gift,
+  Tag
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
@@ -60,6 +62,12 @@ const PagamentoPendente = () => {
   const [searchParams] = useSearchParams();
   const [email, setEmail] = useState(searchParams.get('email') || "");
 
+  // Promo State
+  const [promoCode, setPromoCode] = useState("");
+  const [appliedPromo, setAppliedPromo] = useState<{ id: string; discountPercent: number; code: string } | null>(null);
+  const [validatingPromo, setValidatingPromo] = useState(false);
+  const [promoMessage, setPromoMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
+
   // Custom Plan Promo Params from Auth Redirect
   const promoCodeApplied = searchParams.get('promoCodeApplied') === 'true';
   const discountParam = searchParams.get('discount');
@@ -80,6 +88,53 @@ const PagamentoPendente = () => {
 
   const navigate = useNavigate();
   const { toast } = useToast();
+
+  const applyPromoCode = async () => {
+    if (!promoCode) return;
+    setValidatingPromo(true);
+    setPromoMessage(null);
+    try {
+      const { data, error } = await supabase
+        .from('promotional_codes')
+        .select('*')
+        .eq('code', promoCode.trim().toUpperCase())
+        .single();
+      
+      if (error || !data) {
+        setPromoMessage({ type: 'error', text: "Código inválido ou não encontrado." });
+        setAppliedPromo(null);
+        return;
+      }
+      
+      const now = new Date();
+      if (!data.status || (data.expires_at && new Date(data.expires_at) < now)) {
+        setPromoMessage({ type: 'error', text: "Código expirado ou inativo." });
+        setAppliedPromo(null);
+        return;
+      }
+      
+      if (data.usage_limit && data.usage_count >= data.usage_limit) {
+        setPromoMessage({ type: 'error', text: "Limite de uso atingido para este código." });
+        setAppliedPromo(null);
+        return;
+      }
+      
+      setAppliedPromo({
+        id: data.id,
+        discountPercent: data.discount_percentage,
+        code: data.code
+      });
+      setPromoMessage({ type: 'success', text: `Cupom aplicado com sucesso! ${data.discount_percentage}% de desconto.` });
+      toast({
+        title: "Cupom Aplicado",
+        description: "Desconto adicionado ao seu plano.",
+      });
+    } catch (err: any) {
+      setPromoMessage({ type: 'error', text: "Erro ao validar cupom." });
+    } finally {
+      setValidatingPromo(false);
+    }
+  };
 
   const createPayment = async (billingType: 'CREDIT_CARD', creditCard?: CreditCardData, creditCardHolderInfo?: CardHolderInfo) => {
     // Payment creation initiated
@@ -138,6 +193,7 @@ const PagamentoPendente = () => {
         customerId,
         registrationId: pendingPayment.id,
         billingType: 'CREDIT_CARD',
+        promoCode: appliedPromo?.code || undefined,
         address: address ? {
           postalCode: address.postalCode,
           street: address.street,
@@ -527,62 +583,102 @@ const PagamentoPendente = () => {
               {/* Plan Info */}
               {plan && (() => {
                 // get-pending-payment returns: plan.price = promo price, plan.original_price = full price
-                const finalPrice = finalPriceParam ? Number(finalPriceParam) : plan.price;
-                const originalPrice = originalPriceParam ? Number(originalPriceParam) : ((plan as any).original_price || plan.price);
+                const baseOriginalPrice = originalPriceParam ? Number(originalPriceParam) : ((plan as any).original_price || plan.price);
                 const promoDays = (plan as any).promo_days || 0;
 
-                // Calculate discount percentage
+                let finalPrice = finalPriceParam ? Number(finalPriceParam) : plan.price;
                 let discountPercent = 0;
-                if (discountParam) {
-                  discountPercent = Number(discountParam);
-                } else if ((plan as any).applied_discount > 0) {
-                  discountPercent = (plan as any).applied_discount;
-                } else if (originalPrice > finalPrice) {
-                  discountPercent = Math.round(((originalPrice - finalPrice) / originalPrice) * 100);
+
+                if (appliedPromo) {
+                  discountPercent = appliedPromo.discountPercent;
+                  finalPrice = baseOriginalPrice * (1 - appliedPromo.discountPercent / 100);
+                } else {
+                  if (discountParam) {
+                    discountPercent = Number(discountParam);
+                  } else if ((plan as any).applied_discount > 0) {
+                    discountPercent = (plan as any).applied_discount;
+                  } else if (baseOriginalPrice > finalPrice) {
+                    discountPercent = Math.round(((baseOriginalPrice - finalPrice) / baseOriginalPrice) * 100);
+                  }
                 }
 
                 const hasDiscount = discountPercent > 0;
 
                 return (
-                  <div className="p-4 bg-primary/10 rounded-lg border border-primary/20">
-                    <div className="flex items-center justify-between mb-2">
-                      <h3 className="font-semibold text-lg">{plan.name}</h3>
-                      {hasDiscount && (
-                        <span className="px-2 py-0.5 bg-green-500/20 text-green-400 text-[10px] font-bold rounded-full uppercase tracking-wider">
-                          {discountPercent}% OFF
-                        </span>
-                      )}
-                    </div>
-                    <div className="flex items-baseline gap-2">
-                      {hasDiscount && originalPrice && (
-                        <span className="text-sm text-muted-foreground line-through">
-                          R$ {originalPrice.toFixed(2).replace('.', ',')}
-                        </span>
-                      )}
-                      <p className="text-2xl font-bold text-green-500">
-                        R$ {finalPrice.toFixed(2).replace('.', ',')}
-                        <span className="text-sm font-normal text-muted-foreground">/mês</span>
-                      </p>
-                    </div>
-                    {hasDiscount && (
-                      <div className="mt-2 pt-2 border-t border-primary/10">
-                        <p className="text-xs text-muted-foreground">
-                          {promoDays > 0 ? (
-                            <>
-                              🎉 <span className="text-green-400 font-medium">Promoção válida por {promoDays} dias!</span>
-                              {' '}Após esse período, o valor será de{' '}
-                              <span className="font-semibold">R$ {originalPrice.toFixed(2).replace('.', ',')}/mês</span>.
-                            </>
-                          ) : (
-                            <>
-                              🎉 <span className="text-green-400 font-medium">Valor promocional aplicado!</span>
-                              {' '}Após o primeiro mês, o valor será de{' '}
-                              <span className="font-semibold">R$ {originalPrice.toFixed(2).replace('.', ',')}/mês</span>.
-                            </>
-                          )}
+                  <div className="space-y-4">
+                    <div className="p-4 bg-primary/5 rounded-lg border border-primary/20">
+                      <div className="flex items-center justify-between mb-2">
+                        <h3 className="font-semibold text-lg">{plan.name}</h3>
+                        {hasDiscount && (
+                          <span className="px-2 py-0.5 bg-green-500/20 text-green-600 dark:text-green-400 text-[10px] font-bold rounded-full uppercase tracking-wider flex items-center gap-1">
+                            <Tag className="w-3 h-3" /> {discountPercent}% OFF
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex items-baseline gap-2">
+                        {hasDiscount && baseOriginalPrice && (
+                          <span className="text-sm text-muted-foreground line-through">
+                            R$ {baseOriginalPrice.toFixed(2).replace('.', ',')}
+                          </span>
+                        )}
+                        <p className="text-2xl font-bold text-green-600 dark:text-green-500">
+                          R$ {finalPrice.toFixed(2).replace('.', ',')}
+                          <span className="text-sm font-normal text-muted-foreground">/mês</span>
                         </p>
                       </div>
-                    )}
+                      {hasDiscount && (
+                        <div className="mt-2 pt-2 border-t border-primary/10">
+                          <p className="text-xs text-muted-foreground">
+                            {promoDays > 0 ? (
+                              <>
+                                🎉 <span className="text-green-500 font-medium">Promoção válida por {promoDays} dias!</span>
+                                {' '}Após esse período, o valor será de{' '}
+                                <span className="font-semibold">R$ {baseOriginalPrice.toFixed(2).replace('.', ',')}/mês</span>.
+                              </>
+                            ) : (
+                              <>
+                                🎉 <span className="text-green-500 font-medium">Valor promocional aplicado!</span>
+                                {' '}Após o primeiro mês, o valor será de{' '}
+                                <span className="font-semibold">R$ {baseOriginalPrice.toFixed(2).replace('.', ',')}/mês</span>.
+                              </>
+                            )}
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                    
+                    {/* Promo Code Input */}
+                    <div className="p-4 bg-muted/30 border border-border rounded-lg space-y-3">
+                      <Label htmlFor="promo-code" className="text-sm flex items-center gap-2">
+                        <Gift className="w-4 h-4 text-primary" />
+                        Possui um cupom de desconto?
+                      </Label>
+                      <div className="flex gap-2">
+                        <Input 
+                          id="promo-code"
+                          placeholder="EX: IAFERAP"
+                          value={promoCode}
+                          onChange={(e) => setPromoCode(e.target.value.toUpperCase())}
+                          className="uppercase flex-1"
+                          disabled={validatingPromo}
+                        />
+                        <Button 
+                          type="button" 
+                          variant="secondary"
+                          onClick={applyPromoCode}
+                          disabled={!promoCode || validatingPromo || appliedPromo?.code === promoCode}
+                        >
+                          {validatingPromo ? <Loader2 className="w-4 h-4 animate-spin"/> : "Aplicar"}
+                        </Button>
+                      </div>
+                      {promoMessage && (
+                        <p className={`text-xs font-medium flex items-center gap-1 ${promoMessage.type === 'success' ? 'text-green-500' : 'text-red-500'}`}>
+                          {promoMessage.type === 'error' && <AlertCircle className="w-3 h-3" />}
+                          {promoMessage.type === 'success' && <CheckCircle2 className="w-3 h-3" />}
+                          {promoMessage.text}
+                        </p>
+                      )}
+                    </div>
                   </div>
                 );
               })()}
