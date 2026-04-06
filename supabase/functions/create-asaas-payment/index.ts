@@ -168,6 +168,10 @@ serve(async (req) => {
 
     let finalPrice = originalPrice;
     
+    if (promoDaysDuration > 0 && appSettings?.product_promo_price) {
+      finalPrice = Number(appSettings.product_promo_price);
+    }
+    
     if (discountPercentage > 0) {
       finalPrice = finalPrice * (1 - (discountPercentage / 100));
     }

@@ -23,15 +23,25 @@ export const TrialExpiredWall = ({
   userEmail,
   daysExpiredAgo = 0,
 }: TrialExpiredWallProps) => {
-  const [price, setPrice] = useState<string>("29,90");
+  const [fullPrice, setFullPrice] = useState<string>("29,90");
+  const [promoPrice, setPromoPrice] = useState<string | null>(null);
+  const [promoDays, setPromoDays] = useState<number>(0);
 
   useEffect(() => {
     const fetchSettings = async () => {
       try {
-        const result: any = await supabase.from("app_settings" as any).select("product_promo_price").limit(1).single();
+        const result: any = await supabase.from("app_settings" as any).select("product_full_price, product_promo_price, promo_days").limit(1).single();
         const data = result.data;
-        if (data && data.product_promo_price) {
-          setPrice(Number(data.product_promo_price).toFixed(2).replace(".", ","));
+        if (data) {
+          if (data.product_full_price) {
+            setFullPrice(Number(data.product_full_price).toFixed(2).replace(".", ","));
+          }
+          if (data.product_promo_price) {
+            setPromoPrice(Number(data.product_promo_price).toFixed(2).replace(".", ","));
+          }
+          if (data.promo_days !== undefined) {
+            setPromoDays(Number(data.promo_days));
+          }
         }
       } catch (err) {
         console.error("Failed to fetch settings:", err);
@@ -91,7 +101,14 @@ export const TrialExpiredWall = ({
             </div>
 
             <div className="flex items-baseline gap-1">
-              <span className="text-3xl font-bold">R$ {price}</span>
+              {promoDays > 0 && promoPrice ? (
+                <>
+                  <span className="text-sm text-muted-foreground line-through">R$ {fullPrice}</span>
+                  <span className="text-3xl font-bold text-green-400">R$ {promoPrice}</span>
+                </>
+              ) : (
+                <span className="text-3xl font-bold">R$ {fullPrice}</span>
+              )}
               <span className="text-sm text-muted-foreground">/mês</span>
             </div>
 

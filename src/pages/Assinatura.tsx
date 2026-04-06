@@ -52,13 +52,30 @@ const Assinatura = () => {
   const [subscription, setSubscription] = useState<SubscriptionInfo | null>(null);
   const [loading, setLoading] = useState(true);
   const [cancelling, setCancelling] = useState(false);
+  const [appSettings, setAppSettings] = useState<{ full: number, promo: number, promoDays: number } | null>(null);
   const { toast } = useToast();
 
   useEffect(() => {
+    fetchSettings();
     if (user?.id) {
       loadSubscription();
     }
   }, [user?.id]);
+
+  const fetchSettings = async () => {
+    try {
+      const { data } = await supabase.from('app_settings').select('*').limit(1).single();
+      if (data) {
+        setAppSettings({
+          full: Number(data.product_full_price || 29.90),
+          promo: Number(data.product_promo_price || 19.90),
+          promoDays: Number(data.promo_days || 0)
+        });
+      }
+    } catch (e) {
+      console.error('Error fetching settings', e);
+    }
+  };
 
   const loadSubscription = async () => {
     try {
@@ -268,7 +285,24 @@ const Assinatura = () => {
               {isPaid && subscription && (
                 <div className="space-y-2">
                   <p className="text-sm text-muted-foreground">
-                    Plano Mensal - <span className="line-through text-muted-foreground/60">R$ 29,90</span>{" "}<span className="text-green-400">R$ 19,90</span>/mês{" "}<span className="text-[10px] bg-green-500/20 text-green-400 px-1.5 py-0.5 rounded-full font-bold">PROMOÇÃO</span>
+                    Plano Mensal - {" "}
+                    {appSettings?.promoDays && appSettings.promoDays > 0 ? (
+                      <>
+                        <span className="line-through text-muted-foreground/60">
+                          R$ {appSettings.full.toFixed(2).replace(".", ",")}
+                        </span>{" "}
+                        <span className="text-green-400">
+                          R$ {appSettings.promo.toFixed(2).replace(".", ",")}
+                        </span>/mês{" "}
+                        <span className="text-[10px] bg-green-500/20 text-green-400 px-1.5 py-0.5 rounded-full font-bold">
+                          PROMOÇÃO
+                        </span>
+                      </>
+                    ) : (
+                      <span className="text-green-400">
+                        R$ {appSettings?.full ? appSettings.full.toFixed(2).replace(".", ",") : "29,90"}/mês
+                      </span>
+                    )}
                   </p>
                   {subscription.current_period_end && (
                     <p className="text-xs text-muted-foreground flex items-center gap-1">
@@ -318,13 +352,27 @@ const Assinatura = () => {
               </div>
               <div className="flex items-center gap-2 mb-3">
                 <div className="flex items-baseline gap-1">
-                  <span className="text-sm text-muted-foreground line-through">R$ 29,90</span>
-                  <span className="text-3xl font-bold text-green-400">R$ 19,90</span>
+                  {appSettings?.promoDays && appSettings.promoDays > 0 ? (
+                    <>
+                      <span className="text-sm text-muted-foreground line-through">
+                        R$ {appSettings.full.toFixed(2).replace(".", ",")}
+                      </span>
+                      <span className="text-3xl font-bold text-green-400">
+                        R$ {appSettings.promo.toFixed(2).replace(".", ",")}
+                      </span>
+                    </>
+                  ) : (
+                    <span className="text-3xl font-bold text-green-400">
+                      R$ {appSettings?.full ? appSettings.full.toFixed(2).replace(".", ",") : "29,90"}
+                    </span>
+                  )}
                   <span className="text-sm text-muted-foreground">/mês</span>
                 </div>
-                <Badge className="bg-green-500/20 text-green-400 border-green-500/30 text-[10px]">
-                  PROMOÇÃO
-                </Badge>
+                {appSettings?.promoDays && appSettings.promoDays > 0 && (
+                  <Badge className="bg-green-500/20 text-green-400 border-green-500/30 text-[10px]">
+                    PROMOÇÃO
+                  </Badge>
+                )}
               </div>
               <ul className="space-y-2 text-sm text-muted-foreground">
                 <li className="flex items-center gap-2">

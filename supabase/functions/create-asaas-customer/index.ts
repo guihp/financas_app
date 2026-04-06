@@ -236,6 +236,11 @@ serve(async (req) => {
     }
 
     let finalPrice = originalPrice;
+
+    if (appSettings && appSettings.promo_days > 0 && appSettings.product_promo_price) {
+      finalPrice = Number(appSettings.product_promo_price);
+    }
+
     let appliedPromoId = null;
     let discountPercentage = 0; // Default 0% discount
 

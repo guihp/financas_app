@@ -114,9 +114,13 @@ serve(async (req) => {
     if (plan && appSettings) {
       if (appSettings.product_full_price) {
         originalPrice = Number(appSettings.product_full_price);
-        // Also update plan.price to be the full price, unless it was a discounted price from DB
-        // But since we want the default price to be the full price
+        // Default the base price to the full price
         plan.price = Number(appSettings.product_full_price);
+        
+        // Se a promoção estiver ativa, passe o preço promocional
+        if (appSettings.promo_days > 0 && appSettings.product_promo_price) {
+          plan.price = Number(appSettings.product_promo_price);
+        }
       }
     }
 
