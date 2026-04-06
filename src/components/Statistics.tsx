@@ -7,6 +7,7 @@ import { useMemo } from "react";
 
 interface StatisticsProps {
   transactions: Transaction[];
+  globalTransactions?: Transaction[];
 }
 
 // Mapeamento de nomes de categorias
@@ -18,7 +19,7 @@ const getCategoryDisplayName = (categoryName: string) => {
   return categoryName.charAt(0).toUpperCase() + categoryName.slice(1);
 };
 
-export const Statistics = ({ transactions }: StatisticsProps) => {
+export const Statistics = ({ transactions, globalTransactions }: StatisticsProps) => {
   const stats = useMemo(() => {
     // Ignorar Pagamentos de Faturas e Transferências nas métricas visuais
     const validTransactions = transactions.filter(t => 
@@ -33,12 +34,21 @@ export const Statistics = ({ transactions }: StatisticsProps) => {
       .filter(t => t.type === "expense")
       .reduce((sum, t) => sum + Number(t.amount), 0);
 
-    // Saldo: receitas - (despesas de débito/PIX apenas)
-    const totalExpensesDebitPix = transactions
+    // Saldo Total Global: usar array completo de todas as transações, imune ao filtro de data
+    const baseForBalance = globalTransactions || transactions;
+    const globalValidTransactions = baseForBalance.filter(t => 
+      t.category !== "transferencia" && t.category !== "pagamento_fatura"
+    );
+
+    const globalTotalIncome = globalValidTransactions
+      .filter(t => t.type === "income")
+      .reduce((sum, t) => sum + Number(t.amount), 0);
+
+    const globalTotalExpensesDebitPix = baseForBalance
       .filter(t => t.type === "expense" && t.payment_method !== "credit")
       .reduce((sum, t) => sum + Number(t.amount), 0);
 
-    const balance = totalIncome - totalExpensesDebitPix;
+    const balance = globalTotalIncome - globalTotalExpensesDebitPix;
 
     // Gastos por categoria
     const expensesByCategory = validTransactions
