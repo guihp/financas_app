@@ -138,7 +138,7 @@ const DashPage = () => {
     .reduce((sum, t) => sum + Number(t.amount), 0);
 
   const globalTotalExpenseDebitPix = (transactions as Transaction[])
-    .filter((t) => t.type === "expense" && t.payment_method !== "credit")
+    .filter((t) => t.type === "expense" && t.payment_method !== "credit" && t.category !== "transferencia")
     .reduce((sum, t) => sum + Number(t.amount), 0);
 
   const balance = globalTotalIncome - globalTotalExpenseDebitPix;

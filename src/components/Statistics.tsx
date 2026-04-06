@@ -45,7 +45,7 @@ export const Statistics = ({ transactions, globalTransactions }: StatisticsProps
       .reduce((sum, t) => sum + Number(t.amount), 0);
 
     const globalTotalExpensesDebitPix = baseForBalance
-      .filter(t => t.type === "expense" && t.payment_method !== "credit")
+      .filter(t => t.type === "expense" && t.payment_method !== "credit" && t.category !== "transferencia")
       .reduce((sum, t) => sum + Number(t.amount), 0);
 
     const balance = globalTotalIncome - globalTotalExpensesDebitPix;
