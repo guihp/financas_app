@@ -135,7 +135,7 @@ serve(async (req) => {
           updated_at: new Date().toISOString()
         })
         .eq('id', registration.id)
-        .in('status', ['pending_payment']); // Only update if still pending
+        .in('status', ['pending_payment', 'expired']); // Only update if still pending or expired
 
       if (updateError) {
         console.error('Failed to update registration:', updateError);

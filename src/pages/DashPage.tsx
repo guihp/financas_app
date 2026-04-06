@@ -128,6 +128,21 @@ const DashPage = () => {
     .filter((t) => t.type === "expense")
     .reduce((sum, t) => sum + Number(t.amount), 0);
 
+  // Global Balance: Saldo deve ser global (todo o tempo), não resetar quando vira o mês
+  const globalValidTransactions = transactions.filter(t => 
+    t.category !== "transferencia" && t.category !== "pagamento_fatura"
+  );
+  
+  const globalTotalIncome = globalValidTransactions
+    .filter((t) => t.type === "income")
+    .reduce((sum, t) => sum + Number(t.amount), 0);
+
+  const globalTotalExpenseDebitPix = (transactions as Transaction[])
+    .filter((t) => t.type === "expense" && t.payment_method !== "credit")
+    .reduce((sum, t) => sum + Number(t.amount), 0);
+
+  const balance = globalTotalIncome - globalTotalExpenseDebitPix;
+
   // Credit expenses (faturas) — calculado por ciclo de fechamento baseado no filtro
   const now = new Date();
   const MONTH_NAMES = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
@@ -186,10 +201,8 @@ const DashPage = () => {
   const totalFaturas = faturasPerCard.reduce((sum, f) => sum + f.total, 0);
   const totalFaturasAbertas = faturasPerCard.filter(f => !f.isPaid).reduce((sum, f) => sum + f.remaining, 0);
   const allPaid = faturasPerCard.length > 0 && faturasPerCard.every(f => f.isPaid || f.total === 0);
+  const allZero = faturasPerCard.length > 0 && faturasPerCard.every(f => f.total === 0);
   const hasOverdue = faturasPerCard.some(f => f.isOverdue);
-
-  // Balance: income - (debit + PIX expenses only)
-  const balance = totalIncome - totalExpenseDebitPix;
 
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat("pt-BR", {
@@ -295,7 +308,12 @@ const DashPage = () => {
               {allPaid ? formatCurrency(0) : formatCurrency(totalFaturasAbertas)}
             </div>
             {/* Status line */}
-            {allPaid ? (
+            {allZero ? (
+              <div className="flex items-center gap-1 mt-1">
+                <CheckCircle2 className="h-3 w-3 text-emerald-500" />
+                <span className="text-[9px] sm:text-xs text-emerald-500 font-medium">Faturas zeradas</span>
+              </div>
+            ) : allPaid ? (
               <div className="flex items-center gap-1 mt-1">
                 <CheckCircle2 className="h-3 w-3 text-green-500" />
                 <span className="text-[9px] sm:text-xs text-green-500 font-medium">Tudo pago</span>

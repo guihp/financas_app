@@ -1,5 +1,8 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { jsPDF } from "npm:jspdf";
+import autoTable from "npm:jspdf-autotable";
+import { logoBase64 } from "./logo.ts";
 
 const corsHeaders = {
     'Access-Control-Allow-Origin': '*',
@@ -247,39 +250,81 @@ serve(async (req) => {
                 }
 
                 // ─── Retorno em PDF (>=5 transações ou format=pdf) ───
-                const rows = transactions.map((t: any) => {
+                // ─── Retorno em PDF (>=5 transações ou format=pdf) via Supabase Storage ───
+                const doc = new jsPDF();
+
+                try {
+                    const targetWidth = 35;
+                    // Proporção de imagem genérica 35x10 para evitar erros no parse de imagens muito complexas
+                    doc.addImage(logoBase64, 'PNG', 161, 10, targetWidth, 10);
+                } catch (e) {
+                    console.error("Logo erro", e);
+                }
+
+                doc.setFontSize(16);
+                doc.text(`Fatura — ${card.name} | ${monthLabel}`, 14, 32);
+
+                doc.setFontSize(11);
+                doc.text(`Total da Fatura: ${formatBRL(totalFatura)}`, 14, 40);
+
+                const tableColumn = ["Data", "Descrição", "Categoria", "Valor (R$)"];
+                const tableRows = transactions.map((t: any) => {
                     const parcel = t.total_installments > 1 ? ` (${t.installment_number}/${t.total_installments})` : '';
-                    return `<tr><td>${t.date}</td><td>${t.description}${parcel}</td><td>${t.category}</td><td style="text-align:right">${formatBRL(Number(t.amount))}</td></tr>`;
-                }).join('');
+                    const signedAmount = t.type === 'expense' 
+                        ? `-${Number(t.amount).toFixed(2).replace('.', ',')}` 
+                        : `+${Number(t.amount).toFixed(2).replace('.', ',')}`;
+                    return [
+                        t.date,
+                        t.description + parcel,
+                        t.category,
+                        signedAmount
+                    ];
+                });
 
-                const html = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><style>
-                body{font-family:Arial,sans-serif;margin:32px;color:#222}
-                h1{color:#1a1a2e;font-size:20px}h2{font-size:14px;color:#555;margin-bottom:16px}
-                table{width:100%;border-collapse:collapse;font-size:13px}
-                th{background:#1a1a2e;color:#fff;padding:8px;text-align:left}
-                td{padding:7px 8px;border-bottom:1px solid #eee}
-                tr:nth-child(even) td{background:#f9f9f9}
-                .total{font-weight:bold;font-size:15px;text-align:right;margin-top:16px;color:#1a1a2e}
-                </style></head><body>
-                <h1>💳 Fatura — ${card.name}</h1>
-                <h2>Período: ${monthLabel} &nbsp;|&nbsp; Fechamento dia ${card.closing_day} &nbsp;|&nbsp; Vencimento dia ${card.due_day}</h2>
-                <table><thead><tr><th>Data</th><th>Descrição</th><th>Categoria</th><th>Valor</th></tr></thead><tbody>${rows}</tbody></table>
-                <p class="total">Total da Fatura: ${formatBRL(totalFatura)}</p>
-                </body></html>`;
+                // Tabela inspirada no frontend
+                autoTable(doc, {
+                    head: [tableColumn],
+                    body: tableRows,
+                    startY: 48,
+                    theme: 'grid',
+                    styles: { fontSize: 10 },
+                    headStyles: { fillColor: [26, 26, 46], textColor: [255, 255, 255] }
+                });
 
-                // Gerar PDF via api de impressão (puppeteer não disponível — retornamos HTML como base64 para o agente renderizar)
-                const htmlBase64 = btoa(unescape(encodeURIComponent(html)));
+                const pdfBuffer = doc.output('arraybuffer');
+                const fileName = `fatura_${card.id}_${monthFilter || new Date().toISOString().split('T')[0]}_${new Date().getTime()}.pdf`;
+
+                // Upload para o Bucket "temp_pdfs"
+                const { data: uploadData, error: uploadError } = await supabase.storage
+                    .from('temp_pdfs')
+                    .upload(fileName, pdfBuffer, {
+                        contentType: 'application/pdf',
+                        upsert: true
+                    });
+
+                if (uploadError) {
+                    return new Response(JSON.stringify({ error: 'Erro ao salvar PDF gerado', details: uploadError.message }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' }});
+                }
+
+                // Cria Link Assinado com expiração de 24h (86400 segundos)
+                const { data: signedData, error: signedError } = await supabase.storage
+                    .from('temp_pdfs')
+                    .createSignedUrl(fileName, 86400);
+
+                if (signedError || !signedData?.signedUrl) {
+                    return new Response(JSON.stringify({ error: 'Erro ao gerar link de acesso ao PDF' }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' }});
+                }
 
                 return new Response(
                     JSON.stringify({
                         success: true,
-                        format: 'pdf_html',
+                        format: 'pdf',
                         card_name: card.name,
                         month: monthLabel,
                         total_fatura: Math.round(totalFatura * 100) / 100,
                         transaction_count: transactions.length,
-                        message: `Para gerar o PDF, salve o conteúdo de 'html_content' como arquivo .html e abra no navegador (Ctrl+P → Salvar como PDF).`,
-                        html_content: htmlBase64,
+                        pdf_url: signedData.signedUrl,
+                        message: "Acesse o link no navegador para baixar o PDF. Este link expira em 24h.",
                     }),
                     { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
                 );

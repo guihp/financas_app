@@ -251,13 +251,8 @@ serve(async (req) => {
         discountPercentage = Number(promoData.discount_percentage);
         appliedPromoId = promoData.id;
         
-        // Se usuário aplicou cupom, injetamos preço Promocional (Fixo) se existir configuração global para ele
-        if (appSettings && appSettings.product_promo_price) {
-          finalPrice = Number(appSettings.product_promo_price);
-        } else {
-          // Senão, caímos no cálculo percentual
-          finalPrice = finalPrice * (1 - (discountPercentage / 100));
-        }
+        // Aplicamos o cálculo percentual do cupom
+        finalPrice = finalPrice * (1 - (discountPercentage / 100));
       }
     }
 

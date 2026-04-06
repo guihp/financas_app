@@ -153,8 +153,8 @@ const AdminSupremoFinancas = () => {
             if (subsData) {
                 subsData.forEach(sub => {
                     if (sub.status === 'active' && !sub.is_trial) {
-                        // Base value check or 49.9 default
-                        currentMrr += 49.90; // Fixed plan base estimation for MVP
+                        // Base value check or 29.9 default
+                        currentMrr += 29.90; // Fixed plan base estimation for MVP
                     }
                     if (sub.promotional_code_id) {
                         promoCounts[sub.promotional_code_id] = (promoCounts[sub.promotional_code_id] || 0) + 1;

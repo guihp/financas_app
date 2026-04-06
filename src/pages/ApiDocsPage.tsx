@@ -546,19 +546,19 @@ curl -X GET "${BASE}/manage-accounts-by-phone?phone=5511999999999&action=get_fat
 // ─── Resposta PDF (≥5 transações ou format=pdf) ───
 {
   "success": true,
-  "format": "pdf_html",
+  "format": "pdf",
   "card_name": "Inter",
   "month": "2026-03",
   "total_fatura": 2350.00,
   "transaction_count": 8,
-  "message": "Para gerar o PDF, salve o conteúdo de 'html_content' como .html e abra no navegador (Ctrl+P → Salvar como PDF).",
-  "html_content": "<base64 do HTML da fatura>"
+  "pdf_url": "https://dlbiwguzbiosaoyrcvay.supabase.co/storage/v1/object/sign/temp_pdfs/fatura_id_da_fatura.pdf",
+  "message": "Acesse o link no navegador para baixar o PDF. Este link expira em 24h."
 }`,
         errors: [
             { code: 400, message: "card_id obrigatório", cause: "Parâmetro card_id não informado.", fix: "Passe card_id=uuid-do-cartao na query string." },
             { code: 404, message: "Cartão não encontrado", cause: "UUID inválido ou não pertence ao usuário.", fix: "Obtenha os IDs via GET sem action." },
         ],
-        tips: "💡 O campo 'summary' da resposta texto está formatado para envio direto pelo WhatsApp. Para o PDF, decodifique o 'html_content' (base64) e abra o HTML no navegador para imprimir como PDF.",
+        tips: "💡 O campo 'summary' da resposta texto está formatado para envio direto pelo WhatsApp. Para o PDF, abra a 'pdf_url' listada (Link Assinado dinâmico gerado pelo servidor) que expira em 1 dia.",
     },
 
     // ── 9. MANAGE ACCOUNTS: Criar Banco ─────

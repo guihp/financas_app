@@ -114,9 +114,9 @@ serve(async (req) => {
     if (plan && appSettings) {
       if (appSettings.product_full_price) {
         originalPrice = Number(appSettings.product_full_price);
-      }
-      if (appSettings.product_promo_price) {
-        plan.price = Number(appSettings.product_promo_price);
+        // Also update plan.price to be the full price, unless it was a discounted price from DB
+        // But since we want the default price to be the full price
+        plan.price = Number(appSettings.product_full_price);
       }
     }
 

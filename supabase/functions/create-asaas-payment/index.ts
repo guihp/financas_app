@@ -169,11 +169,7 @@ serve(async (req) => {
     let finalPrice = originalPrice;
     
     if (discountPercentage > 0) {
-      if (appSettings && appSettings.product_promo_price) {
-        finalPrice = Number(appSettings.product_promo_price);
-      } else {
-        finalPrice = finalPrice * (1 - (discountPercentage / 100));
-      }
+      finalPrice = finalPrice * (1 - (discountPercentage / 100));
     }
     
     finalPrice = Math.round(finalPrice * 100) / 100;

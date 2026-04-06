@@ -14,7 +14,7 @@ export const AdminAppSettings = () => {
     const [saving, setSaving] = useState(false);
     const [settingsId, setSettingsId] = useState<string | null>(null);
     const [fullPrice, setFullPrice] = useState("");
-    const [promoPrice, setPromoPrice] = useState("");
+    const [promoDiscount, setPromoDiscount] = useState("");
     const [trialDays, setTrialDays] = useState("");
     const [promoDays, setPromoDays] = useState("");
     const [isPromoActive, setIsPromoActive] = useState(false);
@@ -42,7 +42,16 @@ export const AdminAppSettings = () => {
             if (data) {
                 setSettingsId(data.id);
                 setFullPrice(data.product_full_price.toString());
-                setPromoPrice(data.product_promo_price.toString());
+                
+                const fullPriceVal = Number(data.product_full_price);
+                const promoPriceVal = Number(data.product_promo_price);
+                if (fullPriceVal > 0 && promoPriceVal < fullPriceVal) {
+                    const discount = Math.round((1 - (promoPriceVal / fullPriceVal)) * 100);
+                    setPromoDiscount(discount.toString());
+                } else {
+                    setPromoDiscount("0");
+                }
+                
                 setTrialDays(data.trial_days.toString());
                 if (data.promo_days !== null && data.promo_days !== undefined) {
                     setPromoDays(data.promo_days.toString());
@@ -67,9 +76,13 @@ export const AdminAppSettings = () => {
         e.preventDefault();
         setSaving(true);
         try {
+            const fullPriceNum = parseFloat(fullPrice);
+            const discountNum = parseFloat(promoDiscount) || 0;
+            const calculatedPromoPrice = fullPriceNum - (fullPriceNum * discountNum / 100);
+
             const updates = {
-                product_full_price: parseFloat(fullPrice),
-                product_promo_price: parseFloat(promoPrice),
+                product_full_price: fullPriceNum,
+                product_promo_price: calculatedPromoPrice,
                 trial_days: parseInt(trialDays, 10),
                 promo_days: isPromoActive && promoDays ? parseInt(promoDays, 10) : 0,
                 enable_promo_code: enablePromoCode,
@@ -97,7 +110,6 @@ export const AdminAppSettings = () => {
             if (error) throw error;
 
             // Sync plans table with the full price so it stays consistent
-            const fullPriceNum = parseFloat(fullPrice);
             if (!isNaN(fullPriceNum) && fullPriceNum > 0) {
                 const { error: planError } = await supabase
                     .from("plans")
@@ -188,17 +200,23 @@ export const AdminAppSettings = () => {
                     </div>
 
                     <div className="space-y-2">
-                        <Label htmlFor="promoPrice">Valor Promocional (R$)</Label>
+                        <Label htmlFor="promoDiscount">Desconto da Promoção Relâmpago (%)</Label>
                         <Input
-                            id="promoPrice"
+                            id="promoDiscount"
                             type="number"
-                            step="0.01"
-                            value={promoPrice}
-                            onChange={(e) => setPromoPrice(e.target.value)}
-                            placeholder="Ex: 29.90"
+                            step="1"
+                            min="0"
+                            max="100"
+                            value={promoDiscount}
+                            onChange={(e) => setPromoDiscount(e.target.value)}
+                            placeholder="Ex: 20"
                             required
                         />
-                        <p className="text-xs text-muted-foreground">O valor exibido atualmente em pagamentos e checkout.</p>
+                        <p className="text-xs text-muted-foreground">
+                            {fullPrice && promoDiscount ? (
+                                <>O valor da promoção será: <strong className="text-emerald-500">{(parseFloat(fullPrice) * (1 - parseFloat(promoDiscount) / 100)).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</strong></>
+                            ) : "Digite a porcentagem do desconto global."}
+                        </p>
                     </div>
 
                     <div className="space-y-2">
