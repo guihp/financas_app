@@ -196,17 +196,29 @@ serve(async (req) => {
           }
           if (!outcome.ok) {
             console.error('register-user failed after payment:', outcome.status, outcome.result);
-            // Return 500 to trigger Asaas retry
-            return new Response(
-              JSON.stringify({
-                error: 'Erro ao criar conta de usuário. O webhook será retentado.',
-                details: outcome.result
-              }),
-              {
-                status: 500,
-                headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-              }
-            );
+            
+            // Check if it's a known non-retryable error like user already exists
+            const errorStr = JSON.stringify(outcome.result || {}).toLowerCase();
+            const isUserExists = errorStr.includes('já está cadastrado') || 
+                                 errorStr.includes('already registered') || 
+                                 errorStr.includes('user already exists');
+
+            if (isUserExists) {
+              console.log('User already registered. Proceeding to update subscription without failing webhook.');
+              isUserRegistered = true;
+            } else {
+              // Return 500 to trigger Asaas retry
+              return new Response(
+                JSON.stringify({
+                  error: 'Erro ao criar conta de usuário. O webhook será retentado.',
+                  details: outcome.result
+                }),
+                {
+                  status: 500,
+                  headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+                }
+              );
+            }
           } else {
             console.log('User created from paid registration:', registration.id);
             isUserRegistered = true;
