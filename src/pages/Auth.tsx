@@ -227,7 +227,7 @@ const Auth = ({ defaultTab = "login" }: AuthProps) => {
             const body = typeof customerError.context.body === 'string'
               ? JSON.parse(customerError.context.body) : customerError.context.body;
             if (body?.error) errorMessage = body.error;
-          } catch (_) {}
+          } catch (_) { }
         }
         throw new Error(errorMessage);
       }
@@ -331,9 +331,9 @@ const Auth = ({ defaultTab = "login" }: AuthProps) => {
           <Tabs value={activeTab} onValueChange={(v) => {
             setActiveTab(v as "login" | "signup" | "forgot");
             setMessage("");
-          setResetEmailSent(false);
-          setRegistrationComplete(false);
-          setRegistrationComplete(false);
+            setResetEmailSent(false);
+            setRegistrationComplete(false);
+            setRegistrationComplete(false);
             if (v !== "signup") {
               setPhone("");
               setPhoneCountry("BR");
@@ -450,7 +450,7 @@ const Auth = ({ defaultTab = "login" }: AuthProps) => {
                           {TRIAL_DAYS} dias grátis!
                         </p>
                         <p className="text-sm text-green-600 dark:text-green-500">
-                          Teste todas as funcionalidades sem compromisso
+                          Teste todas as funcionalidades e tenha controle total do seu dinheiro!
                         </p>
                       </div>
                     </div>
