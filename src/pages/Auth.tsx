@@ -635,7 +635,7 @@ const Auth = ({ defaultTab = "login" }: AuthProps) => {
                   </Button>
 
                   <p className="text-xs text-muted-foreground text-center">
-                    Ao criar sua conta, você recebe nosso trial com tudo liberado para organizar sua vida financeira de verdade.
+                    Ao criar sua conta, você recebe pelo WhatsApp nosso trial com tudo liberado para organizar sua vida financeira de verdade.
                   </p>
                 </form>
               )}
