@@ -8,6 +8,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Checkbox } from "@/components/ui/checkbox";
 
 /** Resposta bruta da Edge Function (sucesso ou erro HTTP). */
 async function callEdgeJson(
@@ -135,6 +136,11 @@ export const ApiTestForm = () => {
 
   const [budAction, setBudAction] = useState("list");
   const [budJson, setBudJson] = useState("{}");
+  const [shopListId, setShopListId] = useState("");
+  const [shopListActiveOnly, setShopListActiveOnly] = useState(false);
+  const [budMonthYear, setBudMonthYear] = useState("");
+  const [budPutCategory, setBudPutCategory] = useState("");
+  const [budPutAmount, setBudPutAmount] = useState("");
 
   const [apTitle, setApTitle] = useState("");
   const [apDesc, setApDesc] = useState("");
@@ -600,8 +606,80 @@ export const ApiTestForm = () => {
             <Input placeholder="5511999999999" value={phone} onChange={(e) => setPhone(e.target.value)} />
           </div>
 
+          <div className="rounded-lg border border-slate-800 bg-slate-900/30 p-4 space-y-3">
+            <p className="text-sm font-medium text-slate-100">GET shopping-by-phone (só consultas)</p>
+            <p className="text-xs text-slate-500">Ações permitidas na URL: list_lists ou get_list.</p>
+            <div className="flex flex-wrap items-center gap-4">
+              <div className="flex items-center gap-2">
+                <Checkbox
+                  id="shop-active-only"
+                  checked={shopListActiveOnly}
+                  onCheckedChange={(c) => setShopListActiveOnly(c === true)}
+                />
+                <Label htmlFor="shop-active-only" className="text-xs text-slate-300 font-normal cursor-pointer">
+                  active_only (list_lists)
+                </Label>
+              </div>
+            </div>
+            <div className="space-y-2 max-w-md">
+              <Label className="text-xs text-slate-400">list_id (para get_list)</Label>
+              <Input
+                className="font-mono text-xs"
+                value={shopListId}
+                onChange={(e) => setShopListId(e.target.value)}
+                placeholder="uuid da lista"
+              />
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                type="button"
+                size="sm"
+                variant="secondary"
+                disabled={loading || !phone.trim()}
+                onClick={() =>
+                  run(
+                    () =>
+                      callEdgeJson("shopping-by-phone", {
+                        method: "GET",
+                        query: {
+                          phone: phone.trim(),
+                          action: "list_lists",
+                          ...(shopListActiveOnly ? { active_only: "true" } : {}),
+                        },
+                      }),
+                    "shopping GET list_lists",
+                  )
+                }
+              >
+                GET list_lists
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="secondary"
+                disabled={loading || !phone.trim() || !shopListId.trim()}
+                onClick={() =>
+                  run(
+                    () =>
+                      callEdgeJson("shopping-by-phone", {
+                        method: "GET",
+                        query: {
+                          phone: phone.trim(),
+                          action: "get_list",
+                          list_id: shopListId.trim(),
+                        },
+                      }),
+                    "shopping GET get_list",
+                  )
+                }
+              >
+                GET get_list
+              </Button>
+            </div>
+          </div>
+
           <div className="space-y-2">
-            <Label className="text-xs">shopping-by-phone — mesclar phone com JSON abaixo</Label>
+            <Label className="text-xs text-slate-300">shopping-by-phone — POST / PUT (JSON + action)</Label>
             <Select value={shopAction} onValueChange={setShopAction}>
               <SelectTrigger>
                 <SelectValue />
@@ -623,31 +701,140 @@ export const ApiTestForm = () => {
               onChange={(e) => setShopJson(e.target.value)}
               placeholder='{"list_id":"…","name":"…"}'
             />
-            <Button
-              type="button"
-              disabled={loading}
-              onClick={() => {
-                let parsed: Record<string, unknown>;
-                try {
-                  parsed = JSON.parse(shopJson || "{}");
-                } catch {
-                  toast({ title: "JSON inválido", variant: "destructive" });
-                  return Promise.resolve();
-                }
-                const body = { ...parsed, action: shopAction, phone: (parsed.phone as string) || phone.trim() };
-                if (!body.phone) {
-                  toast({ title: "Informe telefone", variant: "destructive" });
-                  return Promise.resolve();
-                }
-                return run(() => callEdgeJson("shopping-by-phone", { body }), "shopping-by-phone");
-              }}
-            >
-              POST shopping-by-phone
-            </Button>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                type="button"
+                disabled={loading}
+                onClick={() => {
+                  let parsed: Record<string, unknown>;
+                  try {
+                    parsed = JSON.parse(shopJson || "{}");
+                  } catch {
+                    toast({ title: "JSON inválido", variant: "destructive" });
+                    return Promise.resolve();
+                  }
+                  const body = { ...parsed, action: shopAction, phone: (parsed.phone as string) || phone.trim() };
+                  if (!body.phone) {
+                    toast({ title: "Informe telefone", variant: "destructive" });
+                    return Promise.resolve();
+                  }
+                  return run(() => callEdgeJson("shopping-by-phone", { method: "POST", body }), "shopping POST");
+                }}
+              >
+                POST shopping-by-phone
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                className="border-slate-600 text-slate-200 hover:bg-slate-800"
+                disabled={loading}
+                onClick={() => {
+                  let parsed: Record<string, unknown>;
+                  try {
+                    parsed = JSON.parse(shopJson || "{}");
+                  } catch {
+                    toast({ title: "JSON inválido", variant: "destructive" });
+                    return Promise.resolve();
+                  }
+                  const body = { ...parsed, action: shopAction, phone: (parsed.phone as string) || phone.trim() };
+                  if (!body.phone) {
+                    toast({ title: "Informe telefone", variant: "destructive" });
+                    return Promise.resolve();
+                  }
+                  return run(() => callEdgeJson("shopping-by-phone", { method: "PUT", body }), "shopping PUT");
+                }}
+              >
+                PUT shopping-by-phone
+              </Button>
+            </div>
           </div>
 
           <div className="space-y-2 border-t border-slate-800 pt-4">
-            <Label className="text-xs">budgets-by-phone</Label>
+            <p className="text-sm font-medium text-slate-100">GET / POST / PUT budgets-by-phone</p>
+            <div className="grid sm:grid-cols-2 gap-3 max-w-lg">
+              <div className="space-y-2">
+                <Label className="text-xs text-slate-400">month_year (GET list, opcional)</Label>
+                <Input
+                  className="font-mono text-xs"
+                  placeholder="2026-04"
+                  value={budMonthYear}
+                  onChange={(e) => setBudMonthYear(e.target.value)}
+                />
+              </div>
+            </div>
+            <Button
+              type="button"
+              size="sm"
+              variant="secondary"
+              disabled={loading || !phone.trim()}
+              onClick={() =>
+                run(
+                  () =>
+                    callEdgeJson("budgets-by-phone", {
+                      method: "GET",
+                      query: {
+                        phone: phone.trim(),
+                        ...(budMonthYear.trim() ? { month_year: budMonthYear.trim() } : {}),
+                      },
+                    }),
+                  "budgets GET list",
+                )
+              }
+            >
+              GET listar tetos
+            </Button>
+            <div className="grid sm:grid-cols-2 gap-3 max-w-xl pt-2 border-t border-slate-800/80">
+              <div className="space-y-2">
+                <Label className="text-xs text-slate-400">category (PUT upsert)</Label>
+                <Input
+                  className="text-xs"
+                  value={budPutCategory}
+                  onChange={(e) => setBudPutCategory(e.target.value)}
+                  placeholder="supermercado"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label className="text-xs text-slate-400">amount</Label>
+                <Input
+                  type="number"
+                  step="0.01"
+                  className="text-xs"
+                  value={budPutAmount}
+                  onChange={(e) => setBudPutAmount(e.target.value)}
+                />
+              </div>
+            </div>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className="border-slate-600 text-slate-200 hover:bg-slate-800"
+              disabled={loading || !phone.trim() || !budPutCategory.trim() || !budPutAmount.trim()}
+              onClick={() => {
+                const amt = parseFloat(budPutAmount.replace(",", "."));
+                if (Number.isNaN(amt) || amt < 0) {
+                  toast({ title: "Amount inválido", variant: "destructive" });
+                  return Promise.resolve();
+                }
+                return run(
+                  () =>
+                    callEdgeJson("budgets-by-phone", {
+                      method: "PUT",
+                      body: {
+                        phone: phone.trim(),
+                        category: budPutCategory.trim(),
+                        amount: amt,
+                        ...(budMonthYear.trim() ? { month_year: budMonthYear.trim() } : {}),
+                      },
+                    }),
+                  "budgets PUT upsert",
+                );
+              }}
+            >
+              PUT upsert teto
+            </Button>
+            <Label className="text-xs text-slate-500 block pt-2">POST com JSON (list / upsert / delete)</Label>
+            <Label className="text-xs text-slate-300">action</Label>
             <Select value={budAction} onValueChange={setBudAction}>
               <SelectTrigger>
                 <SelectValue />
@@ -697,7 +884,7 @@ export const ApiTestForm = () => {
           </div>
 
           <div className="rounded-lg border border-slate-800 p-4 space-y-3">
-            <p className="text-sm font-medium">POST add-appointment</p>
+            <p className="text-sm font-medium text-slate-100">POST add-appointment</p>
             <div className="grid sm:grid-cols-2 gap-3">
               <div className="space-y-2 sm:col-span-2">
                 <Label className="text-xs">title</Label>
@@ -741,7 +928,7 @@ export const ApiTestForm = () => {
           </div>
 
           <div className="rounded-lg border border-slate-800 p-4 space-y-3">
-            <p className="text-sm font-medium">GET get-appointments-by-phone</p>
+            <p className="text-sm font-medium text-slate-100">GET get-appointments-by-phone</p>
             <Button
               type="button"
               size="sm"
@@ -763,7 +950,7 @@ export const ApiTestForm = () => {
           </div>
 
           <div className="rounded-lg border border-slate-800 p-4 space-y-3">
-            <p className="text-sm font-medium">PUT update-appointment-by-phone</p>
+            <p className="text-sm font-medium text-slate-100">PUT update-appointment-by-phone</p>
             <div className="grid sm:grid-cols-2 gap-3">
               <div className="space-y-2 sm:col-span-2">
                 <Label className="text-xs">appointment_id</Label>
@@ -809,7 +996,7 @@ export const ApiTestForm = () => {
           </div>
 
           <div className="rounded-lg border border-slate-800 p-4 space-y-3">
-            <p className="text-sm font-medium">DELETE delete-appointment</p>
+            <p className="text-sm font-medium text-slate-100">DELETE delete-appointment</p>
             <div className="space-y-2 max-w-md">
               <Label className="text-xs">appointment_id</Label>
               <Input value={apId} onChange={(e) => setApId(e.target.value)} />

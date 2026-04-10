@@ -800,106 +800,161 @@ curl -X POST "${BASE}/add-transaction-by-phone" \\
             { code: 400, message: "INVALID_PAYMENT_METHOD", cause: "payment_method não aceito para despesa.", fix: "Use debit, pix, credit ou boleto." },
             { code: 500, message: "TRANSACTION_INSERT_FAILED", cause: "Falha ao gravar no banco.", fix: "Verifique logs da Edge Function no Supabase." },
         ],
-        tips: "Receitas: payment_method é opcional. Transferências: type expense, category transferencia, payment_method transfer. Lista de compras: POST /shopping-by-phone. Tetos (Guarda-costas): POST /budgets-by-phone ou app web; ao lançar despesa, budget_alert reflete o teto do mês.",
+        tips: "Receitas: payment_method é opcional. Transferências: type expense, category transferencia, payment_method transfer. Lista: GET/POST/PUT /shopping-by-phone. Orçamentos: GET/POST/PUT /budgets-by-phone. budget_alert ao lançar despesa reflete o teto do mês.",
     },
 
-    // ── 10B. SHOPPING LISTS ─────────────────
+    // ── 10B. SHOPPING — GET (consultas) ──────
+    {
+        method: "GET",
+        path: "/shopping-by-phone",
+        summary: "Lista de compras: apenas consultas via query string (list_lists, get_list).",
+        description: `GET aceita somente action=list_lists ou action=get_list. Parâmetros na URL (query).
+
+• list_lists — phone (obrigatório), active_only=true|false opcional.
+• get_list — phone, list_id.
+
+Demais ações (criar lista, itens, atualizar, finalizar): use POST ou PUT com JSON.`,
+        params: [
+            { name: "phone", type: "string", required: true, description: "Telefone (query)." },
+            { name: "action", type: "string", required: true, description: "list_lists | get_list" },
+            { name: "active_only", type: "boolean", required: false, description: "Só para list_lists." },
+            { name: "list_id", type: "uuid", required: false, description: "Obrigatório para get_list." },
+        ],
+        curlCommand: `curl -X GET "${BASE}/shopping-by-phone?phone=5511999999999&action=list_lists&active_only=true" \\
+  -H "Authorization: Bearer <SUPABASE_ANON_KEY>"
+
+curl -X GET "${BASE}/shopping-by-phone?phone=5511999999999&action=get_list&list_id=<UUID>" \\
+  -H "Authorization: Bearer <SUPABASE_ANON_KEY>"`,
+        responseExample: `{ "success": true, "lists": [ ... ] }`,
+        errors: [
+            { code: 405, message: "GET_ACTION_NOT_ALLOWED", cause: "action diferente de list_lists/get_list.", fix: "Use POST ou PUT para outras ações." },
+        ],
+        tips: "Números e booleanos vêm como string na URL; a função converte budget, amount, active_only, etc.",
+    },
+
+    // ── 10B2. SHOPPING — POST ─────────────────
     {
         method: "POST",
         path: "/shopping-by-phone",
-        summary: "Lista de compras: criar lista, itens, consultar e finalizar com lançamento em supermercado.",
-        description: `Rota única POST. Envie sempre phone e action.
+        summary: "Lista de compras: criar, alterar, excluir e finalizar (corpo JSON).",
+        description: `POST com phone e action no JSON.
 
-AÇÕES:
-• list_lists — Lista do usuário. Opcional: active_only (boolean).
-• create_list — name (obrigatório), budget (opcional, número ≥ 0).
-• get_list — list_id: retorna lista + itens.
-• add_item — list_id, name, category. Opcionais: quantity, unit_type (un|kg), weight_per_unit, price, require_price (padrão true).
-• update_item — item_id e campos a alterar (name, category, quantity, unit_type, weight_per_unit, price, checked, require_price).
-• delete_item — item_id.
-• delete_list — list_id (remove itens em cascata).
-• finalize_list — list_id, payment_method: debit | pix | credit | boleto | cash. Opcional: amount; se omitido, soma apenas itens com checked=true (mesma regra do app). Opcional: bank_account_id, credit_card_id (ou uso do primeiro cadastrado, exceto cash).
+AÇÕES: list_lists | create_list | get_list | add_item | update_item | delete_item | delete_list | finalize_list (mesma semântica da documentação completa).
 
-Respostas de sucesso e erro seguem o contrato global (success + error.code).`,
+finalize_list — payment_method: debit | pix | credit | boleto | cash; amount opcional (senão soma itens checked).`,
         params: [
             { name: "phone", type: "string", required: true, description: "Telefone do usuário." },
-            { name: "action", type: "string", required: true, description: "Uma das ações listadas acima." },
-            { name: "…", type: "varia", required: false, description: "Demais campos dependem da action (list_id, item_id, name, category, etc.)." },
+            { name: "action", type: "string", required: true, description: "Uma das ações listadas." },
+            { name: "…", type: "varia", required: false, description: "Campos específicos por action (list_id, item_id, name, category, etc.)." },
         ],
-        curlCommand: `# Listar listas ativas
-curl -X POST "${BASE}/shopping-by-phone" \\
-  -H "Authorization: Bearer <SUPABASE_ANON_KEY>" \\
-  -H "Content-Type: application/json" \\
-  -d '{"phone":"5511999999999","action":"list_lists","active_only":true}'
-
-# Criar lista e adicionar item
-curl -X POST "${BASE}/shopping-by-phone" \\
+        curlCommand: `curl -X POST "${BASE}/shopping-by-phone" \\
   -H "Authorization: Bearer <SUPABASE_ANON_KEY>" \\
   -H "Content-Type: application/json" \\
   -d '{"phone":"5511999999999","action":"create_list","name":"Compras semana","budget":300}'
 
-# Finalizar (gera transação categoria supermercado)
 curl -X POST "${BASE}/shopping-by-phone" \\
   -H "Authorization: Bearer <SUPABASE_ANON_KEY>" \\
   -H "Content-Type: application/json" \\
   -d '{"phone":"5511999999999","action":"finalize_list","list_id":"<UUID>","payment_method":"debit","amount":127.5}'`,
-        responseExample: `{
-  "success": true,
-  "message": "Lista finalizada e transação criada.",
-  "list_id": "uuid",
-  "transaction_id": "uuid",
-  "final_value": 127.5,
-  "payment_method": "debit"
-}`,
+        responseExample: `{ "success": true, "message": "Lista finalizada e transação criada.", "transaction_id": "uuid" }`,
         errors: [
-            { code: 404, message: "USER_NOT_FOUND / LIST_NOT_FOUND", cause: "Telefone sem cadastro ou list_id de outro usuário.", fix: "Confirme phone e IDs com get_list." },
-            { code: 400, message: "LIST_FINISHED / VALIDATION_ERROR", cause: "Lista já encerrada ou campos faltando.", fix: "Use create_list ou verifique action e corpo JSON." },
-            { code: 500, message: "TRANSACTION_INSERT_FAILED", cause: "Lista atualizada mas insert em transactions falhou.", fix: "Verifique logs; corrija dados e tente de novo." },
+            { code: 404, message: "USER_NOT_FOUND / LIST_NOT_FOUND", cause: "Telefone ou lista inválidos.", fix: "Valide com GET get_list." },
+            { code: 500, message: "TRANSACTION_INSERT_FAILED", cause: "Falha ao gravar transação após finalizar.", fix: "Ver logs no Supabase." },
         ],
-        tips: "Itens em kg: total parcial usa quantity × weight_per_unit × price. finalize_list com cash não exige conta ou cartão.",
+        tips: "Itens em kg: quantity × weight_per_unit × price. cash não exige banco/cartão.",
     },
 
-    // ── 10C. BUDGETS (GUARDA-COSTAS) ─────────
+    // ── 10B3. SHOPPING — PUT ─────────────────
+    {
+        method: "PUT",
+        path: "/shopping-by-phone",
+        summary: "Lista de compras: mesmo contrato do POST (JSON) para automações que preferem PUT.",
+        description: `Corpo JSON idêntico ao POST: phone, action e os campos da ação (ex.: update_item com item_id; finalize_list; add_item; create_list; delete_item; delete_list).
+
+GET continua restrito a consultas; PUT e POST aceitam todas as ações de escrita e leitura (list_lists/get_list também podem ir no POST/PUT se preferir um único método).`,
+        params: [
+            { name: "phone", type: "string", required: true, description: "Telefone." },
+            { name: "action", type: "string", required: true, description: "Mesmas ações do POST." },
+            { name: "…", type: "varia", required: false, description: "Igual ao POST." },
+        ],
+        curlCommand: `curl -X PUT "${BASE}/shopping-by-phone" \\
+  -H "Authorization: Bearer <SUPABASE_ANON_KEY>" \\
+  -H "Content-Type: application/json" \\
+  -d '{"phone":"5511999999999","action":"update_item","item_id":"<UUID>","checked":true,"price":12.5}'`,
+        responseExample: `{ "success": true, "item": { ... }, "message": "Item atualizado." }`,
+        errors: [
+            { code: 400, message: "VALIDATION_ERROR / LIST_FINISHED", cause: "Payload inválido ou lista encerrada.", fix: "Confira action e IDs." },
+        ],
+    },
+
+    // ── 10C. BUDGETS — GET (listar) ──────────
+    {
+        method: "GET",
+        path: "/budgets-by-phone",
+        summary: "Guarda-costas: listar tetos do mês via query string.",
+        description: `GET lista orçamentos. Parâmetros: phone (obrigatório), month_year opcional (YYYY-MM; padrão mês atual UTC). action opcional: apenas list (ou omita — default list).
+
+upsert e delete não usam GET.`,
+        params: [
+            { name: "phone", type: "string", required: true, description: "Telefone (query)." },
+            { name: "month_year", type: "string", required: false, description: "YYYY-MM." },
+            { name: "action", type: "string", required: false, description: "Opcional: list." },
+        ],
+        curlCommand: `curl -X GET "${BASE}/budgets-by-phone?phone=5511999999999&month_year=2026-04" \\
+  -H "Authorization: Bearer <SUPABASE_ANON_KEY>"`,
+        responseExample: `{ "success": true, "month_year": "2026-04", "budgets": [ ... ] }`,
+        errors: [
+            { code: 405, message: "GET_ONLY_LIST", cause: "action na URL diferente de list.", fix: "Use POST/PUT para upsert." },
+        ],
+    },
+
+    // ── 10C2. BUDGETS — POST ─────────────────
     {
         method: "POST",
         path: "/budgets-by-phone",
-        summary: "Consultar, criar/atualizar e excluir tetos de gastos por categoria e mês (Guarda-costas).",
-        description: `Rota única POST com phone e action.
-
-• list — Retorna budgets do usuário. Opcional: month_year (YYYY-MM); padrão mês atual (servidor UTC).
-• upsert — category e amount (≥ 0). Opcional month_year. Se já existir categoria+mês, atualiza amount.
-• delete — Informe budget_id (uuid) OU category com month_year opcional.
-
-Erros comuns: DUPLICATE_BUDGET (409) em condição de corrida; USER_NOT_FOUND (404).`,
+        summary: "Guarda-costas: list | upsert | delete no corpo JSON.",
+        description: `• list — month_year opcional.
+• upsert — category, amount (≥ 0), month_year opcional.
+• delete — budget_id OU category (+ month_year opcional).`,
         params: [
-            { name: "phone", type: "string", required: true, description: "Telefone do usuário." },
+            { name: "phone", type: "string", required: true, description: "Telefone." },
             { name: "action", type: "string", required: true, description: "list | upsert | delete" },
-            { name: "month_year", type: "string", required: false, description: "YYYY-MM para list, upsert e delete por categoria." },
-            { name: "category", type: "string", required: false, description: "Obrigatório em upsert; em delete se não usar budget_id." },
-            { name: "amount", type: "number", required: false, description: "Obrigatório em upsert." },
-            { name: "budget_id", type: "uuid", required: false, description: "Para delete por id." },
+            { name: "month_year", type: "string", required: false, description: "YYYY-MM." },
+            { name: "category", type: "string", required: false, description: "upsert e delete por categoria." },
+            { name: "amount", type: "number", required: false, description: "upsert." },
+            { name: "budget_id", type: "uuid", required: false, description: "delete por id." },
         ],
-        curlCommand: `# Listar tetos do mês
-curl -X POST "${BASE}/budgets-by-phone" \\
-  -H "Authorization: Bearer <SUPABASE_ANON_KEY>" \\
-  -H "Content-Type: application/json" \\
-  -d '{"phone":"5511999999999","action":"list","month_year":"2026-04"}'
-
-# Definir teto
-curl -X POST "${BASE}/budgets-by-phone" \\
+        curlCommand: `curl -X POST "${BASE}/budgets-by-phone" \\
   -H "Authorization: Bearer <SUPABASE_ANON_KEY>" \\
   -H "Content-Type: application/json" \\
   -d '{"phone":"5511999999999","action":"upsert","category":"supermercado","amount":800,"month_year":"2026-04"}'`,
-        responseExample: `{
-  "success": true,
-  "month_year": "2026-04",
-  "budgets": [
-    { "id": "uuid", "category": "supermercado", "amount": 800, "month_year": "2026-04", "user_id": "uuid" }
-  ]
-}`,
+        responseExample: `{ "success": true, "budget": { ... }, "created": true }`,
         errors: [
-            { code: 404, message: "USER_NOT_FOUND / BUDGET_NOT_FOUND", cause: "Telefone ou budget_id inválido.", fix: "Liste com action list." },
-            { code: 409, message: "DUPLICATE_BUDGET", cause: "Conflito de unicidade categoria+mês.", fix: "Chame upsert novamente (idempotente após primeiro insert)." },
+            { code: 409, message: "DUPLICATE_BUDGET", cause: "Conflito ao inserir.", fix: "Chame upsert de novo." },
+        ],
+    },
+
+    // ── 10C3. BUDGETS — PUT (upsert) ─────────
+    {
+        method: "PUT",
+        path: "/budgets-by-phone",
+        summary: "Guarda-costas: criar ou atualizar teto (upsert) — atalho sem action no corpo.",
+        description: `PUT com JSON: phone, category, amount obrigatórios; month_year opcional. action opcional: se omitido, equivale a upsert. Se enviar action, deve ser upsert.
+
+list e delete continuam em GET e POST.`,
+        params: [
+            { name: "phone", type: "string", required: true, description: "Telefone." },
+            { name: "category", type: "string", required: true, description: "Slug da categoria." },
+            { name: "amount", type: "number", required: true, description: "Valor ≥ 0." },
+            { name: "month_year", type: "string", required: false, description: "YYYY-MM." },
+        ],
+        curlCommand: `curl -X PUT "${BASE}/budgets-by-phone" \\
+  -H "Authorization: Bearer <SUPABASE_ANON_KEY>" \\
+  -H "Content-Type: application/json" \\
+  -d '{"phone":"5511999999999","category":"supermercado","amount":800,"month_year":"2026-04"}'`,
+        responseExample: `{ "success": true, "message": "Orçamento criado.", "budget": { ... }, "created": true }`,
+        errors: [
+            { code: 405, message: "PUT_ONLY_UPSERT", cause: "action diferente de upsert.", fix: "Remova action ou use upsert." },
         ],
     },
 
@@ -1178,7 +1233,11 @@ export default function ApiDocsPage() {
     return (
         <div className="min-h-screen bg-slate-950 text-slate-50">
             <div className="max-w-6xl mx-auto px-4 md:px-6 py-8 md:py-10">
-                <Button variant="outline" onClick={() => navigate(-1)} className="mb-6 border-slate-600 text-slate-100 hover:bg-slate-800 hover:text-white">
+                <Button
+                    variant="secondary"
+                    onClick={() => navigate(-1)}
+                    className="mb-6 bg-slate-800 text-white border border-slate-600 shadow-sm hover:bg-slate-700 hover:text-white"
+                >
                     <ChevronLeft className="mr-2 h-4 w-4" /> Voltar
                 </Button>
 
@@ -1355,7 +1414,7 @@ export default function ApiDocsPage() {
                             <h2 className="text-lg font-semibold text-white mb-2">Console de teste</h2>
                             <p className="text-sm text-slate-500 mb-4">
                                 Experimente as Edge Functions com a sessão do app (JWT) ou a chave anônima quando a função permitir.
-                                Abas: usuário e categorias globais, transações (incluir, listar, atualizar, cancelar), contas, categorias do usuário, lista de compras e orçamentos (JSON), agendamentos.
+                                Abas: usuário e categorias globais, transações, contas, categorias do usuário, lista de compras (GET/POST/PUT) e orçamentos (GET/PUT + POST JSON), agendamentos.
                             </p>
                             <Card className="bg-slate-900/40 border-slate-800">
                                 <CardContent className="pt-6">
