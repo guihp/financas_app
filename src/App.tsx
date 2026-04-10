@@ -23,7 +23,6 @@ import FaturasPage from "./pages/FaturasPage";
 import ListaComprasPage from "./pages/ListaComprasPage";
 import ApiDocsPage from "./pages/ApiDocsPage";
 import ResetPassword from "./pages/ResetPassword";
-import CaixinhasPage from "./pages/CaixinhasPage";
 import OrcamentosPage from "./pages/OrcamentosPage";
 
 // Components
@@ -60,12 +59,12 @@ const App = () => (
             <Route path="/stats" element={<StatsPage />} />
             <Route path="/agenda" element={<AgendaPage />} />
             <Route path="/categorias" element={<CategoriasPage />} />
-            {/* <Route path="/caixinha" element={<CaixinhasPage />} />
-            <Route path="/orcamentos" element={<OrcamentosPage />} /> */}
+            <Route path="/orcamentos" element={<OrcamentosPage />} />
+            <Route path="/caixinha" element={<Navigate to="/dash" replace />} />
             <Route path="/sharing" element={<SharingPage />} />
             <Route path="/cartoes" element={<CartoesPage />} />
             <Route path="/faturas" element={<FaturasPage />} />
-            {/* <Route path="/lista-compras" element={<ListaComprasPage />} /> */}
+            <Route path="/lista-compras" element={<ListaComprasPage />} />
             <Route path="/alterar-senha" element={<AlterarSenhaPage />} />
             <Route path="/assinatura" element={<Assinatura />} />
             <Route path="/admin/supremo/iafe/financas" element={<AdminSupremoFinancas />} />

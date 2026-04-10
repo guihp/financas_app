@@ -69,6 +69,10 @@ interface ShoppingList {
   bank_id: string | null;
   credit_card_id: string | null;
   created_at: string;
+  /** Lista criada por "Reutilizar" */
+  is_reused?: boolean;
+  /** Data da compra/lista de origem (exibir junto ao nome) */
+  reuse_reference_date?: string | null;
 }
 
 interface ShoppingItem {
@@ -95,6 +99,15 @@ interface CreditCardInfo {
   name: string;
   color: string;
 }
+
+const ReusedListBadge = () => (
+  <span
+    className="inline-flex shrink-0 items-center justify-center min-w-[1.125rem] h-[1.125rem] px-0.5 rounded text-[9px] font-bold bg-amber-500/20 text-amber-800 dark:text-amber-400 border border-amber-500/35"
+    title="Lista reutilizada a partir de uma compra anterior"
+  >
+    R
+  </span>
+);
 
 const DEFAULT_CATEGORIES = [
   "🍎 Frutas",
@@ -303,17 +316,42 @@ const ListaComprasPage = () => {
   };
 
   const handleReuseList = async (sourceList: ShoppingList) => {
-    // Create new list copying the name
-    const { data: newList, error: listErr } = await supabase
+    const referenceDate = sourceList.finished_at || sourceList.created_at;
+    const basePayload = {
+      user_id: user.id,
+      name: sourceList.name,
+      budget: sourceList.budget,
+      is_active: true,
+    };
+
+    let newList: ShoppingList | null = null;
+    let listErr: { message?: string; code?: string } | null = null;
+    const withReuse = await supabase
       .from("shopping_lists")
       .insert({
-        user_id: user.id,
-        name: `${sourceList.name} (cópia)`,
-        budget: sourceList.budget,
-        is_active: true,
+        ...basePayload,
+        is_reused: true,
+        reuse_reference_date: referenceDate,
       })
       .select()
       .single();
+
+    if (withReuse.error) {
+      const msg = withReuse.error.message || "";
+      const missingCol =
+        msg.includes("is_reused") ||
+        msg.includes("reuse_reference_date") ||
+        withReuse.error.code === "PGRST204";
+      if (missingCol) {
+        const fallback = await supabase.from("shopping_lists").insert(basePayload).select().single();
+        newList = (fallback.data as ShoppingList) || null;
+        listErr = fallback.error;
+      } else {
+        listErr = withReuse.error;
+      }
+    } else {
+      newList = withReuse.data as ShoppingList;
+    }
 
     if (listErr || !newList) {
       toast({ title: "Erro", description: listErr?.message || "Erro ao copiar lista.", variant: "destructive" });
@@ -344,7 +382,10 @@ const ListaComprasPage = () => {
 
     await loadLists();
     openList(newList as ShoppingList);
-    toast({ title: "Lista copiada!", description: "Itens da lista anterior foram reutilizados." });
+    toast({
+      title: "Lista reutilizada!",
+      description: "Itens copiados para a nova lista com o mesmo nome da compra anterior.",
+    });
   };
 
   const handleDeleteList = async () => {
@@ -362,12 +403,23 @@ const ListaComprasPage = () => {
 
   const handleFinalizeList = async () => {
     if (!currentList) return;
+
+    if (finalPaymentMethod === "credit" && !finalCreditCardId) {
+      toast({ title: "Selecione o cartão de crédito", variant: "destructive" });
+      return;
+    }
+    if (finalPaymentMethod !== "credit" && finalPaymentMethod !== "cash" && !finalBankId) {
+      toast({ title: "Selecione a conta bancária", variant: "destructive" });
+      return;
+    }
+
     const val = parseFloat(finalValue.replace(",", ".")) || totalValue;
     const now = new Date();
     const dateStr = now.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric" });
     const newName = `Compras ${dateStr}`;
+    const todayIso = now.toISOString().split("T")[0];
 
-    const updateData: any = {
+    const updateData: Record<string, unknown> = {
       is_active: false,
       finished_at: now.toISOString(),
       final_value: val,
@@ -376,13 +428,18 @@ const ListaComprasPage = () => {
     };
     if (finalPaymentMethod === "credit" && finalCreditCardId) {
       updateData.credit_card_id = finalCreditCardId;
+      updateData.bank_id = null;
     } else if (finalBankId) {
       updateData.bank_id = finalBankId;
+      updateData.credit_card_id = null;
+    } else {
+      updateData.bank_id = null;
+      updateData.credit_card_id = null;
     }
 
     const { error } = await supabase
       .from("shopping_lists")
-      .update(updateData)
+      .update(updateData as never)
       .eq("id", currentList.id);
 
     if (error) {
@@ -390,23 +447,35 @@ const ListaComprasPage = () => {
       return;
     }
 
-    // Create transaction
-    const txData: any = {
+    const txData: Record<string, unknown> = {
       user_id: user.id,
       type: "expense",
       amount: val,
       description: newName,
-      category: "Mercado",
+      category: "supermercado",
       payment_method: finalPaymentMethod,
-      date: now.toISOString().split("T")[0],
+      date: todayIso,
+      transaction_date: todayIso,
+      total_installments: 1,
+      installment_number: 1,
+      credit_card_id: null,
+      bank_account_id: null,
     };
     if (finalPaymentMethod === "credit" && finalCreditCardId) {
       txData.credit_card_id = finalCreditCardId;
     } else if (finalBankId) {
-      txData.bank_id = finalBankId;
+      txData.bank_account_id = finalBankId;
     }
 
-    await supabase.from("transactions").insert(txData);
+    const { error: txError } = await supabase.from("transactions").insert(txData as never);
+    if (txError) {
+      toast({
+        title: "Lista salva, mas a transação falhou",
+        description: txError.message,
+        variant: "destructive",
+      });
+      return;
+    }
 
     setShowFinalizeDialog(false);
     setView("lists");
@@ -573,10 +642,15 @@ const ListaComprasPage = () => {
                     <div className="h-10 w-10 rounded-xl bg-pink-500/15 flex items-center justify-center">
                       <ShoppingBag className="h-5 w-5 text-pink-500" />
                     </div>
-                    <div>
-                      <p className="font-semibold text-sm">{list.name}</p>
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <p className="font-semibold text-sm truncate">{list.name}</p>
+                        {list.is_reused && <ReusedListBadge />}
+                      </div>
                       <p className="text-xs text-muted-foreground">
-                        {formatDate(list.created_at)}
+                        {list.is_reused
+                          ? formatDate(list.reuse_reference_date || list.created_at)
+                          : formatDate(list.created_at)}
                         {list.budget > 0 && ` • Orçamento: ${formatCurrency(list.budget)}`}
                       </p>
                     </div>
@@ -622,12 +696,15 @@ const ListaComprasPage = () => {
                     <div className="h-10 w-10 rounded-xl bg-green-500/15 flex items-center justify-center">
                       <CalendarCheck className="h-5 w-5 text-green-500" />
                     </div>
-                    <div>
-                      <p className="font-semibold text-sm">{list.name}</p>
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <p className="font-semibold text-sm truncate">{list.name}</p>
+                        {list.is_reused && <ReusedListBadge />}
+                      </div>
                       <p className="text-xs text-muted-foreground">
                         {list.finished_at ? formatDate(list.finished_at) : formatDate(list.created_at)}
                         {list.final_value != null && ` • ${formatCurrency(list.final_value)}`}
-                        {list.payment_method && ` • ${list.payment_method === "credit" ? "Crédito" : list.payment_method === "pix" ? "PIX" : "Débito"}`}
+                        {list.payment_method && ` • ${list.payment_method === "credit" ? "Crédito" : list.payment_method === "pix" ? "PIX" : list.payment_method === "debit" ? "Débito" : list.payment_method === "cash" ? "Dinheiro" : list.payment_method}`}
                       </p>
                     </div>
                   </div>
@@ -722,10 +799,17 @@ const ListaComprasPage = () => {
         <button onClick={() => setView("lists")} className="p-2 rounded-lg hover:bg-muted transition-colors">
           <ArrowLeft className="h-5 w-5" />
         </button>
-        <div className="flex-1">
-          <h1 className="text-lg sm:text-xl font-bold">{currentList?.name}</h1>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <h1 className="text-lg sm:text-xl font-bold truncate">{currentList?.name}</h1>
+            {currentList?.is_reused && <ReusedListBadge />}
+          </div>
           <p className="text-xs text-muted-foreground">
-            {isFinished ? `Finalizada em ${formatDate(currentList?.finished_at || currentList?.created_at || "")}` : "Lista ativa"}
+            {isFinished
+              ? `Finalizada em ${formatDate(currentList?.finished_at || currentList?.created_at || "")}`
+              : currentList?.is_reused
+                ? `Referência: ${formatDate(currentList.reuse_reference_date || currentList.created_at)}`
+                : "Lista ativa"}
           </p>
         </div>
         {!isFinished && (
@@ -895,9 +979,13 @@ const ListaComprasPage = () => {
         </div>
       )}
 
-      {/* FAB */}
+      {/* FAB: no desktop, à esquerda da coluna IA + WhatsApp (fixed bottom-6 right-6 no AppLayout) */}
       {!isFinished && (
-        <Button onClick={() => setShowAddDialog(true)} className="fixed bottom-20 right-4 lg:bottom-6 lg:right-6 h-14 w-14 rounded-full shadow-xl bg-pink-500 hover:bg-pink-600 text-white z-50">
+        <Button
+          onClick={() => setShowAddDialog(true)}
+          className="fixed bottom-20 right-4 z-[55] h-14 w-14 rounded-full shadow-xl bg-pink-500 hover:bg-pink-600 text-white lg:bottom-6 lg:right-[11rem]"
+          title="Adicionar produto"
+        >
           <Plus className="h-6 w-6" />
         </Button>
       )}

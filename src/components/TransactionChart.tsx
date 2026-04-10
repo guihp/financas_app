@@ -4,9 +4,25 @@ import { Transaction } from "./Dashboard";
 interface TransactionChartProps {
   transactions: Transaction[];
   type?: "expenses" | "income";
+  /** Preenche a altura do container pai (ex.: card ao lado do pizza chart no desktop). */
+  fillHeight?: boolean;
 }
 
-export const TransactionChart = ({ transactions, type = "expenses" }: TransactionChartProps) => {
+const formatYAxisTick = (value: number) => {
+  const n = Number(value);
+  if (n === 0) return "R$ 0";
+  if (Math.abs(n) >= 1000) {
+    const k = n / 1000;
+    return `R$ ${k % 1 === 0 ? k.toFixed(0) : k.toFixed(1)}k`;
+  }
+  return new Intl.NumberFormat("pt-BR", {
+    style: "currency",
+    currency: "BRL",
+    maximumFractionDigits: 0,
+  }).format(n);
+};
+
+export const TransactionChart = ({ transactions, type = "expenses", fillHeight = false }: TransactionChartProps) => {
   const parseTxDate = (value?: string) => {
     if (!value) return new Date(NaN);
     return new Date(value + (value.includes("T") ? "" : "T12:00:00"));
@@ -69,22 +85,28 @@ export const TransactionChart = ({ transactions, type = "expenses" }: Transactio
 
   const barColor = type === "expenses" ? "#ef4444" : "#22c55e";
 
+  const outerClass = fillHeight
+    ? "h-full w-full min-h-[200px] lg:min-h-[260px]"
+    : "h-48 sm:h-64";
+
   // Se não há dados, mostrar mensagem
   if (finalChartData.every(d => d.amount === 0)) {
     return (
-      <div className="h-48 sm:h-64 flex items-center justify-center text-muted-foreground">
+      <div className={`${outerClass} flex items-center justify-center text-muted-foreground`}>
         <p className="text-sm">Nenhum dado para exibir</p>
       </div>
     );
   }
 
+  const maxAmount = Math.max(...finalChartData.map((d) => d.amount), 0);
+
   return (
-    <div className="h-48 sm:h-64">
+    <div className={outerClass}>
       <ResponsiveContainer width="100%" height="100%">
         <BarChart
           data={finalChartData}
-          margin={{ top: 10, right: 10, left: -10, bottom: 5 }}
-          barCategoryGap="20%"
+          margin={{ top: 8, right: 8, left: 4, bottom: 8 }}
+          barCategoryGap="18%"
         >
           <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
           <XAxis
@@ -97,8 +119,11 @@ export const TransactionChart = ({ transactions, type = "expenses" }: Transactio
             axisLine={false}
             tickLine={false}
             tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }}
-            tickFormatter={(value) => `R$${(value / 1000).toFixed(0)}k`}
-            width={45}
+            tickFormatter={formatYAxisTick}
+            width={52}
+            domain={[0, maxAmount > 0 ? Math.ceil(maxAmount * 1.08) : 1]}
+            allowDecimals={false}
+            tickCount={5}
           />
           <Tooltip
             content={({ active, payload, label }) => {

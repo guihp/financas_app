@@ -28,9 +28,11 @@ interface CategorySelectProps {
     onValueChange: (value: string) => void;
     type: "income" | "expense";
     categories: any[];
+    /** Valores de FIXED_CATEGORIES a ocultar (ex.: `hidden_fixed_subcats` da página Categorias) */
+    excludeFixedCategoryValues?: string[];
 }
 
-export function CategorySelect({ value, onValueChange, type, categories }: CategorySelectProps) {
+export function CategorySelect({ value, onValueChange, type, categories, excludeFixedCategoryValues }: CategorySelectProps) {
     const [open, setOpen] = useState(false);
     const isMobile = useIsMobile();
 
@@ -59,7 +61,9 @@ export function CategorySelect({ value, onValueChange, type, categories }: Categ
                 <CommandEmpty>Nenhuma categoria encontrada.</CommandEmpty>
 
                 {filteredGroups.map(group => {
-                    const fixedCats = filteredCategories.filter(c => c.group === group);
+                    const fixedCats = filteredCategories
+                        .filter(c => c.group === group)
+                        .filter(c => !excludeFixedCategoryValues?.includes(c.value));
                     // Custom categories that have parent_id matching this group (case insensitive)
                     const customCats = categories.filter(c => c.parent_id?.toLowerCase() === group.toLowerCase());
 

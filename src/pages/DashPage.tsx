@@ -399,10 +399,10 @@ const DashPage = () => {
         </Card>
       </div>
 
-      {/* Charts Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+      {/* Charts Grid — itens com mesma altura no desktop; Visão Geral preenche o espaço */}
+      <div className="grid grid-cols-1 items-stretch gap-4 lg:grid-cols-2">
         {/* Pie Chart - Gastos por Categoria */}
-        <Card className="bg-gradient-card border-border">
+        <Card className="bg-gradient-card border-border h-full min-h-0">
           <CardHeader className="pb-2">
             <CardTitle className="text-base sm:text-lg">Gastos por Categoria</CardTitle>
           </CardHeader>
@@ -411,13 +411,15 @@ const DashPage = () => {
           </CardContent>
         </Card>
 
-        {/* Bar Chart - Visão Geral */}
-        <Card className="bg-gradient-card border-border">
-          <CardHeader className="pb-2">
+        {/* Bar Chart - Visão Geral — altura acompanha o card vizinho (grid) sem faixa vazia */}
+        <Card className="bg-gradient-card border-border flex h-full min-h-0 flex-col">
+          <CardHeader className="shrink-0 pb-2">
             <CardTitle className="text-base sm:text-lg">Visão Geral</CardTitle>
           </CardHeader>
-          <CardContent>
-            <TransactionChart transactions={validDisplayTransactions} />
+          <CardContent className="flex min-h-0 flex-1 flex-col pb-4 pt-0">
+            <div className="min-h-0 flex-1">
+              <TransactionChart transactions={validDisplayTransactions} fillHeight />
+            </div>
           </CardContent>
         </Card>
       </div>

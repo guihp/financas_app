@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -44,6 +44,14 @@ export const AddTransactionFab = ({ open, onOpenChange, onTransactionAdded }: Ad
   const [installmentCount, setInstallmentCount] = useState("2");
   const [isFixed, setIsFixed] = useState(false);
   const [fixedMonths, setFixedMonths] = useState("12");
+
+  const hiddenFixedSubcats = useMemo(() => {
+    try {
+      return JSON.parse(localStorage.getItem("hidden_fixed_subcats") || "[]") as string[];
+    } catch {
+      return [];
+    }
+  }, [open]);
 
   useEffect(() => {
     if (open) {
@@ -483,6 +491,7 @@ export const AddTransactionFab = ({ open, onOpenChange, onTransactionAdded }: Ad
                 onValueChange={setCategory}
                 type={type}
                 categories={categories}
+                excludeFixedCategoryValues={hiddenFixedSubcats}
               />
             </div>
           )}

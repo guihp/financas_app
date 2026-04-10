@@ -21,7 +21,8 @@ import {
   Sun,
   MessageCircle,
   Bot,
-  ShoppingCart
+  ShoppingCart,
+  ShieldAlert,
 } from "lucide-react";
 import { useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
@@ -64,7 +65,8 @@ export const MobileBottomNav = ({
     { path: "/extratos", label: "Extratos", icon: Receipt, color: "text-emerald-400", bg: "bg-emerald-500/15" },
     { path: "/cartoes", label: "Bancos e Cartões", icon: Landmark, color: "text-blue-400", bg: "bg-blue-500/15" },
     { path: "/faturas", label: "Faturas", icon: Receipt, color: "text-amber-400", bg: "bg-amber-500/15" },
-    // { path: "/lista-compras", label: "Lista de Compras", icon: ShoppingCart, color: "text-pink-400", bg: "bg-pink-500/15" },
+    { path: "/lista-compras", label: "Lista de Compras", icon: ShoppingCart, color: "text-pink-400", bg: "bg-pink-500/15" },
+    { path: "/orcamentos", label: "Guarda-Costas", icon: ShieldAlert, color: "text-rose-400", bg: "bg-rose-500/15" },
     { path: "/sharing", label: "Compartilhar", icon: Users, color: "text-cyan-400", bg: "bg-cyan-500/15" },
     { path: "/assinatura", label: "Assinatura", icon: Crown, color: "text-purple-400", bg: "bg-purple-500/15" },
     { action: "ai", label: "Falar com IA", icon: Bot, color: "text-indigo-400", bg: "bg-indigo-500/15" },
