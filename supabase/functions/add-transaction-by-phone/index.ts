@@ -33,6 +33,38 @@ function lastDayOfMonthDateStr(yyyyMm: string): string {
   return `${yyyyMm}-${String(last).padStart(2, "0")}`;
 }
 
+/**
+ * Converte para YYYY-MM-DD. Aceita ISO e DD/MM/YYYY ou DD-MM-YYYY (Brasil).
+ * Evita que "08/04/2026" (8 de abril) vire agosto ao usar new Date() (parse MM/DD).
+ */
+function normalizeDateInputToYyyyMmDd(raw: string | undefined): string | null {
+  if (!raw || typeof raw !== "string") return null;
+  const s = raw.trim();
+  if (!s) return null;
+
+  const iso = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s);
+  if (iso) return `${iso[1]}-${iso[2]}-${iso[3]}`;
+
+  const br = /^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/.exec(s);
+  if (br) {
+    const day = parseInt(br[1], 10);
+    const month = parseInt(br[2], 10);
+    const year = parseInt(br[3], 10);
+    if (year < 2000 || year > 2100 || month < 1 || month > 12 || day < 1 || day > 31) {
+      return null;
+    }
+    const dt = new Date(year, month - 1, day);
+    if (
+      dt.getFullYear() === year &&
+      dt.getMonth() === month - 1 &&
+      dt.getDate() === day
+    ) {
+      return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+    }
+  }
+  return null;
+}
+
 async function getUserIdByPhone(supabase: any, phone: string): Promise<string | null> {
   const normalizedPhone = phone.replace(/\D/g, "");
 
@@ -280,16 +312,23 @@ serve(async (req) => {
     }
 
     let transactionsToInsert: any[] = [];
-    const baseDate = date || new Date().toISOString().split("T")[0];
+    const normalizedFromClient = normalizeDateInputToYyyyMmDd(date);
+    const baseDate =
+      normalizedFromClient ?? new Date().toISOString().split("T")[0];
     const groupId = crypto.randomUUID();
 
     if (is_fixed && fixed_months && parseInt(String(fixed_months), 10) > 1) {
       const totalMonths = Math.min(parseInt(String(fixed_months), 10), 60);
 
       for (let i = 0; i < totalMonths; i++) {
-        const fixedDateObj = new Date(baseDate);
+        const fixedDateObj = new Date(baseDate + "T12:00:00");
         fixedDateObj.setMonth(fixedDateObj.getMonth() + i);
-        const dateStr = fixedDateObj.toISOString().split("T")[0];
+        const dateStr =
+          `${fixedDateObj.getFullYear()}-${
+            String(fixedDateObj.getMonth() + 1).padStart(2, "0")
+          }-${
+            String(fixedDateObj.getDate()).padStart(2, "0")
+          }`;
 
         const suffix = i > 0 ? ` (Fixa ${i + 1}/${totalMonths})` : "";
         let desc = description ? `${description}${suffix}` : suffix.trim();

@@ -700,7 +700,7 @@ MÉTODOS DE PAGAMENTO:
 REGRAS:
 • credit → envie credit_card_id (NÃO bank_account_id)
 • outros → envie bank_account_id (NÃO credit_card_id)
-• Formato de data: YYYY-MM-DD
+• Data: use YYYY-MM-DD (recomendado) ou DD/MM/YYYY ou DD-MM-YYYY (Brasil). Não envie MM/DD; valores como 08/04/2026 são 8 de abril, não agosto.
 
 ORÇAMENTO (GUARDA-COSTAS):
 • Se existir teto na tabela budgets para o mesmo mês (month_year = YYYY-MM) e categoria da despesa, a resposta inclui budget_alert.
@@ -714,7 +714,7 @@ ORÇAMENTO (GUARDA-COSTAS):
             { name: "category", type: "string", required: true, description: "Nome da categoria (slug). Ex: supermercado" },
             { name: "payment_method", type: "string", required: true, description: "Método de pagamento.", values: ["debit", "pix", "credit", "boleto", "transfer"] },
             { name: "description", type: "string", required: false, description: "Descrição livre." },
-            { name: "date", type: "string", required: false, description: "Data YYYY-MM-DD. Padrão: hoje." },
+            { name: "date", type: "string", required: false, description: "YYYY-MM-DD ou DD/MM/YYYY (Brasil). Padrão: hoje." },
             { name: "bank_account_id", type: "uuid", required: false, description: "UUID do banco. Obrigatório (exceto para format credit)." },
             { name: "credit_card_id", type: "uuid", required: false, description: "UUID do cartão. Obrigatório se payment_method=credit." },
             { name: "is_fixed", type: "boolean", required: false, description: "Se for true, insere os próximos meses automaticamente como despesa fixa." },

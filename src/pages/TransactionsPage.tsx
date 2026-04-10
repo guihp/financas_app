@@ -72,7 +72,7 @@ const TransactionsPage = () => {
       const mapped = (data || []).map(t => ({
         ...t,
         amount: Number(t.amount),
-        date: t.date || t.created_at,
+        date: (t as { transaction_date?: string }).transaction_date ?? t.date ?? t.created_at,
         type: t.type as "income" | "expense"
       }));
       setTransactions(mapped);

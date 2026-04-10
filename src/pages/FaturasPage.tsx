@@ -30,6 +30,7 @@ import {
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useConnectedUserIds } from "@/hooks/useConnectedUserIds";
+import { parseTransactionDate } from "@/utils/dateFilter";
 
 interface OutletContextType {
     user: User;
@@ -199,7 +200,8 @@ const FaturasPage = () => {
 
             result[card.id] = transactions.filter((t) => {
                 if (t.credit_card_id !== card.id) return false;
-                const txDate = new Date(t.date + "T12:00:00");
+                const txDate = parseTransactionDate(String(t.date));
+                if (Number.isNaN(txDate.getTime())) return false;
                 return txDate >= cycleStart && txDate <= cycleEnd;
             });
         });
@@ -488,7 +490,7 @@ const FaturasPage = () => {
                                                             )}
                                                         </div>
                                                         <p className="text-xs text-muted-foreground">
-                                                            {new Date(tx.date + "T12:00:00").toLocaleDateString(
+                                                            {parseTransactionDate(String(tx.date)).toLocaleDateString(
                                                                 "pt-BR"
                                                             )}{" "}
                                                             • {getCategoryDisplayName(tx.category)}

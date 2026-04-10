@@ -5,6 +5,26 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
+function normalizeDateInputToYyyyMmDd(raw: string | undefined): string | null {
+  if (!raw || typeof raw !== 'string') return null
+  const s = raw.trim()
+  if (!s) return null
+  const iso = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s)
+  if (iso) return `${iso[1]}-${iso[2]}-${iso[3]}`
+  const br = /^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/.exec(s)
+  if (br) {
+    const day = parseInt(br[1], 10)
+    const month = parseInt(br[2], 10)
+    const year = parseInt(br[3], 10)
+    if (year < 2000 || year > 2100 || month < 1 || month > 12 || day < 1 || day > 31) return null
+    const dt = new Date(year, month - 1, day)
+    if (dt.getFullYear() === year && dt.getMonth() === month - 1 && dt.getDate() === day) {
+      return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+    }
+  }
+  return null
+}
+
 Deno.serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
@@ -107,7 +127,19 @@ Deno.serve(async (req) => {
     if (amount !== undefined) updateData.amount = amount
     if (description !== undefined) updateData.description = description
     if (category !== undefined) updateData.category = category
-    if (date !== undefined) updateData.date = date
+    if (date !== undefined) {
+      const normalized = normalizeDateInputToYyyyMmDd(String(date))
+      if (!normalized) {
+        return new Response(
+          JSON.stringify({
+            error: 'Invalid date. Use YYYY-MM-DD or DD/MM/YYYY (Brasil).',
+          }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+        )
+      }
+      updateData.date = normalized
+      updateData.transaction_date = normalized
+    }
     updateData.updated_at = new Date().toISOString()
 
     // Update the transaction

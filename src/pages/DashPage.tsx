@@ -10,7 +10,7 @@ import { TransactionPieChart } from "@/components/PieChart";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { DateRangeFilter } from "@/components/DateRangeFilter";
-import { filterTransactionsByDate } from "@/utils/dateFilter";
+import { filterTransactionsByDate, parseTransactionDate } from "@/utils/dateFilter";
 import type { DateFilterOption, DateRange } from "@/utils/dateFilter";
 import { TrendingUp, TrendingDown, Wallet, Plus, Receipt, CheckCircle2, AlertTriangle, CreditCard } from "lucide-react";
 import { Transaction } from "@/components/Dashboard";
@@ -58,7 +58,7 @@ const DashPage = () => {
       const mapped = (data || []).map(t => ({
         ...t,
         amount: Number(t.amount),
-        date: t.date || t.created_at,
+        date: (t as { transaction_date?: string }).transaction_date ?? t.date ?? t.created_at,
         type: t.type as "income" | "expense",
         payment_method: t.payment_method,
         credit_card_id: t.credit_card_id,
@@ -175,7 +175,8 @@ const DashPage = () => {
     return transactions
       .filter((t) => {
         if (!balanceCutoff) return true;
-        const txDate = new Date(String(t.date) + "T12:00:00");
+        const txDate = parseTransactionDate(t.date as string);
+        if (Number.isNaN(txDate.getTime())) return false;
         return txDate <= balanceCutoff;
       })
       .filter(t => t.category !== "transferencia")
@@ -219,7 +220,8 @@ const DashPage = () => {
 
       const cardTxs = transactions.filter(t => {
         if (t.credit_card_id !== card.id || t.payment_method !== 'credit') return false;
-        const txDate = new Date(String(t.date) + 'T12:00:00');
+        const txDate = parseTransactionDate(t.date as string);
+        if (Number.isNaN(txDate.getTime())) return false;
         return txDate >= cycleStart && txDate <= cycleEnd;
       });
 

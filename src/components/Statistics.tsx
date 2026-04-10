@@ -4,7 +4,7 @@ import { BarChart3, TrendingUp, TrendingDown, DollarSign, PieChart, Wallet, Arro
 import { BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Tooltip, Legend, CartesianGrid } from "recharts";
 import { Transaction } from "./Dashboard";
 import { useMemo } from "react";
-import type { DateFilterOption, DateRange } from "@/utils/dateFilter";
+import { parseTransactionDate, type DateFilterOption, type DateRange } from "@/utils/dateFilter";
 
 interface StatisticsProps {
   transactions: Transaction[];
@@ -88,7 +88,8 @@ export const Statistics = ({
     const balance = sourceForBalance
       .filter((t) => {
         if (!balanceCutoff) return true;
-        const txDate = new Date(String(t.date) + "T12:00:00");
+        const txDate = parseTransactionDate(t.date as string);
+        if (Number.isNaN(txDate.getTime())) return false;
         return txDate <= balanceCutoff;
       })
       .filter(t => t.category !== "transferencia")

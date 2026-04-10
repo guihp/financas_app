@@ -3,6 +3,7 @@ import { useOutletContext } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { User } from "@supabase/supabase-js";
 import { useConnectedUserIds } from "@/hooks/useConnectedUserIds";
+import { parseTransactionDate } from "@/utils/dateFilter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -176,7 +177,7 @@ const CartoesPage = () => {
 
                 const total = (data || []).reduce((sum: number, t: any) => {
                     if (t.credit_card_id !== card.id) return sum;
-                    const txDate = new Date(String(t.date) + "T12:00:00");
+                    const txDate = parseTransactionDate(String(t.date));
                     if (txDate < cycleStart || txDate > cycleEnd) return sum;
                     return sum + Number(t.amount);
                 }, 0);
