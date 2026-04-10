@@ -1,4 +1,5 @@
 import { useCallback, useState } from "react";
+import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -60,6 +61,11 @@ async function callEdgeJson(
 function formatResult(r: { ok: boolean; status: number; data: unknown }): string {
   return JSON.stringify({ httpStatus: r.status, ok: r.ok, body: r.data }, null, 2);
 }
+
+/** Rótulos legíveis no fundo escuro da página de API */
+const LB = "text-sm font-medium !text-slate-100";
+const LBX = "text-xs font-medium !text-slate-100";
+const LBM = "text-xs font-medium !text-slate-400";
 
 export const ApiTestForm = () => {
   const { toast } = useToast();
@@ -151,8 +157,15 @@ export const ApiTestForm = () => {
   const [apStatus, setApStatus] = useState("");
 
   return (
-    <div className="space-y-4 w-full">
-      <div className="rounded-md border border-slate-800 bg-slate-950/50 p-3 text-xs text-slate-400">
+    <div
+      className={cn(
+        "space-y-4 w-full text-slate-200",
+        "[&_input]:border-slate-600 [&_input]:bg-slate-950/90 [&_input]:text-slate-100 [&_input]:placeholder:text-slate-500",
+        "[&_textarea]:border-slate-600 [&_textarea]:bg-slate-950/90 [&_textarea]:text-slate-100 [&_textarea]:placeholder:text-slate-500",
+        "[&_button[role=combobox]]:border-slate-600 [&_button[role=combobox]]:bg-slate-950/90 [&_button[role=combobox]]:text-slate-100",
+      )}
+    >
+      <div className="rounded-md border border-slate-800 bg-slate-950/50 p-3 text-xs text-slate-300">
         <p>
           Usa a sessão do app quando você está logado (JWT). Fora da sessão, usa a chave anônima — funções com{" "}
           <code className="text-slate-300">verify_jwt</code> podem falhar sem login.
@@ -161,23 +174,41 @@ export const ApiTestForm = () => {
 
       <Tabs defaultValue="user" className="w-full">
         <ScrollArea className="w-full pb-2">
-          <TabsList className="inline-flex h-auto min-h-10 w-max flex-wrap gap-1 bg-slate-900 p-1">
-            <TabsTrigger value="user" className="text-xs shrink-0">
+          <TabsList className="inline-flex h-auto min-h-10 w-max flex-wrap gap-1 border border-slate-700 bg-slate-800/95 p-1 text-slate-300">
+            <TabsTrigger
+              value="user"
+              className="text-xs shrink-0 text-slate-400 data-[state=active]:bg-slate-700 data-[state=active]:text-white data-[state=active]:shadow-none"
+            >
               Usuário / categorias
             </TabsTrigger>
-            <TabsTrigger value="tx" className="text-xs shrink-0">
+            <TabsTrigger
+              value="tx"
+              className="text-xs shrink-0 text-slate-400 data-[state=active]:bg-slate-700 data-[state=active]:text-white data-[state=active]:shadow-none"
+            >
               Transações
             </TabsTrigger>
-            <TabsTrigger value="accounts" className="text-xs shrink-0">
+            <TabsTrigger
+              value="accounts"
+              className="text-xs shrink-0 text-slate-400 data-[state=active]:bg-slate-700 data-[state=active]:text-white data-[state=active]:shadow-none"
+            >
               Contas
             </TabsTrigger>
-            <TabsTrigger value="categories" className="text-xs shrink-0">
+            <TabsTrigger
+              value="categories"
+              className="text-xs shrink-0 text-slate-400 data-[state=active]:bg-slate-700 data-[state=active]:text-white data-[state=active]:shadow-none"
+            >
               Categorias (usuário)
             </TabsTrigger>
-            <TabsTrigger value="shopping" className="text-xs shrink-0">
+            <TabsTrigger
+              value="shopping"
+              className="text-xs shrink-0 text-slate-400 data-[state=active]:bg-slate-700 data-[state=active]:text-white data-[state=active]:shadow-none"
+            >
               Lista / orçamento
             </TabsTrigger>
-            <TabsTrigger value="appointments" className="text-xs shrink-0">
+            <TabsTrigger
+              value="appointments"
+              className="text-xs shrink-0 text-slate-400 data-[state=active]:bg-slate-700 data-[state=active]:text-white data-[state=active]:shadow-none"
+            >
               Agendamentos
             </TabsTrigger>
           </TabsList>
@@ -185,9 +216,10 @@ export const ApiTestForm = () => {
 
         {/* —— Usuário —— */}
         <TabsContent value="user" className="space-y-4 mt-4">
+          <p className="text-sm font-semibold text-slate-50">Usuário e categorias globais</p>
           <div className="grid sm:grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label>Telefone</Label>
+              <Label className={LB}>Telefone</Label>
               <Input
                 placeholder="5511999999999"
                 value={phone}
@@ -234,7 +266,7 @@ export const ApiTestForm = () => {
             </Button>
           </div>
           <div className="max-w-xs space-y-2">
-            <Label className="text-xs text-slate-500">Filtro type (opcional)</Label>
+            <Label className={LBM}>Filtro type (opcional)</Label>
             <Select value={getCatType || "__all"} onValueChange={(v) => setGetCatType(v === "__all" ? "" : v)}>
               <SelectTrigger>
                 <SelectValue placeholder="Todas" />
@@ -251,15 +283,15 @@ export const ApiTestForm = () => {
         {/* —— Transações —— */}
         <TabsContent value="tx" className="space-y-6 mt-4">
           <div className="space-y-2">
-            <Label className="text-xs text-slate-500">Telefone (todas as ações abaixo)</Label>
+            <Label className={LB}>Telefone (todas as ações abaixo)</Label>
             <Input placeholder="5511999999999" value={phone} onChange={(e) => setPhone(e.target.value)} />
           </div>
 
           <div className="rounded-lg border border-slate-800 p-4 space-y-3">
-            <p className="text-sm font-medium text-slate-200">Extrato — GET get-transactions-by-phone</p>
+            <p className="text-sm font-semibold text-slate-50">Extrato — GET get-transactions-by-phone</p>
             <div className="grid sm:grid-cols-2 gap-3">
               <div className="space-y-2">
-                <Label className="text-xs">Filtro banco (nome ou UUID, opcional)</Label>
+                <Label className={LBX}>Filtro banco (nome ou UUID, opcional)</Label>
                 <Input value={txBank} onChange={(e) => setTxBank(e.target.value)} placeholder="Nubank ou UUID" />
               </div>
             </div>
@@ -284,10 +316,10 @@ export const ApiTestForm = () => {
           </div>
 
           <div className="rounded-lg border border-slate-800 p-4 space-y-3">
-            <p className="text-sm font-medium text-slate-200">POST add-transaction-by-phone</p>
+            <p className="text-sm font-semibold text-slate-50">POST add-transaction-by-phone</p>
             <div className="grid sm:grid-cols-2 gap-3">
               <div className="space-y-2">
-                <Label className="text-xs">Tipo</Label>
+                <Label className={LBX}>Tipo</Label>
                 <Select value={addTx.type} onValueChange={(v) => setAddTx({ ...addTx, type: v })}>
                   <SelectTrigger>
                     <SelectValue />
@@ -299,7 +331,7 @@ export const ApiTestForm = () => {
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label className="text-xs">Valor</Label>
+                <Label className={LBX}>Valor</Label>
                 <Input
                   type="number"
                   step="0.01"
@@ -308,7 +340,7 @@ export const ApiTestForm = () => {
                 />
               </div>
               <div className="space-y-2 sm:col-span-2">
-                <Label className="text-xs">Descrição (opcional)</Label>
+                <Label className={LBX}>Descrição (opcional)</Label>
                 <Textarea
                   rows={2}
                   value={addTx.description}
@@ -316,7 +348,7 @@ export const ApiTestForm = () => {
                 />
               </div>
               <div className="space-y-2">
-                <Label className="text-xs">Categoria (slug)</Label>
+                <Label className={LBX}>Categoria (slug)</Label>
                 <Input
                   value={addTx.category}
                   onChange={(e) => setAddTx({ ...addTx, category: e.target.value })}
@@ -324,7 +356,7 @@ export const ApiTestForm = () => {
                 />
               </div>
               <div className="space-y-2">
-                <Label className="text-xs">Data (YYYY-MM-DD)</Label>
+                <Label className={LBX}>Data (YYYY-MM-DD)</Label>
                 <Input
                   type="date"
                   value={addTx.date}
@@ -332,7 +364,7 @@ export const ApiTestForm = () => {
                 />
               </div>
               <div className="space-y-2">
-                <Label className="text-xs">payment_method (despesa)</Label>
+                <Label className={LBX}>payment_method (despesa)</Label>
                 <Select
                   value={addTx.payment_method}
                   onValueChange={(v) => setAddTx({ ...addTx, payment_method: v })}
@@ -349,21 +381,21 @@ export const ApiTestForm = () => {
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label className="text-xs">bank_account_id (opcional)</Label>
+                <Label className={LBX}>bank_account_id (opcional)</Label>
                 <Input
                   value={addTx.bank_account_id}
                   onChange={(e) => setAddTx({ ...addTx, bank_account_id: e.target.value })}
                 />
               </div>
               <div className="space-y-2">
-                <Label className="text-xs">credit_card_id (opcional)</Label>
+                <Label className={LBX}>credit_card_id (opcional)</Label>
                 <Input
                   value={addTx.credit_card_id}
                   onChange={(e) => setAddTx({ ...addTx, credit_card_id: e.target.value })}
                 />
               </div>
               <div className="space-y-2">
-                <Label className="text-xs">Parcelas (crédito, opcional)</Label>
+                <Label className={LBX}>Parcelas (crédito, opcional)</Label>
                 <Input
                   value={addTx.total_installments}
                   onChange={(e) => setAddTx({ ...addTx, total_installments: e.target.value })}
@@ -399,14 +431,14 @@ export const ApiTestForm = () => {
           </div>
 
           <div className="rounded-lg border border-slate-800 p-4 space-y-3">
-            <p className="text-sm font-medium text-slate-200">PUT update-transaction-by-phone</p>
+            <p className="text-sm font-semibold text-slate-50">PUT update-transaction-by-phone</p>
             <div className="grid sm:grid-cols-2 gap-3">
               <div className="space-y-2 sm:col-span-2">
-                <Label className="text-xs">transaction_id</Label>
+                <Label className={LBX}>transaction_id</Label>
                 <Input value={updTx.transaction_id} onChange={(e) => setUpdTx({ ...updTx, transaction_id: e.target.value })} />
               </div>
               <div className="space-y-2">
-                <Label className="text-xs">Novo valor (opcional)</Label>
+                <Label className={LBX}>Novo valor (opcional)</Label>
                 <Input
                   type="number"
                   step="0.01"
@@ -415,15 +447,15 @@ export const ApiTestForm = () => {
                 />
               </div>
               <div className="space-y-2">
-                <Label className="text-xs">Nova data (opcional)</Label>
+                <Label className={LBX}>Nova data (opcional)</Label>
                 <Input type="date" value={updTx.date} onChange={(e) => setUpdTx({ ...updTx, date: e.target.value })} />
               </div>
               <div className="space-y-2 sm:col-span-2">
-                <Label className="text-xs">Descrição (opcional)</Label>
+                <Label className={LBX}>Descrição (opcional)</Label>
                 <Input value={updTx.description} onChange={(e) => setUpdTx({ ...updTx, description: e.target.value })} />
               </div>
               <div className="space-y-2 sm:col-span-2">
-                <Label className="text-xs">Categoria (opcional)</Label>
+                <Label className={LBX}>Categoria (opcional)</Label>
                 <Input value={updTx.category} onChange={(e) => setUpdTx({ ...updTx, category: e.target.value })} />
               </div>
             </div>
@@ -449,9 +481,9 @@ export const ApiTestForm = () => {
           </div>
 
           <div className="rounded-lg border border-slate-800 p-4 space-y-3">
-            <p className="text-sm font-medium text-slate-200">POST cancel-transaction-by-phone</p>
+            <p className="text-sm font-semibold text-slate-50">POST cancel-transaction-by-phone</p>
             <div className="space-y-2 max-w-md">
-              <Label className="text-xs">transaction_id</Label>
+              <Label className={LBX}>transaction_id</Label>
               <Input value={cancelTxId} onChange={(e) => setCancelTxId(e.target.value)} />
             </div>
             <Button
@@ -476,11 +508,12 @@ export const ApiTestForm = () => {
 
         {/* —— Contas —— */}
         <TabsContent value="accounts" className="space-y-4 mt-4">
+          <p className="text-sm font-semibold text-slate-50">GET manage-accounts-by-phone</p>
           <div className="space-y-2">
-            <Label>Telefone</Label>
+            <Label className={LB}>Telefone</Label>
             <Input placeholder="5511999999999" value={phone} onChange={(e) => setPhone(e.target.value)} />
           </div>
-          <p className="text-xs text-slate-500">
+          <p className="text-xs text-slate-400 leading-relaxed">
             Lista bancos e cartões. Para criar banco/cartão, pagar fatura etc., use o JSON no corpo conforme a documentação (POST manage-accounts-by-phone).
           </p>
           <Button
@@ -504,13 +537,14 @@ export const ApiTestForm = () => {
 
         {/* —— Categorias do usuário —— */}
         <TabsContent value="categories" className="space-y-4 mt-4">
+          <p className="text-sm font-semibold text-slate-50">POST manage-categories</p>
           <div className="space-y-2">
-            <Label>Telefone</Label>
+            <Label className={LB}>Telefone</Label>
             <Input placeholder="5511999999999" value={phone} onChange={(e) => setPhone(e.target.value)} />
           </div>
           <div className="grid sm:grid-cols-2 gap-3">
             <div className="space-y-2">
-              <Label className="text-xs">action</Label>
+              <Label className={LBX}>action</Label>
               <Select value={mcAction} onValueChange={setMcAction}>
                 <SelectTrigger>
                   <SelectValue />
@@ -523,7 +557,7 @@ export const ApiTestForm = () => {
               </Select>
             </div>
             <div className="space-y-2">
-              <Label className="text-xs">type</Label>
+              <Label className={LBX}>type</Label>
               <Select value={mcType} onValueChange={(v) => setMcType(v)}>
                 <SelectTrigger>
                   <SelectValue />
@@ -536,28 +570,28 @@ export const ApiTestForm = () => {
             </div>
             {(mcAction === "create_category" || mcAction === "create_subcategory") && (
               <div className="space-y-2 sm:col-span-2">
-                <Label className="text-xs">name</Label>
+                <Label className={LBX}>name</Label>
                 <Input value={mcName} onChange={(e) => setMcName(e.target.value)} />
               </div>
             )}
             {mcAction === "create_subcategory" && (
               <div className="space-y-2 sm:col-span-2">
-                <Label className="text-xs">parent_name</Label>
+                <Label className={LBX}>parent_name</Label>
                 <Input value={mcParent} onChange={(e) => setMcParent(e.target.value)} />
               </div>
             )}
             {mcAction === "edit_category" && (
               <>
                 <div className="space-y-2">
-                  <Label className="text-xs">old_name</Label>
+                  <Label className={LBX}>old_name</Label>
                   <Input value={mcOldName} onChange={(e) => setMcOldName(e.target.value)} />
                 </div>
                 <div className="space-y-2">
-                  <Label className="text-xs">new_name</Label>
+                  <Label className={LBX}>new_name</Label>
                   <Input value={mcNewName} onChange={(e) => setMcNewName(e.target.value)} />
                 </div>
                 <div className="space-y-2 sm:col-span-2">
-                  <Label className="text-xs">parent_name (opcional, para mover)</Label>
+                  <Label className={LBX}>parent_name (opcional, para mover)</Label>
                   <Input value={mcParent} onChange={(e) => setMcParent(e.target.value)} />
                 </div>
               </>
@@ -602,13 +636,13 @@ export const ApiTestForm = () => {
             Exige JWT válido (<code className="text-amber-100">verify_jwt: true</code>). Faça login no app antes de testar.
           </div>
           <div className="space-y-2">
-            <Label className="text-xs">Telefone (incluído no JSON se faltar)</Label>
+            <Label className={LB}>Telefone (incluído no JSON se faltar)</Label>
             <Input placeholder="5511999999999" value={phone} onChange={(e) => setPhone(e.target.value)} />
           </div>
 
           <div className="rounded-lg border border-slate-800 bg-slate-900/30 p-4 space-y-3">
-            <p className="text-sm font-medium text-slate-100">GET shopping-by-phone (só consultas)</p>
-            <p className="text-xs text-slate-500">Ações permitidas na URL: list_lists ou get_list.</p>
+            <p className="text-sm font-semibold text-slate-50">GET shopping-by-phone (só consultas)</p>
+            <p className="text-xs text-slate-400">Ações permitidas na URL: list_lists ou get_list.</p>
             <div className="flex flex-wrap items-center gap-4">
               <div className="flex items-center gap-2">
                 <Checkbox
@@ -616,13 +650,13 @@ export const ApiTestForm = () => {
                   checked={shopListActiveOnly}
                   onCheckedChange={(c) => setShopListActiveOnly(c === true)}
                 />
-                <Label htmlFor="shop-active-only" className="text-xs text-slate-300 font-normal cursor-pointer">
+                <Label htmlFor="shop-active-only" className={cn(LBX, "font-normal cursor-pointer")}>
                   active_only (list_lists)
                 </Label>
               </div>
             </div>
             <div className="space-y-2 max-w-md">
-              <Label className="text-xs text-slate-400">list_id (para get_list)</Label>
+              <Label className={LBM}>list_id (para get_list)</Label>
               <Input
                 className="font-mono text-xs"
                 value={shopListId}
@@ -679,7 +713,7 @@ export const ApiTestForm = () => {
           </div>
 
           <div className="space-y-2">
-            <Label className="text-xs text-slate-300">shopping-by-phone — POST / PUT (JSON + action)</Label>
+            <Label className={LB}>shopping-by-phone — POST / PUT (JSON + action)</Label>
             <Select value={shopAction} onValueChange={setShopAction}>
               <SelectTrigger>
                 <SelectValue />
@@ -750,10 +784,10 @@ export const ApiTestForm = () => {
           </div>
 
           <div className="space-y-2 border-t border-slate-800 pt-4">
-            <p className="text-sm font-medium text-slate-100">GET / POST / PUT budgets-by-phone</p>
+            <p className="text-sm font-semibold text-slate-50">GET / POST / PUT budgets-by-phone</p>
             <div className="grid sm:grid-cols-2 gap-3 max-w-lg">
               <div className="space-y-2">
-                <Label className="text-xs text-slate-400">month_year (GET list, opcional)</Label>
+                <Label className={LBM}>month_year (GET list, opcional)</Label>
                 <Input
                   className="font-mono text-xs"
                   placeholder="2026-04"
@@ -785,7 +819,7 @@ export const ApiTestForm = () => {
             </Button>
             <div className="grid sm:grid-cols-2 gap-3 max-w-xl pt-2 border-t border-slate-800/80">
               <div className="space-y-2">
-                <Label className="text-xs text-slate-400">category (PUT upsert)</Label>
+                <Label className={LBM}>category (PUT upsert)</Label>
                 <Input
                   className="text-xs"
                   value={budPutCategory}
@@ -794,7 +828,7 @@ export const ApiTestForm = () => {
                 />
               </div>
               <div className="space-y-2">
-                <Label className="text-xs text-slate-400">amount</Label>
+                <Label className={LBM}>amount</Label>
                 <Input
                   type="number"
                   step="0.01"
@@ -833,8 +867,8 @@ export const ApiTestForm = () => {
             >
               PUT upsert teto
             </Button>
-            <Label className="text-xs text-slate-500 block pt-2">POST com JSON (list / upsert / delete)</Label>
-            <Label className="text-xs text-slate-300">action</Label>
+            <p className="pt-2 text-xs font-medium text-slate-400">POST com JSON (list / upsert / delete)</p>
+            <Label className={LBX}>action</Label>
             <Select value={budAction} onValueChange={setBudAction}>
               <SelectTrigger>
                 <SelectValue />
@@ -879,27 +913,27 @@ export const ApiTestForm = () => {
         {/* —— Agendamentos —— */}
         <TabsContent value="appointments" className="space-y-6 mt-4">
           <div className="space-y-2">
-            <Label>Telefone</Label>
+            <Label className={LB}>Telefone</Label>
             <Input placeholder="5511999999999" value={phone} onChange={(e) => setPhone(e.target.value)} />
           </div>
 
           <div className="rounded-lg border border-slate-800 p-4 space-y-3">
-            <p className="text-sm font-medium text-slate-100">POST add-appointment</p>
+            <p className="text-sm font-semibold text-slate-50">POST add-appointment</p>
             <div className="grid sm:grid-cols-2 gap-3">
               <div className="space-y-2 sm:col-span-2">
-                <Label className="text-xs">title</Label>
+                <Label className={LBX}>title</Label>
                 <Input value={apTitle} onChange={(e) => setApTitle(e.target.value)} />
               </div>
               <div className="space-y-2 sm:col-span-2">
-                <Label className="text-xs">description (opcional)</Label>
+                <Label className={LBX}>description (opcional)</Label>
                 <Textarea rows={2} value={apDesc} onChange={(e) => setApDesc(e.target.value)} />
               </div>
               <div className="space-y-2">
-                <Label className="text-xs">date</Label>
+                <Label className={LBX}>date</Label>
                 <Input type="date" value={apDate} onChange={(e) => setApDate(e.target.value)} />
               </div>
               <div className="space-y-2">
-                <Label className="text-xs">time (opcional)</Label>
+                <Label className={LBX}>time (opcional)</Label>
                 <Input value={apTime} onChange={(e) => setApTime(e.target.value)} placeholder="14:30" />
               </div>
             </div>
@@ -928,7 +962,7 @@ export const ApiTestForm = () => {
           </div>
 
           <div className="rounded-lg border border-slate-800 p-4 space-y-3">
-            <p className="text-sm font-medium text-slate-100">GET get-appointments-by-phone</p>
+            <p className="text-sm font-semibold text-slate-50">GET get-appointments-by-phone</p>
             <Button
               type="button"
               size="sm"
@@ -950,26 +984,26 @@ export const ApiTestForm = () => {
           </div>
 
           <div className="rounded-lg border border-slate-800 p-4 space-y-3">
-            <p className="text-sm font-medium text-slate-100">PUT update-appointment-by-phone</p>
+            <p className="text-sm font-semibold text-slate-50">PUT update-appointment-by-phone</p>
             <div className="grid sm:grid-cols-2 gap-3">
               <div className="space-y-2 sm:col-span-2">
-                <Label className="text-xs">appointment_id</Label>
+                <Label className={LBX}>appointment_id</Label>
                 <Input value={apId} onChange={(e) => setApId(e.target.value)} />
               </div>
               <div className="space-y-2 sm:col-span-2">
-                <Label className="text-xs">title (opcional)</Label>
+                <Label className={LBX}>title (opcional)</Label>
                 <Input value={apUpdTitle} onChange={(e) => setApUpdTitle(e.target.value)} />
               </div>
               <div className="space-y-2">
-                <Label className="text-xs">date (opcional)</Label>
+                <Label className={LBX}>date (opcional)</Label>
                 <Input type="date" value={apDate} onChange={(e) => setApDate(e.target.value)} />
               </div>
               <div className="space-y-2">
-                <Label className="text-xs">time (opcional)</Label>
+                <Label className={LBX}>time (opcional)</Label>
                 <Input value={apTime} onChange={(e) => setApTime(e.target.value)} />
               </div>
               <div className="space-y-2">
-                <Label className="text-xs">status (opcional)</Label>
+                <Label className={LBX}>status (opcional)</Label>
                 <Input value={apStatus} onChange={(e) => setApStatus(e.target.value)} placeholder="pending / done" />
               </div>
             </div>
@@ -977,6 +1011,7 @@ export const ApiTestForm = () => {
               type="button"
               size="sm"
               variant="outline"
+              className="border-slate-500 text-slate-100 hover:bg-slate-800"
               disabled={loading || !phone.trim() || !apId.trim()}
               onClick={() => {
                 const body: Record<string, unknown> = {
@@ -996,9 +1031,9 @@ export const ApiTestForm = () => {
           </div>
 
           <div className="rounded-lg border border-slate-800 p-4 space-y-3">
-            <p className="text-sm font-medium text-slate-100">DELETE delete-appointment</p>
+            <p className="text-sm font-semibold text-slate-50">DELETE delete-appointment</p>
             <div className="space-y-2 max-w-md">
-              <Label className="text-xs">appointment_id</Label>
+              <Label className={LBX}>appointment_id</Label>
               <Input value={apId} onChange={(e) => setApId(e.target.value)} />
             </div>
             <Button
@@ -1024,7 +1059,7 @@ export const ApiTestForm = () => {
       </Tabs>
 
       <div className="space-y-2">
-        <Label className="text-xs text-slate-500">Última resposta</Label>
+        <Label className={cn(LB, "!text-slate-300")}>Última resposta</Label>
         <ScrollArea className="h-[220px] rounded-md border border-slate-800 bg-slate-950 p-3">
           <pre className="text-[11px] font-mono text-slate-300 whitespace-pre-wrap break-all">
             {result || "Nenhuma chamada ainda."}

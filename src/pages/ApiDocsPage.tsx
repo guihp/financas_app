@@ -1412,12 +1412,12 @@ export default function ApiDocsPage() {
 
                         <section id="test-console" className="scroll-mt-24">
                             <h2 className="text-lg font-semibold text-white mb-2">Console de teste</h2>
-                            <p className="text-sm text-slate-500 mb-4">
+                            <p className="text-sm text-slate-400 mb-4 leading-relaxed">
                                 Experimente as Edge Functions com a sessão do app (JWT) ou a chave anônima quando a função permitir.
                                 Abas: usuário e categorias globais, transações, contas, categorias do usuário, lista de compras (GET/POST/PUT) e orçamentos (GET/PUT + POST JSON), agendamentos.
                             </p>
-                            <Card className="bg-slate-900/40 border-slate-800">
-                                <CardContent className="pt-6">
+                            <Card className="border-slate-700 bg-slate-900/70 text-slate-200 shadow-md">
+                                <CardContent className="pt-6 text-slate-200">
                                     <ApiTestForm />
                                 </CardContent>
                             </Card>
