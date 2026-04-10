@@ -1,6 +1,6 @@
 import { ApiTestForm } from "@/components/ApiTestForm";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ChevronLeft, Copy, Check, ChevronDown, ChevronUp, AlertTriangle, Info, Zap, BookOpen, Search } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useState, useMemo } from "react";
@@ -73,7 +73,7 @@ const EndpointCard = ({ ep }: { ep: Endpoint }) => {
         GET: "bg-blue-600 hover:bg-blue-700",
         POST: "bg-green-600 hover:bg-green-700",
         PUT: "bg-orange-600 hover:bg-orange-700",
-        DELETE: "bg-red-600 hover:bg-red-700"
+        DELETE: "bg-red-600 hover:bg-red-700",
     };
 
     return (
@@ -700,7 +700,13 @@ MÉTODOS DE PAGAMENTO:
 REGRAS:
 • credit → envie credit_card_id (NÃO bank_account_id)
 • outros → envie bank_account_id (NÃO credit_card_id)
-• Formato de data: YYYY-MM-DD`,
+• Formato de data: YYYY-MM-DD
+
+ORÇAMENTO (GUARDA-COSTAS):
+• Se existir teto na tabela budgets para o mesmo mês (month_year = YYYY-MM) e categoria da despesa, a resposta inclui budget_alert.
+• budget_alert = null quando não há teto configurado para aquela categoria no mês.
+• status: "ok" | "warning" (≥ 85% do teto) | "danger" (≥ 100%).
+• O app web também avisa ao lançar transação pelo FAB; a API por telefone segue a mesma lógica de percentual.`,
         params: [
             { name: "phone", type: "string", required: true, description: "Telefone do usuário." },
             { name: "type", type: "string", required: true, description: "Tipo da transação.", values: ["income", "expense"] },
@@ -775,23 +781,126 @@ curl -X POST "${BASE}/add-transaction-by-phone" \\
   }'`,
         responseExample: `{
   "success": true,
-  "transaction": { "id": "uuid", "type": "expense", "amount": 85.90, "date": "2026-03-10" },
+  "message": "Transação criada com sucesso!",
+  "transaction_id": "uuid",
   "budget_alert": {
     "status": "warning",
     "percentage": 85.9,
     "message": "⚠️ Atenção! Você gastou 86% do seu teto de supermercado.",
     "limit": 100,
     "total_spent": 85.90
-  }
+  },
+  "transaction_url": "https://…/rest/v1/transactions?id=in.(uuid)",
+  "data": { "id": "uuid", "type": "expense", "amount": 85.90, "date": "2026-03-10" }
 }`,
         errors: [
-            { code: 404, message: "Usuário não encontrado", cause: "Telefone incorreto.", fix: "Confirme com /get-user-by-phone." },
-            { code: 400, message: "Campos obrigatórios faltando", cause: "Faltou type, amount ou category.", fix: "Envie: phone, type, amount, category, payment_method." },
-            { code: 400, message: "Método de pagamento inválido", cause: "Valor não aceito.", fix: "Use: debit, pix, credit, boleto ou transfer." },
-            { code: 400, message: "credit_card_id é obrigatório", cause: "payment_method='credit' sem credit_card_id.", fix: "Obtenha via /manage-accounts-by-phone." },
-            { code: 400, message: "bank_account_id é obrigatório", cause: "debit/pix/boleto/transfer sem bank_account_id.", fix: "Obtenha via /manage-accounts-by-phone." },
+            { code: 404, message: "USER_NOT_FOUND", cause: "Telefone sem usuário vinculado.", fix: "Confirme com /get-user-by-phone." },
+            { code: 400, message: "MISSING_FIELDS / INVALID_TYPE / INVALID_AMOUNT", cause: "JSON incompleto ou valores inválidos.", fix: "Veja error.hint no corpo da resposta." },
+            { code: 400, message: "NO_BANK_ACCOUNT / NO_CREDIT_CARD", cause: "Sem conta ou cartão padrão para o método.", fix: "Cadastre no app ou envie bank_account_id / credit_card_id." },
+            { code: 400, message: "INVALID_PAYMENT_METHOD", cause: "payment_method não aceito para despesa.", fix: "Use debit, pix, credit ou boleto." },
+            { code: 500, message: "TRANSACTION_INSERT_FAILED", cause: "Falha ao gravar no banco.", fix: "Verifique logs da Edge Function no Supabase." },
         ],
-        tips: "💡 Para receitas, payment_method é opcional. Transferências: SEMPRE type='expense', category='transferencia', payment_method='transfer'.",
+        tips: "Receitas: payment_method é opcional. Transferências: type expense, category transferencia, payment_method transfer. Lista de compras: POST /shopping-by-phone. Tetos (Guarda-costas): POST /budgets-by-phone ou app web; ao lançar despesa, budget_alert reflete o teto do mês.",
+    },
+
+    // ── 10B. SHOPPING LISTS ─────────────────
+    {
+        method: "POST",
+        path: "/shopping-by-phone",
+        summary: "Lista de compras: criar lista, itens, consultar e finalizar com lançamento em supermercado.",
+        description: `Rota única POST. Envie sempre phone e action.
+
+AÇÕES:
+• list_lists — Lista do usuário. Opcional: active_only (boolean).
+• create_list — name (obrigatório), budget (opcional, número ≥ 0).
+• get_list — list_id: retorna lista + itens.
+• add_item — list_id, name, category. Opcionais: quantity, unit_type (un|kg), weight_per_unit, price, require_price (padrão true).
+• update_item — item_id e campos a alterar (name, category, quantity, unit_type, weight_per_unit, price, checked, require_price).
+• delete_item — item_id.
+• delete_list — list_id (remove itens em cascata).
+• finalize_list — list_id, payment_method: debit | pix | credit | boleto | cash. Opcional: amount; se omitido, soma apenas itens com checked=true (mesma regra do app). Opcional: bank_account_id, credit_card_id (ou uso do primeiro cadastrado, exceto cash).
+
+Respostas de sucesso e erro seguem o contrato global (success + error.code).`,
+        params: [
+            { name: "phone", type: "string", required: true, description: "Telefone do usuário." },
+            { name: "action", type: "string", required: true, description: "Uma das ações listadas acima." },
+            { name: "…", type: "varia", required: false, description: "Demais campos dependem da action (list_id, item_id, name, category, etc.)." },
+        ],
+        curlCommand: `# Listar listas ativas
+curl -X POST "${BASE}/shopping-by-phone" \\
+  -H "Authorization: Bearer <SUPABASE_ANON_KEY>" \\
+  -H "Content-Type: application/json" \\
+  -d '{"phone":"5511999999999","action":"list_lists","active_only":true}'
+
+# Criar lista e adicionar item
+curl -X POST "${BASE}/shopping-by-phone" \\
+  -H "Authorization: Bearer <SUPABASE_ANON_KEY>" \\
+  -H "Content-Type: application/json" \\
+  -d '{"phone":"5511999999999","action":"create_list","name":"Compras semana","budget":300}'
+
+# Finalizar (gera transação categoria supermercado)
+curl -X POST "${BASE}/shopping-by-phone" \\
+  -H "Authorization: Bearer <SUPABASE_ANON_KEY>" \\
+  -H "Content-Type: application/json" \\
+  -d '{"phone":"5511999999999","action":"finalize_list","list_id":"<UUID>","payment_method":"debit","amount":127.5}'`,
+        responseExample: `{
+  "success": true,
+  "message": "Lista finalizada e transação criada.",
+  "list_id": "uuid",
+  "transaction_id": "uuid",
+  "final_value": 127.5,
+  "payment_method": "debit"
+}`,
+        errors: [
+            { code: 404, message: "USER_NOT_FOUND / LIST_NOT_FOUND", cause: "Telefone sem cadastro ou list_id de outro usuário.", fix: "Confirme phone e IDs com get_list." },
+            { code: 400, message: "LIST_FINISHED / VALIDATION_ERROR", cause: "Lista já encerrada ou campos faltando.", fix: "Use create_list ou verifique action e corpo JSON." },
+            { code: 500, message: "TRANSACTION_INSERT_FAILED", cause: "Lista atualizada mas insert em transactions falhou.", fix: "Verifique logs; corrija dados e tente de novo." },
+        ],
+        tips: "Itens em kg: total parcial usa quantity × weight_per_unit × price. finalize_list com cash não exige conta ou cartão.",
+    },
+
+    // ── 10C. BUDGETS (GUARDA-COSTAS) ─────────
+    {
+        method: "POST",
+        path: "/budgets-by-phone",
+        summary: "Consultar, criar/atualizar e excluir tetos de gastos por categoria e mês (Guarda-costas).",
+        description: `Rota única POST com phone e action.
+
+• list — Retorna budgets do usuário. Opcional: month_year (YYYY-MM); padrão mês atual (servidor UTC).
+• upsert — category e amount (≥ 0). Opcional month_year. Se já existir categoria+mês, atualiza amount.
+• delete — Informe budget_id (uuid) OU category com month_year opcional.
+
+Erros comuns: DUPLICATE_BUDGET (409) em condição de corrida; USER_NOT_FOUND (404).`,
+        params: [
+            { name: "phone", type: "string", required: true, description: "Telefone do usuário." },
+            { name: "action", type: "string", required: true, description: "list | upsert | delete" },
+            { name: "month_year", type: "string", required: false, description: "YYYY-MM para list, upsert e delete por categoria." },
+            { name: "category", type: "string", required: false, description: "Obrigatório em upsert; em delete se não usar budget_id." },
+            { name: "amount", type: "number", required: false, description: "Obrigatório em upsert." },
+            { name: "budget_id", type: "uuid", required: false, description: "Para delete por id." },
+        ],
+        curlCommand: `# Listar tetos do mês
+curl -X POST "${BASE}/budgets-by-phone" \\
+  -H "Authorization: Bearer <SUPABASE_ANON_KEY>" \\
+  -H "Content-Type: application/json" \\
+  -d '{"phone":"5511999999999","action":"list","month_year":"2026-04"}'
+
+# Definir teto
+curl -X POST "${BASE}/budgets-by-phone" \\
+  -H "Authorization: Bearer <SUPABASE_ANON_KEY>" \\
+  -H "Content-Type: application/json" \\
+  -d '{"phone":"5511999999999","action":"upsert","category":"supermercado","amount":800,"month_year":"2026-04"}'`,
+        responseExample: `{
+  "success": true,
+  "month_year": "2026-04",
+  "budgets": [
+    { "id": "uuid", "category": "supermercado", "amount": 800, "month_year": "2026-04", "user_id": "uuid" }
+  ]
+}`,
+        errors: [
+            { code: 404, message: "USER_NOT_FOUND / BUDGET_NOT_FOUND", cause: "Telefone ou budget_id inválido.", fix: "Liste com action list." },
+            { code: 409, message: "DUPLICATE_BUDGET", cause: "Conflito de unicidade categoria+mês.", fix: "Chame upsert novamente (idempotente após primeiro insert)." },
+        ],
     },
 
     // ── 11. GET TRANSACTIONS ────────────────
@@ -998,6 +1107,40 @@ curl -X POST "${BASE}/add-appointment" \\
     },
 ];
 
+const SECTION_ORDER = [
+    "sec-user",
+    "sec-categories",
+    "sec-accounts",
+    "sec-transactions",
+    "sec-shopping",
+    "sec-budgets",
+    "sec-appointments",
+    "sec-other",
+] as const;
+
+const SECTION_TITLES: Record<string, string> = {
+    "sec-user": "Usuário",
+    "sec-categories": "Categorias",
+    "sec-accounts": "Contas e cartões",
+    "sec-transactions": "Transações",
+    "sec-shopping": "Lista de compras",
+    "sec-budgets": "Orçamentos (Guarda-costas)",
+    "sec-appointments": "Agendamentos",
+    "sec-other": "Outros",
+};
+
+function inferSectionId(path: string): string {
+    const p = path.toLowerCase();
+    if (p.includes("shopping")) return "sec-shopping";
+    if (p.includes("budget")) return "sec-budgets";
+    if (p.includes("get-user")) return "sec-user";
+    if (p.includes("categor")) return "sec-categories";
+    if (p.includes("account")) return "sec-accounts";
+    if (p.includes("appointment")) return "sec-appointments";
+    if (p.includes("transaction")) return "sec-transactions";
+    return "sec-other";
+}
+
 /* ─────────────────────────────────────────────
    MAIN PAGE COMPONENT
 ───────────────────────────────────────────── */
@@ -1016,164 +1159,210 @@ export default function ApiDocsPage() {
         );
     }, [searchTerm]);
 
+    const grouped = useMemo(() => {
+        const map = new Map<string, Endpoint[]>();
+        for (const ep of filtered) {
+            const sid = inferSectionId(ep.path);
+            if (!map.has(sid)) map.set(sid, []);
+            map.get(sid)!.push(ep);
+        }
+        return SECTION_ORDER
+            .filter((id) => map.has(id))
+            .map((id) => ({
+                id,
+                title: SECTION_TITLES[id] ?? id,
+                items: map.get(id)!,
+            }));
+    }, [filtered]);
+
     return (
-        <div className="min-h-screen bg-slate-950 text-slate-50 p-4 md:p-6 flex flex-col items-center">
-            {/* Top Header */}
-            <div className="w-full max-w-7xl mb-6">
-                <Button variant="outline" onClick={() => navigate(-1)} className="mb-4 text-slate-900">
+        <div className="min-h-screen bg-slate-950 text-slate-50">
+            <div className="max-w-6xl mx-auto px-4 md:px-6 py-8 md:py-10">
+                <Button variant="outline" onClick={() => navigate(-1)} className="mb-6 border-slate-600 text-slate-100 hover:bg-slate-800 hover:text-white">
                     <ChevronLeft className="mr-2 h-4 w-4" /> Voltar
                 </Button>
-                <div className="flex flex-col md:flex-row md:items-end justify-between border-b border-slate-800 pb-4">
-                    <div>
-                        <h1 className="text-3xl font-bold mb-2">Documentação da API <span className="text-blue-500">n8n / IA</span></h1>
-                        <p className="text-slate-400">Referência completa com parâmetros, exemplos de resposta e guia de resolução de erros.</p>
+
+                <header className="mb-10 pb-8 border-b border-slate-800/80">
+                    <p className="text-xs font-medium uppercase tracking-widest text-slate-500 mb-2">API pública · Edge Functions</p>
+                    <h1 className="text-3xl md:text-4xl font-semibold tracking-tight text-white mb-3">
+                        Documentação para integrações
+                    </h1>
+                    <p className="text-slate-400 text-sm md:text-base max-w-2xl leading-relaxed">
+                        Referência para automações (n8n, assistentes, scripts). Todas as rotas usam o header{" "}
+                        <code className="text-emerald-400/90 text-xs bg-slate-900 px-1.5 py-0.5 rounded border border-slate-700">Authorization: Bearer &lt;SUPABASE_ANON_KEY&gt;</code>
+                        {" "}e corpo JSON quando for POST/PUT/DELETE.
+                    </p>
+                    <div className="mt-6 flex flex-wrap items-center gap-2">
+                        <Badge variant="outline" className="border-slate-600 text-slate-300 font-mono text-[11px]">
+                            {endpoints.length} rotas documentadas
+                        </Badge>
+                        <Badge variant="outline" className="border-slate-600 text-slate-400 text-[11px]">
+                            Respostas JSON padronizadas
+                        </Badge>
                     </div>
-                    <Badge variant="outline" className="text-slate-400 border-slate-700 mt-2 md:mt-0 shrink-0">
-                        {endpoints.length} Endpoints
-                    </Badge>
-                </div>
-            </div>
+                    <div className="mt-6 rounded-lg border border-slate-800 bg-slate-900/50 p-4">
+                        <p className="text-[11px] uppercase tracking-wide text-slate-500 mb-1.5">Base URL</p>
+                        <code className="text-sm text-cyan-300/90 break-all font-mono">{BASE}</code>
+                    </div>
+                </header>
 
-            <div className="w-full max-w-7xl grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-                {/* Left Column: Guide + Test Console */}
-                <div className="lg:col-span-5 space-y-6 lg:sticky lg:top-6">
-                    {/* Quick Start */}
-                    <Card className="bg-slate-900 border-slate-800 text-slate-200 shadow-md">
-                        <CardHeader className="bg-slate-800/20 border-b border-slate-800/50 pb-4">
-                            <CardTitle className="text-xl text-foreground flex items-center gap-2"><Zap className="h-5 w-5 text-yellow-400" /> Quick Start</CardTitle>
-                            <CardDescription className="text-slate-400">Passo a passo para começar a usar a API</CardDescription>
-                        </CardHeader>
-                        <CardContent className="pt-4 space-y-3 text-sm">
-                            <div className="flex gap-3 items-start bg-slate-950 p-3 rounded-md border border-slate-800">
-                                <Badge className="bg-blue-600 text-white shrink-0">1</Badge>
-                                <div>
-                                    <p className="text-slate-200 font-medium">Obtenha o perfil do usuário</p>
-                                    <p className="text-xs text-slate-400 mt-0.5">Chame <code className="text-blue-400">/get-user-by-phone</code> com o telefone. Guarde o <code className="text-orange-400">user_id</code> retornado.</p>
-                                </div>
-                            </div>
-                            <div className="flex gap-3 items-start bg-slate-950 p-3 rounded-md border border-slate-800">
-                                <Badge className="bg-blue-600 text-white shrink-0">2</Badge>
-                                <div>
-                                    <p className="text-slate-200 font-medium">Descubra bancos e cartões</p>
-                                    <p className="text-xs text-slate-400 mt-0.5">Chame <code className="text-blue-400">/manage-accounts-by-phone</code> para obter os UUIDs de <code className="text-orange-400">bank_account_id</code> e <code className="text-orange-400">credit_card_id</code>.</p>
-                                </div>
-                            </div>
-                            <div className="flex gap-3 items-start bg-slate-950 p-3 rounded-md border border-slate-800">
-                                <Badge className="bg-blue-600 text-white shrink-0">3</Badge>
-                                <div>
-                                    <p className="text-slate-200 font-medium">Liste as categorias</p>
-                                    <p className="text-xs text-slate-400 mt-0.5">Chame <code className="text-blue-400">/manage-categories</code> com <code className="text-green-400">action: "list_categories"</code> para saber quais categorias o usuário tem.</p>
-                                </div>
-                            </div>
-                            <div className="flex gap-3 items-start bg-slate-950 p-3 rounded-md border border-slate-800">
-                                <Badge className="bg-green-600 text-white shrink-0">4</Badge>
-                                <div>
-                                    <p className="text-slate-200 font-medium">Crie transações, agendamentos, etc.</p>
-                                    <p className="text-xs text-slate-400 mt-0.5">Agora use os IDs obtidos para criar transações com <code className="text-blue-400">/add-transaction-by-phone</code> e agendamentos com <code className="text-blue-400">/add-appointment</code>.</p>
-                                </div>
-                            </div>
-                        </CardContent>
-                    </Card>
+                <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,200px)_1fr] gap-10 xl:gap-12">
+                    <aside className="xl:sticky xl:top-8 xl:self-start space-y-6 text-sm order-2 xl:order-1">
+                        <nav className="rounded-lg border border-slate-800 bg-slate-900/40 p-3">
+                            <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 px-2 mb-2">Nesta página</p>
+                            <ul className="space-y-0.5">
+                                <li>
+                                    <a href="#overview" className="block px-2 py-1.5 rounded-md text-slate-300 hover:bg-slate-800/80 hover:text-white transition-colors">
+                                        Visão geral
+                                    </a>
+                                </li>
+                                <li>
+                                    <a href="#errors" className="block px-2 py-1.5 rounded-md text-slate-300 hover:bg-slate-800/80 hover:text-white transition-colors">
+                                        Formato de erros
+                                    </a>
+                                </li>
+                                <li>
+                                    <a href="#test-console" className="block px-2 py-1.5 rounded-md text-slate-300 hover:bg-slate-800/80 hover:text-white transition-colors">
+                                        Console de teste
+                                    </a>
+                                </li>
+                                {grouped.map((g) => (
+                                    <li key={g.id}>
+                                        <a
+                                            href={`#${g.id}`}
+                                            className="block px-2 py-1.5 rounded-md text-slate-300 hover:bg-slate-800/80 hover:text-white transition-colors"
+                                        >
+                                            {g.title}
+                                        </a>
+                                    </li>
+                                ))}
+                            </ul>
+                        </nav>
 
-                    {/* IA Logic Guide */}
-                    <Card className="bg-slate-900 border-slate-800 text-slate-200 shadow-md">
-                        <CardHeader className="bg-slate-800/20 border-b border-slate-800/50 pb-4">
-                            <CardTitle className="text-xl text-foreground">Guia de Regras para IA</CardTitle>
-                            <CardDescription className="text-slate-400">Regras que a IA deve seguir ao processar comandos</CardDescription>
-                        </CardHeader>
-                        <CardContent className="space-y-3 pt-4 text-sm leading-relaxed">
-                            <div className="bg-slate-950 p-3 rounded-md border border-slate-800">
-                                <h3 className="font-semibold text-blue-400 mb-1">🔁 Transferências</h3>
-                                <p className="text-slate-300 text-xs">Sempre registre como <code className="text-orange-400">type: "expense"</code>, <code className="text-green-400">category: "transferencia"</code>, <code className="text-blue-400">payment_method: "transfer"</code>.</p>
-                            </div>
-                            <div className="bg-slate-950 p-3 rounded-md border border-slate-800">
-                                <h3 className="font-semibold text-blue-400 mb-1">📅 Despesas/Receitas Fixas</h3>
-                                <p className="text-slate-300 text-xs">Envie <code className="text-purple-400">is_fixed: true</code> + <code className="text-purple-400">fixed_months: 12</code>. Não faça loops — a API cria todos os meses automaticamente.</p>
-                            </div>
-                            <div className="bg-slate-950 p-3 rounded-md border border-slate-800">
-                                <h3 className="font-semibold text-blue-400 mb-1">💳 Métodos de Pagamento</h3>
-                                <p className="text-slate-300 text-xs">
-                                    <code className="text-green-400">debit</code> <code className="text-green-400">pix</code> <code className="text-green-400">credit</code> <code className="text-green-400">boleto</code> <code className="text-green-400">transfer</code><br />
-                                    <span className="text-slate-400 mt-1 block">credit → <code className="text-orange-400">credit_card_id</code> | outros → <code className="text-blue-400">bank_account_id</code></span>
-                                </p>
-                            </div>
-                            <div className="bg-slate-950 p-3 rounded-md border border-slate-800">
-                                <h3 className="font-semibold text-blue-400 mb-1">🆔 Identificação do Usuário</h3>
-                                <p className="text-slate-300 text-xs">
-                                    A API aceita <code className="text-orange-400">user_id</code> (UUID) OU <code className="text-blue-400">phone</code>.<br />
-                                    <span className="text-slate-400">Use sempre o user_id quando disponível — é mais rápido e confiável.</span>
-                                </p>
-                            </div>
-                        </CardContent>
-                    </Card>
+                        <Card className="bg-slate-900/60 border-slate-800">
+                            <CardHeader className="pb-2 pt-4 px-4">
+                                <CardTitle className="text-sm font-medium text-slate-200">Início rápido</CardTitle>
+                            </CardHeader>
+                            <CardContent className="px-4 pb-4 space-y-2 text-xs text-slate-400 leading-relaxed">
+                                <p><span className="text-slate-300 font-medium">1.</span> <code className="text-cyan-400/90">/get-user-by-phone</code> — confirme o telefone.</p>
+                                <p><span className="text-slate-300 font-medium">2.</span> <code className="text-cyan-400/90">/manage-accounts-by-phone</code> — UUIDs de banco e cartão.</p>
+                                <p><span className="text-slate-300 font-medium">3.</span> <code className="text-cyan-400/90">/manage-categories</code> — categorias do usuário.</p>
+                                <p><span className="text-slate-300 font-medium">4.</span> Transações, listas, tetos e agendamentos nas seções ao lado.</p>
+                            </CardContent>
+                        </Card>
+                    </aside>
 
-                    {/* Common Errors Reference */}
-                    <Card className="bg-slate-900 border-slate-800 shadow-md">
-                        <CardHeader className="bg-slate-800/20 border-b border-slate-800/50 pb-4">
-                            <CardTitle className="text-xl text-foreground flex items-center gap-2">
-                                <AlertTriangle className="h-5 w-5 text-yellow-400" /> Referência de Erros HTTP
-                            </CardTitle>
-                            <CardDescription className="text-slate-400">O que cada código de erro significa</CardDescription>
-                        </CardHeader>
-                        <CardContent className="pt-4 space-y-2 text-sm">
-                            {[
-                                { code: 400, label: "Bad Request", desc: "Dados do body estão incompletos ou inválidos. Verifique os campos obrigatórios e os valores aceitos." },
-                                { code: 401, label: "Unauthorized", desc: "Header Authorization ausente ou token inválido. Verifique sua SUPABASE_ANON_KEY." },
-                                { code: 404, label: "Not Found", desc: "O recurso (usuário, categoria, transação) não foi encontrado. Verifique os IDs/nomes enviados." },
-                                { code: 500, label: "Internal Server Error", desc: "Erro no servidor. Pode ser uma coluna inexistente no banco ou bug na function. Verifique os logs no Supabase." },
-                            ].map((err) => (
-                                <div key={err.code} className="flex items-start gap-3 bg-slate-950 p-3 rounded-md border border-slate-800">
-                                    <Badge className={`shrink-0 font-mono text-xs ${err.code < 500 ? "bg-yellow-900/50 text-yellow-300 border border-yellow-800" : "bg-red-900/50 text-red-300 border border-red-800"}`}>{err.code}</Badge>
-                                    <div>
-                                        <p className="text-slate-200 font-medium text-xs">{err.label}</p>
-                                        <p className="text-slate-400 text-xs mt-0.5">{err.desc}</p>
+                    <div className="space-y-10 order-1 xl:order-2 min-w-0">
+                        <section id="overview" className="scroll-mt-24">
+                            <h2 className="text-lg font-semibold text-white mb-4">Visão geral</h2>
+                            <div className="grid sm:grid-cols-2 gap-4">
+                                <Card className="bg-slate-900/40 border-slate-800">
+                                    <CardHeader className="pb-2">
+                                        <CardTitle className="text-sm text-slate-200">Regras para automação</CardTitle>
+                                    </CardHeader>
+                                    <CardContent className="text-xs text-slate-400 space-y-2 leading-relaxed">
+                                        <p><span className="text-slate-300">Transferência:</span> <code className="text-emerald-400/80">expense</code> + categoria <code className="text-emerald-400/80">transferencia</code> + <code className="text-emerald-400/80">payment_method: transfer</code>.</p>
+                                        <p><span className="text-slate-300">Fixas:</span> <code className="text-emerald-400/80">is_fixed: true</code> e <code className="text-emerald-400/80">fixed_months</code> (até 60) — um único POST cria todas as parcelas mensais.</p>
+                                        <p><span className="text-slate-300">Cartão vs banco:</span> crédito usa <code className="text-emerald-400/80">credit_card_id</code>; débito/PIX/boleto usam <code className="text-emerald-400/80">bank_account_id</code>.</p>
+                                    </CardContent>
+                                </Card>
+                                <Card className="bg-slate-900/40 border-slate-800">
+                                    <CardHeader className="pb-2">
+                                        <CardTitle className="text-sm text-slate-200">HTTP</CardTitle>
+                                    </CardHeader>
+                                    <CardContent className="text-xs text-slate-400 space-y-2 leading-relaxed">
+                                        <p><Badge className="mr-2 bg-amber-900/40 text-amber-200 border-amber-800/50 text-[10px]">400</Badge> Validação ou regra de negócio — leia <code className="text-slate-300">error.code</code> no JSON.</p>
+                                        <p><Badge className="mr-2 bg-amber-900/40 text-amber-200 border-amber-800/50 text-[10px]">404</Badge> Usuário ou recurso não encontrado.</p>
+                                        <p><Badge className="mr-2 bg-red-900/40 text-red-200 border-red-800/50 text-[10px]">500</Badge> Falha interna ou banco — logs no painel Supabase.</p>
+                                    </CardContent>
+                                </Card>
+                            </div>
+                        </section>
+
+                        <section id="errors" className="scroll-mt-24">
+                            <h2 className="text-lg font-semibold text-white mb-2 flex items-center gap-2">
+                                <AlertTriangle className="h-4 w-4 text-amber-400 shrink-0" />
+                                Formato de respostas e erros
+                            </h2>
+                            <p className="text-sm text-slate-400 mb-4 max-w-2xl">
+                                Sucesso: <code className="text-emerald-400/90">success: true</code> e campos específicos da rota. Erro: HTTP 4xx/5xx com corpo JSON estruturado (códigos de máquina em <code className="text-slate-300">error.code</code> para tratamento em n8n).
+                            </p>
+                            <div className="grid md:grid-cols-2 gap-4">
+                                <pre className="bg-slate-950 border border-slate-800 rounded-lg p-4 text-[11px] font-mono text-emerald-400/90 overflow-x-auto leading-relaxed">
+{`{
+  "success": true,
+  "message": "…",
+  "transaction_id": "uuid"
+}`}
+                                </pre>
+                                <pre className="bg-slate-950 border border-slate-800 rounded-lg p-4 text-[11px] font-mono text-rose-300/90 overflow-x-auto leading-relaxed">
+{`{
+  "success": false,
+  "error": {
+    "code": "USER_NOT_FOUND",
+    "message": "Nenhum usuário…",
+    "hint": "Confirme o número…"
+  }
+}`}
+                                </pre>
+                            </div>
+                        </section>
+
+                        <section id="reference" className="scroll-mt-24 space-y-8">
+                            <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
+                                <div>
+                                    <h2 className="text-lg font-semibold text-white">Referência por área</h2>
+                                    <p className="text-sm text-slate-500 mt-1">Expanda cada rota para parâmetros, cURL e exemplos.</p>
+                                </div>
+                                <Badge variant="outline" className="border-slate-600 text-slate-400 w-fit shrink-0">
+                                    {filtered.length} de {endpoints.length} rotas
+                                </Badge>
+                            </div>
+                            <div className="relative">
+                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500" />
+                                <input
+                                    type="text"
+                                    placeholder="Filtrar por path, método ou palavra-chave…"
+                                    value={searchTerm}
+                                    onChange={(e) => setSearchTerm(e.target.value)}
+                                    className="w-full pl-10 pr-4 py-3 bg-slate-900/80 border border-slate-700 rounded-lg text-sm text-slate-200 placeholder:text-slate-500 focus:outline-none focus:ring-1 focus:ring-cyan-600/50 focus:border-cyan-700/50"
+                                />
+                            </div>
+
+                            {grouped.length === 0 ? (
+                                <div className="text-center py-16 text-slate-500 border border-dashed border-slate-800 rounded-lg">
+                                    <Search className="h-8 w-8 mx-auto mb-2 opacity-40" />
+                                    <p className="text-sm">Nenhuma rota corresponde a &quot;{searchTerm}&quot;</p>
+                                </div>
+                            ) : (
+                                grouped.map((g) => (
+                                    <div key={g.id} id={g.id} className="scroll-mt-24 space-y-4">
+                                        <div className="flex items-center gap-3 border-b border-slate-800/80 pb-2">
+                                            <h3 className="text-base font-medium text-white">{g.title}</h3>
+                                            <span className="text-xs text-slate-500">{g.items.length} rota{g.items.length !== 1 ? "s" : ""}</span>
+                                        </div>
+                                        <div className="space-y-3">
+                                            {g.items.map((ep, idx) => (
+                                                <EndpointCard key={`${g.id}-${idx}-${ep.path}`} ep={ep} />
+                                            ))}
+                                        </div>
                                     </div>
-                                </div>
-                            ))}
-                        </CardContent>
-                    </Card>
+                                ))
+                            )}
+                        </section>
 
-                    {/* Test Console */}
-                    <Card className="bg-slate-900 border-slate-800 shadow-md">
-                        <CardHeader className="bg-slate-800/20 border-b border-slate-800/50 pb-4">
-                            <CardTitle className="text-xl text-foreground">Console de Teste</CardTitle>
-                            <CardDescription className="text-slate-400">Teste as APIs diretamente daqui</CardDescription>
-                        </CardHeader>
-                        <CardContent className="pt-4">
-                            <ApiTestForm />
-                        </CardContent>
-                    </Card>
-                </div>
-
-                {/* Right Column: Endpoints */}
-                <div className="lg:col-span-7">
-                    {/* Search */}
-                    <div className="mb-4 space-y-3">
-                        <div className="flex items-center justify-between">
-                            <h2 className="text-xl font-bold">Referência de Endpoints</h2>
-                            <Badge variant="outline" className="text-slate-400 border-slate-700">{filtered.length} de {endpoints.length}</Badge>
-                        </div>
-                        <div className="relative">
-                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500" />
-                            <input
-                                type="text"
-                                placeholder="Buscar endpoint... (ex: transação, categoria, appointment)"
-                                value={searchTerm}
-                                onChange={(e) => setSearchTerm(e.target.value)}
-                                className="w-full pl-10 pr-4 py-2.5 bg-slate-900 border border-slate-700 rounded-md text-sm text-slate-200 placeholder:text-slate-500 focus:outline-none focus:border-blue-500 transition-colors"
-                            />
-                        </div>
-                    </div>
-
-                    {/* Endpoint list */}
-                    <div className="space-y-4">
-                        {filtered.map((ep, idx) => <EndpointCard key={idx} ep={ep} />)}
-                        {filtered.length === 0 && (
-                            <div className="text-center py-12 text-slate-500">
-                                <Search className="h-8 w-8 mx-auto mb-2 opacity-50" />
-                                <p>Nenhum endpoint encontrado para "{searchTerm}"</p>
-                            </div>
-                        )}
+                        <section id="test-console" className="scroll-mt-24">
+                            <h2 className="text-lg font-semibold text-white mb-2">Console de teste</h2>
+                            <p className="text-sm text-slate-500 mb-4">
+                                Experimente as Edge Functions com a sessão do app (JWT) ou a chave anônima quando a função permitir.
+                                Abas: usuário e categorias globais, transações (incluir, listar, atualizar, cancelar), contas, categorias do usuário, lista de compras e orçamentos (JSON), agendamentos.
+                            </p>
+                            <Card className="bg-slate-900/40 border-slate-800">
+                                <CardContent className="pt-6">
+                                    <ApiTestForm />
+                                </CardContent>
+                            </Card>
+                        </section>
                     </div>
                 </div>
             </div>
