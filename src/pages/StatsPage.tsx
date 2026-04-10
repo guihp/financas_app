@@ -80,7 +80,12 @@ const StatsPage = () => {
           onDateRangeChange={setDateRange}
         />
       </div>
-      <Statistics transactions={filteredTransactions} globalTransactions={transactions} />
+      <Statistics
+        transactions={filteredTransactions}
+        allTransactions={transactions}
+        dateFilter={dateFilter}
+        dateRange={dateRange}
+      />
     </div>
   );
 };

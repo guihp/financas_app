@@ -15,7 +15,8 @@ export function filterTransactionsByDate<T extends { date: string }>(
 ): T[] {
   if (dateFilter === "all") return transactions;
 
-  if (dateFilter === "custom" && dateRange.start && dateRange.end) {
+  if (dateFilter === "custom") {
+    if (!dateRange.start || !dateRange.end) return [];
     const startTime = dateRange.start.getTime();
     const endTime = dateRange.end.getTime();
     return transactions.filter((t) => {

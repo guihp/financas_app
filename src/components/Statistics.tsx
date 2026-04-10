@@ -4,10 +4,13 @@ import { BarChart3, TrendingUp, TrendingDown, DollarSign, PieChart, Wallet, Arro
 import { BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Tooltip, Legend, CartesianGrid } from "recharts";
 import { Transaction } from "./Dashboard";
 import { useMemo } from "react";
+import type { DateFilterOption, DateRange } from "@/utils/dateFilter";
 
 interface StatisticsProps {
   transactions: Transaction[];
-  globalTransactions?: Transaction[];
+  allTransactions?: Transaction[];
+  dateFilter?: DateFilterOption;
+  dateRange?: DateRange;
 }
 
 // Mapeamento de nomes de categorias
@@ -19,39 +22,92 @@ const getCategoryDisplayName = (categoryName: string) => {
   return categoryName.charAt(0).toUpperCase() + categoryName.slice(1);
 };
 
-export const Statistics = ({ transactions, globalTransactions }: StatisticsProps) => {
+export const Statistics = ({
+  transactions,
+  allTransactions,
+  dateFilter = "all",
+  dateRange = { start: null, end: null }
+}: StatisticsProps) => {
   const stats = useMemo(() => {
-    // Ignorar Pagamentos de Faturas e Transferências nas métricas visuais
+    // Transações visuais alinhadas ao caixa real para evitar divergências.
     const validTransactions = transactions.filter(t => 
-      t.category !== "transferencia" && t.category !== "pagamento_fatura"
+      t.category !== "transferencia" &&
+      t.category !== "pagamento_fatura" &&
+      !(t.type === "expense" && t.payment_method === "credit")
     );
 
-    const totalIncome = validTransactions
-      .filter(t => t.type === "income")
+    // Receitas do período filtrado (exclui transferencia e pagamento_fatura)
+    const totalIncome = transactions
+      .filter(t => t.type === "income" && t.category !== "transferencia" && t.category !== "pagamento_fatura")
       .reduce((sum, t) => sum + Number(t.amount), 0);
 
-    const totalExpenses = validTransactions
-      .filter(t => t.type === "expense")
-      .reduce((sum, t) => sum + Number(t.amount), 0);
-
-    // Saldo Total Global: usar array completo de todas as transações, imune ao filtro de data
-    const baseForBalance = globalTransactions || transactions;
-    const globalValidTransactions = baseForBalance.filter(t => 
-      t.category !== "transferencia" && t.category !== "pagamento_fatura"
-    );
-
-    const globalTotalIncome = globalValidTransactions
-      .filter(t => t.type === "income")
-      .reduce((sum, t) => sum + Number(t.amount), 0);
-
-    const globalTotalExpensesDebitPix = baseForBalance
+    // Despesas reais do período: tudo que saiu do bolso (débito, pix, boleto)
+    // Inclui pagamento_fatura pois é dinheiro que saiu da conta
+    // Exclui compras no crédito (vão pra Faturas) e transferências internas
+    const totalExpenses = (transactions as Transaction[])
       .filter(t => t.type === "expense" && t.payment_method !== "credit" && t.category !== "transferencia")
       .reduce((sum, t) => sum + Number(t.amount), 0);
 
-    const balance = globalTotalIncome - globalTotalExpensesDebitPix;
+    // Saldo ACUMULADO ATÉ O PERÍODO: mantém carry-over respeitando o filtro selecionado.
+    const sourceForBalance = allTransactions || transactions;
+    const balanceCutoff = (() => {
+      if (dateFilter === "all") return null;
 
-    // Gastos por categoria
-    const expensesByCategory = validTransactions
+      if (dateFilter === "lastMonth") {
+        return new Date(new Date().getFullYear(), new Date().getMonth(), 0, 23, 59, 59, 999);
+      }
+
+      if (dateFilter === "custom") {
+        if (dateRange.end) {
+          return new Date(
+            dateRange.end.getFullYear(),
+            dateRange.end.getMonth(),
+            dateRange.end.getDate(),
+            23,
+            59,
+            59,
+            999
+          );
+        }
+        if (dateRange.start) {
+          return new Date(
+            dateRange.start.getFullYear(),
+            dateRange.start.getMonth(),
+            dateRange.start.getDate(),
+            23,
+            59,
+            59,
+            999
+          );
+        }
+      }
+
+      return new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0, 23, 59, 59, 999);
+    })();
+
+    const balance = sourceForBalance
+      .filter((t) => {
+        if (!balanceCutoff) return true;
+        const txDate = new Date(String(t.date) + "T12:00:00");
+        return txDate <= balanceCutoff;
+      })
+      .filter(t => t.category !== "transferencia")
+      .reduce((sum, t) => {
+        if (t.type === "income" && t.category !== "pagamento_fatura") return sum + Number(t.amount);
+        if (t.type === "expense" && t.payment_method !== "credit") return sum - Number(t.amount);
+        return sum;
+      }, 0);
+
+    // Gastos por categoria (caixa real): sem credito, sem transferencia e sem pagamento_fatura
+    const expenseTransactionsForCategory = transactions.filter(
+      (t) =>
+        t.type === "expense" &&
+        t.payment_method !== "credit" &&
+        t.category !== "transferencia" &&
+        t.category !== "pagamento_fatura"
+    );
+
+    const expensesByCategory = expenseTransactionsForCategory
       .filter(t => t.type === "expense")
       .reduce((acc, t) => {
         acc[t.category] = (acc[t.category] || 0) + Number(t.amount);
@@ -66,7 +122,7 @@ export const Statistics = ({ transactions, globalTransactions }: StatisticsProps
         return acc;
       }, {} as Record<string, number>);
 
-    // Transações por mês
+    // Transações por mês (visual, sem pagamento_fatura e transferencia)
     const transactionsByMonth = validTransactions.reduce((acc, t) => {
       const date = new Date(t.date || t.created_at);
       const month = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
@@ -81,6 +137,11 @@ export const Statistics = ({ transactions, globalTransactions }: StatisticsProps
       return acc;
     }, {} as Record<string, { income: number; expenses: number }>);
 
+    // Totais visuais para médias (sem pagamento_fatura)
+    const totalExpensesVisual = validTransactions
+      .filter(t => t.type === "expense")
+      .reduce((sum, t) => sum + Number(t.amount), 0);
+
     return {
       totalIncome,
       totalExpenses,
@@ -88,11 +149,11 @@ export const Statistics = ({ transactions, globalTransactions }: StatisticsProps
       expensesByCategory,
       incomeByCategory,
       transactionsByMonth,
-      averageExpense: totalExpenses / Math.max(validTransactions.filter(t => t.type === "expense").length, 1),
+      averageExpense: totalExpensesVisual / Math.max(validTransactions.filter(t => t.type === "expense").length, 1),
       averageIncome: totalIncome / Math.max(validTransactions.filter(t => t.type === "income").length, 1),
       transactionCount: validTransactions.length,
     };
-  }, [transactions]);
+  }, [transactions, allTransactions, dateFilter, dateRange.start, dateRange.end]);
 
   const formatMonth = (monthStr: string) => {
     const [year, month] = monthStr.split('-');

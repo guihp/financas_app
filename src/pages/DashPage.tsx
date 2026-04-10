@@ -36,7 +36,7 @@ const DashPage = () => {
   const navigate = useNavigate();
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [creditCards, setCreditCards] = useState<CreditCardInfo[]>([]);
-  const [paidInvoiceDescs, setPaidInvoiceDescs] = useState<{ description: string; amount: number }[]>([]);
+  const [paidInvoices, setPaidInvoices] = useState<{ description: string; amount: number; credit_card_id?: string | null }[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [dateFilter, setDateFilter] = useState<DateFilterOption>("thisMonth");
@@ -79,14 +79,14 @@ const DashPage = () => {
       // Load paid invoice descriptions with amounts
       const { data: paidData } = await supabase
         .from("transactions")
-        .select("description, amount")
+        .select("description, amount, credit_card_id")
         .in("user_id", allUserIds)
-        .eq("payment_method", "debit")
-        .like("description", "Fatura %");
-      setPaidInvoiceDescs(
+        .eq("category", "pagamento_fatura");
+      setPaidInvoices(
         paidData?.map(p => ({
           description: p.description || "",
-          amount: Number(p.amount) || 0
+          amount: Number(p.amount) || 0,
+          credit_card_id: p.credit_card_id ?? null
         })) || []
       );
     } catch (error) {
@@ -107,41 +107,84 @@ const DashPage = () => {
     [transactions, dateFilter, dateRange]
   );
 
-  // Filtro puro para exibição visual (Pizza, Barras, TotalExpense e Income), ignorando duplicidades
+  // Filtro visual alinhado ao caixa real (evita divergência com os cards).
   const validDisplayTransactions = useMemo(() => {
     return filteredTransactions.filter(t => 
-      t.category !== "transferencia" && t.category !== "pagamento_fatura"
+      t.category !== "transferencia" &&
+      t.category !== "pagamento_fatura" &&
+      !(t.type === "expense" && t.payment_method === "credit")
     );
   }, [filteredTransactions]);
 
-  const totalIncome = validDisplayTransactions
-    .filter((t) => t.type === "income")
+  // Receitas do período filtrado (exclui transferencia e pagamento_fatura)
+  const totalIncome = filteredTransactions
+    .filter((t) => t.type === "income" && t.category !== "transferencia" && t.category !== "pagamento_fatura")
     .reduce((sum, t) => sum + Number(t.amount), 0);
 
-  // Expenses from debit/PIX (affects balance, so we keep using filteredTransactions)
-  const totalExpenseDebitPix = (filteredTransactions as Transaction[])
-    .filter((t) => t.type === "expense" && t.payment_method !== "credit")
+  // Despesas reais do período filtrado: tudo que saiu do bolso (débito, pix, boleto) 
+  // Inclui pagamento_fatura pois é dinheiro que saiu da conta
+  // Exclui compras no crédito (vão pra Faturas) e transferências internas
+  const totalExpenseReal = (filteredTransactions as Transaction[])
+    .filter((t) => t.type === "expense" && t.payment_method !== "credit" && t.category !== "transferencia")
     .reduce((sum, t) => sum + Number(t.amount), 0);
 
-  // All expenses (for display)
+  // Despesas visuais (para gráficos - sem pagamento_fatura e sem transferencia para não duplicar)
   const totalExpense = validDisplayTransactions
     .filter((t) => t.type === "expense")
     .reduce((sum, t) => sum + Number(t.amount), 0);
 
-  // Global Balance: Saldo deve ser global (todo o tempo), não resetar quando vira o mês
-  const globalValidTransactions = transactions.filter(t => 
-    t.category !== "transferencia" && t.category !== "pagamento_fatura"
-  );
-  
-  const globalTotalIncome = globalValidTransactions
-    .filter((t) => t.type === "income")
-    .reduce((sum, t) => sum + Number(t.amount), 0);
+  // Saldo ACUMULADO ATÉ O PERÍODO: mantém o carry-over, mas respeita o filtro selecionado.
+  // Ex.: "mês passado" mostra o saldo até o fim do mês passado; "este mês" até o fim do mês atual.
+  const balanceCutoff = useMemo(() => {
+    if (dateFilter === "all") return null;
 
-  const globalTotalExpenseDebitPix = (transactions as Transaction[])
-    .filter((t) => t.type === "expense" && t.payment_method !== "credit" && t.category !== "transferencia")
-    .reduce((sum, t) => sum + Number(t.amount), 0);
+    if (dateFilter === "lastMonth") {
+      return new Date(new Date().getFullYear(), new Date().getMonth(), 0, 23, 59, 59, 999);
+    }
 
-  const balance = globalTotalIncome - globalTotalExpenseDebitPix;
+    if (dateFilter === "custom") {
+      if (dateRange.end) {
+        return new Date(
+          dateRange.end.getFullYear(),
+          dateRange.end.getMonth(),
+          dateRange.end.getDate(),
+          23,
+          59,
+          59,
+          999
+        );
+      }
+      if (dateRange.start) {
+        return new Date(
+          dateRange.start.getFullYear(),
+          dateRange.start.getMonth(),
+          dateRange.start.getDate(),
+          23,
+          59,
+          59,
+          999
+        );
+      }
+    }
+
+    // "thisMonth" (padrão): considera até o fim do mês atual.
+    return new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0, 23, 59, 59, 999);
+  }, [dateFilter, dateRange.start, dateRange.end]);
+
+  const balance = useMemo(() => {
+    return transactions
+      .filter((t) => {
+        if (!balanceCutoff) return true;
+        const txDate = new Date(String(t.date) + "T12:00:00");
+        return txDate <= balanceCutoff;
+      })
+      .filter(t => t.category !== "transferencia")
+      .reduce((sum, t) => {
+        if (t.type === "income" && t.category !== "pagamento_fatura") return sum + Number(t.amount);
+        if (t.type === "expense" && t.payment_method !== "credit") return sum - Number(t.amount);
+        return sum;
+      }, 0);
+  }, [transactions, balanceCutoff]);
 
   // Credit expenses (faturas) — calculado por ciclo de fechamento baseado no filtro
   const now = new Date();
@@ -184,8 +227,12 @@ const DashPage = () => {
 
       // Calculate total paid for this invoice
       const invoiceKey = `Fatura ${card.name} - ${targetMonthLabel}`;
-      const totalPaid = paidInvoiceDescs
-        .filter(p => p.description === invoiceKey)
+      const totalPaid = paidInvoices
+        .filter(p => {
+          const monthMatch = p.description.endsWith(` - ${targetMonthLabel}`) || p.description === invoiceKey;
+          const cardMatch = p.credit_card_id ? p.credit_card_id === card.id : p.description === invoiceKey;
+          return monthMatch && cardMatch;
+        })
         .reduce((sum, p) => sum + p.amount, 0);
       const remaining = total - totalPaid;
       const isPaid = totalPaid >= total && total > 0;
@@ -196,7 +243,7 @@ const DashPage = () => {
 
       return { card, total, isPaid, isOverdue, txCount: cardTxs.length, remaining: remaining > 0 ? remaining : 0 };
     });
-  }, [creditCards, transactions, paidInvoiceDescs, targetMonth, targetYear, targetMonthLabel]);
+  }, [creditCards, transactions, paidInvoices, targetMonth, targetYear, targetMonthLabel]);
 
   const totalFaturas = faturasPerCard.reduce((sum, f) => sum + f.total, 0);
   const totalFaturasAbertas = faturasPerCard.filter(f => !f.isPaid).reduce((sum, f) => sum + f.remaining, 0);
@@ -270,7 +317,7 @@ const DashPage = () => {
           </CardHeader>
           <CardContent className="p-3 sm:p-6 pt-0">
             <div className="text-sm sm:text-2xl font-bold text-red-500">
-              {formatCurrency(totalExpense)}
+              {formatCurrency(totalExpenseReal)}
             </div>
           </CardContent>
         </Card>
@@ -382,7 +429,9 @@ const DashPage = () => {
         </CardHeader>
         <CardContent>
           <TransactionList
-            transactions={filteredTransactions.slice(0, 10)}
+            transactions={filteredTransactions}
+            showAll={dateFilter !== "all"}
+            limit={10}
             onTransactionDeleted={loadTransactions}
             currentUserId={user.id}
           />

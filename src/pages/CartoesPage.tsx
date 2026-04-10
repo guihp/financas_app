@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useOutletContext } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { User } from "@supabase/supabase-js";
+import { useConnectedUserIds } from "@/hooks/useConnectedUserIds";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -70,6 +71,7 @@ const CARD_COLORS = [
 
 const CartoesPage = () => {
     const { user } = useOutletContext<OutletContextType>();
+    const { allUserIds, loading: loadingConnections } = useConnectedUserIds(user?.id);
     const [cards, setCards] = useState<CreditCardType[]>([]);
     const [banks, setBanks] = useState<BankAccountType[]>([]);
     const [loading, setLoading] = useState(true);
@@ -94,11 +96,12 @@ const CartoesPage = () => {
     const [bankFormColor, setBankFormColor] = useState(CARD_COLORS[2]);
 
     const loadCards = async () => {
+        if (allUserIds.length === 0) return;
         try {
             const { data, error } = await supabase
                 .from("credit_cards")
                 .select("*")
-                .eq("user_id", user.id)
+                .in("user_id", allUserIds)
                 .order("name");
             if (error) throw error;
             setCards((data as CreditCardType[]) || []);
@@ -108,19 +111,20 @@ const CartoesPage = () => {
     };
 
     const loadBanks = async () => {
+        if (allUserIds.length === 0) return;
         try {
             const { data, error } = await supabase
                 .from("bank_accounts")
                 .select("*")
-                .eq("user_id", user.id)
+                .in("user_id", allUserIds)
                 .order("name");
             if (error) throw error;
 
             // Fetch transactions to calculate real balances
             const { data: transData } = await supabase
                 .from("transactions")
-                .select("bank_account_id, amount, type")
-                .eq("user_id", user.id)
+                .select("bank_account_id, amount, type, payment_method, category")
+                .in("user_id", allUserIds)
                 .not("bank_account_id", "is", null);
 
             const bankBalances: Record<string, number> = {};
@@ -128,8 +132,11 @@ const CartoesPage = () => {
                 transData.forEach((t: any) => {
                     const bId = t.bank_account_id;
                     if (!bankBalances[bId]) bankBalances[bId] = 0;
-                    if (t.type === 'income') bankBalances[bId] += Number(t.amount);
-                    else if (t.type === 'expense') bankBalances[bId] -= Number(t.amount);
+                    if (t.type === "income" && t.category !== "pagamento_fatura") {
+                        bankBalances[bId] += Number(t.amount);
+                    } else if (t.type === "expense" && t.payment_method !== "credit") {
+                        bankBalances[bId] -= Number(t.amount);
+                    }
                 });
             }
 
@@ -144,26 +151,37 @@ const CartoesPage = () => {
         }
     };
 
-    const loadFaturasTotals = async () => {
+    const loadFaturasTotals = async (cardsList: CreditCardType[]) => {
+        if (allUserIds.length === 0) return;
         try {
-            const now = new Date();
-            const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split("T")[0];
-            const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split("T")[0];
-
             const { data, error } = await supabase
                 .from("transactions")
-                .select("credit_card_id, amount")
-                .eq("user_id", user.id)
+                .select("credit_card_id, amount, date")
+                .in("user_id", allUserIds)
                 .eq("payment_method", "credit")
-                .gte("date", startOfMonth)
-                .lte("date", endOfMonth);
+                .not("credit_card_id", "is", null);
 
             if (error) throw error;
             const totals: Record<string, number> = {};
-            (data || []).forEach((t: any) => {
-                if (t.credit_card_id) {
-                    totals[t.credit_card_id] = (totals[t.credit_card_id] || 0) + Number(t.amount);
-                }
+            const now = new Date();
+            const targetMonth = now.getMonth();
+            const targetYear = now.getFullYear();
+
+            cardsList.forEach((card) => {
+                const closing = card.closing_day;
+                const cycleStart = new Date(targetYear, targetMonth - 1, closing + 1, 0, 0, 0);
+                const lastDay = new Date(targetYear, targetMonth + 1, 0).getDate();
+                const cycleEndDay = Math.min(closing, lastDay);
+                const cycleEnd = new Date(targetYear, targetMonth, cycleEndDay, 23, 59, 59);
+
+                const total = (data || []).reduce((sum: number, t: any) => {
+                    if (t.credit_card_id !== card.id) return sum;
+                    const txDate = new Date(String(t.date) + "T12:00:00");
+                    if (txDate < cycleStart || txDate > cycleEnd) return sum;
+                    return sum + Number(t.amount);
+                }, 0);
+
+                totals[card.id] = total;
             });
             setFaturasTotals(totals);
         } catch (error) {
@@ -172,10 +190,19 @@ const CartoesPage = () => {
     };
 
     useEffect(() => {
-        if (user?.id) {
-            Promise.all([loadCards(), loadBanks(), loadFaturasTotals()]).finally(() => setLoading(false));
+        if (user?.id && !loadingConnections && allUserIds.length > 0) {
+            setLoading(true);
+            Promise.all([loadCards(), loadBanks()]).finally(() => setLoading(false));
         }
-    }, [user?.id]);
+    }, [user?.id, allUserIds, loadingConnections]);
+
+    useEffect(() => {
+        if (cards.length > 0) {
+            loadFaturasTotals(cards);
+        } else {
+            setFaturasTotals({});
+        }
+    }, [cards, allUserIds]);
 
     // ---- Credit Card helpers ----
     const resetCardForm = () => {
@@ -384,6 +411,7 @@ const CartoesPage = () => {
                                                         </p>
                                                     </div>
                                                 </div>
+                                                {bank.user_id === user.id && (
                                                 <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                                                     <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => openEditBankDialog(bank)}><Edit className="h-3.5 w-3.5" /></Button>
                                                     <AlertDialog>
@@ -396,6 +424,7 @@ const CartoesPage = () => {
                                                         </AlertDialogContent>
                                                     </AlertDialog>
                                                 </div>
+                                                )}
                                             </div>
                                         </CardHeader>
                                     </Card>
@@ -437,6 +466,7 @@ const CartoesPage = () => {
                                                     <p className="text-xs text-muted-foreground">Fecha dia {card.closing_day} • Vence dia {card.due_day}</p>
                                                 </div>
                                             </div>
+                                            {card.user_id === user.id && (
                                             <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                                                 <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => openEditCardDialog(card)}><Edit className="h-3.5 w-3.5" /></Button>
                                                 <AlertDialog>
@@ -449,6 +479,7 @@ const CartoesPage = () => {
                                                     </AlertDialogContent>
                                                 </AlertDialog>
                                             </div>
+                                            )}
                                         </div>
                                     </CardHeader>
                                     <CardContent className="pt-0">

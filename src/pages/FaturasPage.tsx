@@ -29,6 +29,7 @@ import {
     Landmark,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { useConnectedUserIds } from "@/hooks/useConnectedUserIds";
 
 interface OutletContextType {
     user: User;
@@ -62,7 +63,7 @@ const FaturasPage = () => {
     const { user } = useOutletContext<OutletContextType>();
     const [cards, setCards] = useState<CreditCardInfo[]>([]);
     const [transactions, setTransactions] = useState<FaturaTransaction[]>([]);
-    const [paidInvoices, setPaidInvoices] = useState<{ description: string; amount: number }[]>([]);
+    const [paidInvoices, setPaidInvoices] = useState<{ description: string; amount: number; credit_card_id?: string | null }[]>([]);
     const [banks, setBanks] = useState<{ id: string; name: string }[]>([]);
     const [loading, setLoading] = useState(true);
     const [selectedMonth, setSelectedMonth] = useState(() => {
@@ -73,19 +74,22 @@ const FaturasPage = () => {
     // Payment Modal State
     const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
     const [selectedBankId, setSelectedBankId] = useState<string>("");
+    const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<string>("debit");
     const [paymentData, setPaymentData] = useState<{
         cardId: string;
         monthName: string;
         amount: number;
     } | null>(null);
+    const { allUserIds, loading: loadingConnections } = useConnectedUserIds(user?.id);
 
     const loadData = async () => {
+        if (allUserIds.length === 0) return;
         try {
             // Load cards
             const { data: cardsData, error: cardsError } = await supabase
                 .from("credit_cards")
                 .select("id, name, closing_day, due_day, color, card_limit")
-                .eq("user_id", user.id)
+                .in("user_id", allUserIds)
                 .order("name");
 
             if (cardsError) throw cardsError;
@@ -95,7 +99,7 @@ const FaturasPage = () => {
             const { data: banksData, error: banksError } = await supabase
                 .from("bank_accounts")
                 .select("id, name")
-                .eq("user_id", user.id)
+                .in("user_id", allUserIds)
                 .order("name");
 
             if (banksError) throw banksError;
@@ -107,7 +111,7 @@ const FaturasPage = () => {
                 .select(
                     "id, description, amount, date, category, credit_card_id, total_installments, installment_number, installment_group_id"
                 )
-                .eq("user_id", user.id)
+                .in("user_id", allUserIds)
                 .eq("payment_method", "credit")
                 .not("credit_card_id", "is", null)
                 .order("date", { ascending: false });
@@ -118,16 +122,16 @@ const FaturasPage = () => {
             // Load explicit invoice payments (with amounts)
             const { data: paymentsData, error: paymentsError } = await supabase
                 .from("transactions")
-                .select("description, amount")
-                .eq("user_id", user.id)
-                .eq("payment_method", "debit")
-                .like("description", "Fatura %");
+                .select("description, amount, credit_card_id")
+                .in("user_id", allUserIds)
+                .eq("category", "pagamento_fatura");
 
             if (paymentsError) throw paymentsError;
             setPaidInvoices(
                 paymentsData?.map(p => ({
                     description: p.description || "",
-                    amount: Number(p.amount) || 0
+                    amount: Number(p.amount) || 0,
+                    credit_card_id: p.credit_card_id ?? null
                 })) || []
             );
         } catch (error) {
@@ -138,10 +142,10 @@ const FaturasPage = () => {
     };
 
     useEffect(() => {
-        if (user?.id) {
+        if (user?.id && !loadingConnections && allUserIds.length > 0) {
             loadData();
         }
-    }, [user?.id]);
+    }, [user?.id, loadingConnections, allUserIds]);
 
     const navigateMonth = (direction: number) => {
         setSelectedMonth((prev) => {
@@ -257,7 +261,8 @@ const FaturasPage = () => {
         setPayingCardId(paymentData.cardId);
         setIsPaymentModalOpen(false); // Fecha logo o modal pra dar feedback visual no botão atrás
         try {
-            const today = new Date().toISOString().split("T")[0];
+            const now = new Date();
+            const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
             const expenseDesc = `Fatura ${cards.find(c => c.id === paymentData.cardId)?.name} - ${paymentData.monthName}`;
 
             const { error } = await supabase.from("transactions").insert({
@@ -268,14 +273,15 @@ const FaturasPage = () => {
                 description: expenseDesc,
                 date: today,
                 transaction_date: today,
-                payment_method: "debit",
+                payment_method: selectedPaymentMethod,
                 bank_account_id: selectedBankId,
+                credit_card_id: paymentData.cardId,
                 total_installments: 1,
                 installment_number: 1
             });
 
             if (error) throw error;
-            setPaidInvoices(prev => [...prev, { description: expenseDesc, amount: paymentData.amount }]);
+            setPaidInvoices(prev => [...prev, { description: expenseDesc, amount: paymentData.amount, credit_card_id: paymentData.cardId }]);
             toast({ title: "Fatura Paga", description: "✅ O valor da fatura foi debitado da sua conta bancária!" });
         } catch (err: any) {
             toast({ title: "Erro ao pagar", description: err.message, variant: "destructive" });
@@ -283,6 +289,7 @@ const FaturasPage = () => {
             setPayingCardId(null);
             setPaymentData(null);
             setSelectedBankId(""); // reset
+            setSelectedPaymentMethod("debit");
         }
     };
 
@@ -362,7 +369,11 @@ const FaturasPage = () => {
 
                         const invoiceKey = `Fatura ${card.name} - ${monthLabel}`;
                         const totalPaid = paidInvoices
-                            .filter(p => p.description === invoiceKey)
+                            .filter(p => {
+                                const monthMatch = p.description.endsWith(` - ${monthLabel}`) || p.description === invoiceKey;
+                                const cardMatch = p.credit_card_id ? p.credit_card_id === card.id : p.description === invoiceKey;
+                                return monthMatch && cardMatch;
+                            })
                             .reduce((sum, p) => sum + p.amount, 0);
                         const remaining = cardTotal - totalPaid;
                         const isFullyPaid = totalPaid >= cardTotal && cardTotal > 0;
@@ -505,6 +516,7 @@ const FaturasPage = () => {
                 setIsPaymentModalOpen(open);
                 if (!open) {
                     setSelectedBankId("");
+                    setSelectedPaymentMethod("debit");
                     setPaymentData(null);
                 }
             }}>
@@ -535,13 +547,25 @@ const FaturasPage = () => {
                                 </SelectContent>
                             </Select>
                         </div>
+                        <div className="space-y-2">
+                            <Select value={selectedPaymentMethod} onValueChange={setSelectedPaymentMethod}>
+                                <SelectTrigger className="w-full">
+                                    <SelectValue placeholder="Método de pagamento" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="debit">Débito</SelectItem>
+                                    <SelectItem value="pix">PIX</SelectItem>
+                                    <SelectItem value="boleto">Boleto</SelectItem>
+                                </SelectContent>
+                            </Select>
+                        </div>
                     </div>
 
                     <DialogFooter className="flex-col sm:flex-row gap-2">
                         <Button type="button" variant="outline" onClick={() => setIsPaymentModalOpen(false)}>
                             Cancelar
                         </Button>
-                        <Button onClick={confirmPayment} disabled={!selectedBankId}>
+                        <Button onClick={confirmPayment} disabled={!selectedBankId || !selectedPaymentMethod}>
                             Confirmar Pagamento
                         </Button>
                     </DialogFooter>

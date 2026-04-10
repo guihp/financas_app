@@ -14,6 +14,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 interface TransactionListProps {
   transactions: Transaction[];
   showAll?: boolean;
+  limit?: number;
   onTransactionDeleted?: () => void;
   currentUserId?: string;
 }
@@ -55,8 +56,8 @@ const PaymentMethodBadge = ({ method }: { method?: string | null }) => {
   );
 };
 
-export const TransactionList = ({ transactions, showAll = false, onTransactionDeleted, currentUserId }: TransactionListProps) => {
-  const displayTransactions = showAll ? transactions : transactions.slice(0, 5);
+export const TransactionList = ({ transactions, showAll = false, limit = 5, onTransactionDeleted, currentUserId }: TransactionListProps) => {
+  const displayTransactions = showAll ? transactions : transactions.slice(0, limit);
   const { toast } = useToast();
 
   const handleDeleteTransaction = async (transactionId: string) => {
@@ -183,9 +184,13 @@ export const TransactionList = ({ transactions, showAll = false, onTransactionDe
     // Título Deslocado para baixo para respeitar a logo
     doc.text(`Relatório de Transações - ${monthStr} `, 14, textStartY);
 
-    // Total calculation
-    const totalIncome = displayTransactions.filter(t => t.type === 'income').reduce((acc, t) => acc + Number(t.amount), 0);
-    const totalExpense = displayTransactions.filter(t => t.type === 'expense').reduce((acc, t) => acc + Number(t.amount), 0);
+    // Totais de caixa real para manter consistência com os cards principais
+    const totalIncome = displayTransactions
+      .filter(t => t.type === "income" && t.category !== "pagamento_fatura")
+      .reduce((acc, t) => acc + Number(t.amount), 0);
+    const totalExpense = displayTransactions
+      .filter(t => t.type === "expense" && t.payment_method !== "credit")
+      .reduce((acc, t) => acc + Number(t.amount), 0);
     const balance = totalIncome - totalExpense;
 
     doc.setFontSize(11);

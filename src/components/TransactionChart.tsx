@@ -7,6 +7,10 @@ interface TransactionChartProps {
 }
 
 export const TransactionChart = ({ transactions, type = "expenses" }: TransactionChartProps) => {
+  const parseTxDate = (value?: string) => {
+    if (!value) return new Date(NaN);
+    return new Date(value + (value.includes("T") ? "" : "T12:00:00"));
+  };
   // Filtrar transações do tipo especificado
   const transactionType = type === "expenses" ? "expense" : "income";
   const filteredTransactions = transactions.filter(t => t.type === transactionType);
@@ -20,7 +24,7 @@ export const TransactionChart = ({ transactions, type = "expenses" }: Transactio
 
   const chartData = last7Days.map(date => {
     const dayTransactions = filteredTransactions.filter(t => {
-      const transactionDate = new Date(t.date || t.created_at);
+      const transactionDate = parseTxDate(t.date || t.created_at);
       return transactionDate.toDateString() === date.toDateString();
     });
 
@@ -38,26 +42,22 @@ export const TransactionChart = ({ transactions, type = "expenses" }: Transactio
 
   if (!hasRecentData && filteredTransactions.length > 0) {
     const allTransactionsByDay = filteredTransactions.reduce((acc, t) => {
-      const date = new Date(t.date || t.created_at);
-      const day = date.getDate().toString().padStart(2, '0') + '/' + String(date.getMonth() + 1).padStart(2, '0');
-      acc[day] = (acc[day] || 0) + Number(t.amount);
+      const date = parseTxDate(t.date || t.created_at);
+      const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+      acc[key] = (acc[key] || 0) + Number(t.amount);
       return acc;
     }, {} as Record<string, number>);
 
     const sortedDays = Object.entries(allTransactionsByDay)
-      .sort(([a], [b]) => {
-        const [dayA, monthA] = a.split('/').map(Number);
-        const [dayB, monthB] = b.split('/').map(Number);
-        const dateA = new Date(2024, monthA - 1, dayA);
-        const dateB = new Date(2024, monthB - 1, dayB);
-        return dateA.getTime() - dateB.getTime();
-      })
+      .sort(([a], [b]) => a.localeCompare(b))
       .slice(-7);
 
-    finalChartData = sortedDays.map(([day, amount]) => ({
-      day,
+    finalChartData = sortedDays.map(([key, amount]) => {
+      const [year, month, day] = key.split("-");
+      return {
+      day: `${day}/${month}`,
       amount
-    }));
+    };});
   }
 
   const formatCurrency = (value: number) => {

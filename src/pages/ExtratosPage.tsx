@@ -37,7 +37,7 @@ const ExtratosPage = () => {
             const { data: banksData, error: banksError } = await supabase
                 .from("bank_accounts")
                 .select("id, name, color")
-                .eq("user_id", user.id)
+                .in("user_id", allUserIds)
                 .order("name");
 
             if (banksError) throw banksError;
@@ -90,8 +90,8 @@ const ExtratosPage = () => {
     // General Balance for the selected bank (All time, all transactions)
     const bankTotalBalance = useMemo(() => {
         return bankTransactions.reduce((acc, t) => {
-            if (t.type === 'income') return acc + t.amount;
-            if (t.type === 'expense') return acc - t.amount;
+            if (t.type === "income" && t.category !== "pagamento_fatura") return acc + t.amount;
+            if (t.type === "expense" && t.payment_method !== "credit") return acc - t.amount;
             return acc;
         }, 0);
     }, [bankTransactions]);
@@ -106,8 +106,8 @@ const ExtratosPage = () => {
         let income = 0;
         let expense = 0;
         periodTransactions.forEach(t => {
-            if (t.type === 'income') income += t.amount;
-            if (t.type === 'expense') expense += t.amount;
+            if (t.type === "income" && t.category !== "pagamento_fatura") income += t.amount;
+            if (t.type === "expense" && t.payment_method !== "credit") expense += t.amount;
         });
         return { income, expense };
     }, [periodTransactions]);

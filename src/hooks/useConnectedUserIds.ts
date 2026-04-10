@@ -10,7 +10,11 @@ export function useConnectedUserIds(currentUserId: string | undefined) {
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        if (!currentUserId) return;
+        if (!currentUserId) {
+            setAllUserIds([]);
+            setLoading(false);
+            return;
+        }
 
         const fetchConnectedIds = async () => {
             try {

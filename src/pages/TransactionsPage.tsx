@@ -37,11 +37,12 @@ const TransactionsPage = () => {
   const { allUserIds, loading: loadingConnections } = useConnectedUserIds(user?.id);
 
   const loadBanks = async () => {
+    if (allUserIds.length === 0) return;
     try {
       const { data, error } = await supabase
         .from("bank_accounts")
         .select("id, name")
-        .eq("user_id", user.id)
+        .in("user_id", allUserIds)
         .order("name");
       if (!error && data) {
         setBanks(data);
@@ -52,10 +53,10 @@ const TransactionsPage = () => {
   };
 
   useEffect(() => {
-    if (user?.id) {
+    if (user?.id && !loadingConnections && allUserIds.length > 0) {
       loadBanks();
     }
-  }, [user?.id]);
+  }, [user?.id, allUserIds, loadingConnections]);
 
   const loadTransactions = async () => {
     if (allUserIds.length === 0) return;
