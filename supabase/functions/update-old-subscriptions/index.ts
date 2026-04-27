@@ -23,17 +23,82 @@ serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
 
+    const { data: appSettings, error: settingsError } = await supabaseAdmin
+      .from('app_settings')
+      .select('product_full_price')
+      .limit(1)
+      .single();
+
+    if (settingsError || !appSettings?.product_full_price) {
+      return new Response(JSON.stringify({ error: 'Configurações de preço não encontradas.' }), {
+        status: 404,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+
+    const targetValue = Number(appSettings.product_full_price);
+
     const { data: subscriptions } = await supabaseAdmin
       .from('subscriptions')
       .select('asaas_subscription_id')
       .not('asaas_subscription_id', 'is', null)
-      .eq('status', 'active');
+      .eq('status', 'active')
+      .eq('is_trial', false)
+      .eq('cancel_at_period_end', false);
 
     let updatedCount = 0;
+    let updatedOpenPaymentsCount = 0;
     const results = [];
 
-    // Base price we want all recurring subs to be
-    const TARGET_VALUE = 29.90;
+    const updateOpenPaymentsForSubscription = async (subId: string, targetValue: number) => {
+      const paymentResults = [];
+      for (const status of ['PENDING', 'OVERDUE']) {
+        const listRes = await fetch(`${ASAAS_BASE_URL}/payments?subscription=${subId}&status=${status}`, {
+          headers: { 'access_token': ASAAS_API_KEY, 'accept': 'application/json' }
+        });
+        const listText = await listRes.text();
+        let listData;
+        try {
+          listData = listText ? JSON.parse(listText) : {};
+        } catch (_e) {
+          paymentResults.push({ status, action: 'list_parse_error', body: listText });
+          continue;
+        }
+
+        for (const payment of listData?.data || []) {
+          if (Number(payment.value) === targetValue) {
+            paymentResults.push({ id: payment.id, status, action: 'already_correct', value: payment.value });
+            continue;
+          }
+
+          const updateRes = await fetch(`${ASAAS_BASE_URL}/payments/${payment.id}`, {
+            method: 'POST',
+            headers: {
+              'content-type': 'application/json',
+              'accept': 'application/json',
+              'access_token': ASAAS_API_KEY
+            },
+            body: JSON.stringify({ value: targetValue })
+          });
+          const updateText = await updateRes.text();
+          let updateData;
+          try {
+            updateData = updateText ? JSON.parse(updateText) : {};
+          } catch (_e) {
+            paymentResults.push({ id: payment.id, status, action: 'update_parse_error', body: updateText });
+            continue;
+          }
+
+          if (updateRes.ok && !updateData?.errors) {
+            updatedOpenPaymentsCount++;
+            paymentResults.push({ id: payment.id, status, action: 'updated', old_value: payment.value, new_value: targetValue });
+          } else {
+            paymentResults.push({ id: payment.id, status, action: 'error', errors: updateData?.errors || updateData });
+          }
+        }
+      }
+      return paymentResults;
+    };
 
     for (const sub of subscriptions || []) {
       const subId = sub.asaas_subscription_id;
@@ -54,8 +119,8 @@ serve(async (req) => {
           continue;
         }
 
-        if (asaasSub && asaasSub.status === 'ACTIVE' && asaasSub.value !== TARGET_VALUE) {
-          console.log(`Updating sub ${subId} from ${asaasSub.value} to ${TARGET_VALUE}`);
+        if (asaasSub && asaasSub.status === 'ACTIVE' && Number(asaasSub.value) !== targetValue) {
+          console.log(`Updating sub ${subId} from ${asaasSub.value} to ${targetValue}`);
           const putRes = await fetch(`${ASAAS_BASE_URL}/subscriptions/${subId}`, {
             method: 'PUT',
             headers: {
@@ -63,8 +128,7 @@ serve(async (req) => {
               'accept': 'application/json',
               'access_token': ASAAS_API_KEY
             },
-            // updatePendingPayments = false ensures we only affect future non-issued invoices
-            body: JSON.stringify({ value: TARGET_VALUE, updatePendingPayments: false })
+            body: JSON.stringify({ value: targetValue, updatePendingPayments: true })
           });
 
           const textPut = await putRes.text();
@@ -78,10 +142,11 @@ serve(async (req) => {
           results.push({
             subId,
             old_value: asaasSub.value,
-            new_value: TARGET_VALUE,
+            new_value: targetValue,
             success: putRes.ok,
             errors: updateData?.errors,
-            rawPut: textPut
+            rawPut: textPut,
+            open_payments: putRes.ok ? [] : await updateOpenPaymentsForSubscription(subId, targetValue)
           });
 
           if (putRes.ok) {
@@ -101,7 +166,7 @@ serve(async (req) => {
       }
     }
 
-    return new Response(JSON.stringify({ updatedCount, results }), {
+    return new Response(JSON.stringify({ updatedCount, updatedOpenPaymentsCount, results }), {
       headers: { 'Content-Type': 'application/json' }
     });
   } catch (err: any) {

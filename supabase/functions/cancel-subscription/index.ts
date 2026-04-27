@@ -8,7 +8,11 @@ const corsHeaders = {
 }
 
 const ASAAS_API_KEY = Deno.env.get('ASAAS_API_KEY') ?? '';
-const ASAAS_BASE_URL = Deno.env.get('ASAAS_BASE_URL') ?? 'https://api-sandbox.asaas.com/v3';
+let ASAAS_BASE_URL = Deno.env.get('ASAAS_BASE_URL') ?? 'https://api-sandbox.asaas.com/v3';
+
+if (ASAAS_BASE_URL && !ASAAS_BASE_URL.endsWith('/v3') && !ASAAS_BASE_URL.endsWith('/v3/')) {
+    ASAAS_BASE_URL = ASAAS_BASE_URL.replace(/\/$/, '') + '/v3';
+}
 
 serve(async (req) => {
     if (req.method === 'OPTIONS') {
@@ -69,7 +73,15 @@ serve(async (req) => {
         const now = new Date();
         const isTrial = subscription.is_trial === true;
 
-        // Cancel subscription in Asaas if exists
+        // Cancel subscription in Asaas if exists. Do not mark local cancellation
+        // unless Asaas accepted it or reports the subscription no longer exists.
+        if (subscription.asaas_subscription_id && !ASAAS_API_KEY) {
+            return new Response(
+                JSON.stringify({ error: 'Configuração do Asaas não encontrada. Cancelamento não realizado.' }),
+                { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            );
+        }
+
         if (subscription.asaas_subscription_id && ASAAS_API_KEY) {
             try {
                 const cancelRes = await fetch(
@@ -87,11 +99,20 @@ serve(async (req) => {
 
                 if (!cancelRes.ok && cancelRes.status !== 404) {
                     console.error('Failed to cancel Asaas subscription:', cancelData);
-                    // Don't block - still cancel locally
+                    const errDesc = Array.isArray(cancelData?.errors)
+                        ? cancelData.errors.map((e: any) => e.description || e.message).filter(Boolean).join('. ')
+                        : cancelData?.error || cancelData?.message;
+                    return new Response(
+                        JSON.stringify({ error: errDesc || 'Erro ao cancelar assinatura no Asaas.' }),
+                        { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+                    );
                 }
             } catch (e) {
                 console.error('Error cancelling Asaas subscription:', e);
-                // Don't block - still cancel locally
+                return new Response(
+                    JSON.stringify({ error: 'Erro de comunicação ao cancelar assinatura no Asaas.' }),
+                    { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+                );
             }
         }
 

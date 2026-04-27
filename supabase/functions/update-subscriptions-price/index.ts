@@ -73,11 +73,15 @@ serve(async (req) => {
         const newPrice = Number(appSettings.product_full_price);
         console.log(`Updating all active subscriptions to new price: R$${newPrice}`);
 
-        // Get all active subscriptions from the subscriptions table
+        // Get paying subscriptions that should keep billing. Trials and scheduled
+        // cancellations keep their current charge flow.
         const { data: subscriptions, error: subError } = await supabaseAdmin
             .from('subscriptions')
             .select('asaas_subscription_id, user_id')
-            .not('asaas_subscription_id', 'is', null);
+            .not('asaas_subscription_id', 'is', null)
+            .eq('status', 'active')
+            .eq('is_trial', false)
+            .eq('cancel_at_period_end', false);
 
         if (subError) {
             console.error('Error fetching subscriptions:', subError);
@@ -87,19 +91,10 @@ serve(async (req) => {
             );
         }
 
-        // Also check pending_registrations for subscription IDs
-        const { data: pendingRegs } = await supabaseAdmin
-            .from('pending_registrations')
-            .select('asaas_subscription_id')
-            .not('asaas_subscription_id', 'is', null);
-
         // Collect all unique subscription IDs
         const allSubIds = new Set<string>();
         (subscriptions || []).forEach((s: any) => {
             if (s.asaas_subscription_id) allSubIds.add(s.asaas_subscription_id);
-        });
-        (pendingRegs || []).forEach((r: any) => {
-            if (r.asaas_subscription_id) allSubIds.add(r.asaas_subscription_id);
         });
 
         console.log(`Found ${allSubIds.size} subscription(s) to update`);
@@ -119,19 +114,21 @@ serve(async (req) => {
                     continue;
                 }
 
-                // Skip if already at the correct price
-                if (Number(subData.value) === newPrice) {
-                    results.push({ id: subId, status: 'already_correct' });
-                    continue;
-                }
-
                 // Skip inactive subscriptions
                 if (subData.status === 'INACTIVE' || subData.status === 'EXPIRED') {
                     results.push({ id: subId, status: 'skipped_inactive' });
                     continue;
                 }
 
-                // Update subscription value
+                // Skip if already at the correct price
+                if (Number(subData.value) === newPrice) {
+                    results.push({ id: subId, status: 'already_correct' });
+                    continue;
+                }
+
+                // Update the subscription and pending generated charges so the next
+                // invoice uses the configured full price, whether the current value
+                // is below or above it.
                 const updateRes = await fetch(`${ASAAS_BASE_URL}/subscriptions/${subId}`, {
                     method: 'PUT',
                     headers: {

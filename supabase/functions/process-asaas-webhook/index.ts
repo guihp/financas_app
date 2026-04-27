@@ -8,7 +8,11 @@ const corsHeaders = {
 }
 
 const ASAAS_API_KEY = Deno.env.get('ASAAS_API_KEY') ?? '';
-const ASAAS_BASE_URL = Deno.env.get('ASAAS_BASE_URL') ?? 'https://api-sandbox.asaas.com/v3';
+let ASAAS_BASE_URL = Deno.env.get('ASAAS_BASE_URL') ?? 'https://api-sandbox.asaas.com/v3';
+
+if (ASAAS_BASE_URL && !ASAAS_BASE_URL.endsWith('/v3') && !ASAAS_BASE_URL.endsWith('/v3/')) {
+  ASAAS_BASE_URL = ASAAS_BASE_URL.replace(/\/$/, '') + '/v3';
+}
 
 serve(async (req) => {
   // Handle CORS preflight requests
@@ -425,63 +429,42 @@ serve(async (req) => {
     }
 
     // Handle other events (overdue, cancelled, etc)
-    if (eventType === 'PAYMENT_CREATED') {
-      const asaasSubscriptionId = payment?.subscription || body?.subscription;
-      if (asaasSubscriptionId) {
-        // Find subscription
-        const { data: existingSub } = await supabaseAdmin
-          .from('subscriptions')
-          .select('promo_ends_at')
-          .eq('asaas_subscription_id', asaasSubscriptionId)
-          .maybeSingle();
+    if (eventType === 'PAYMENT_CREATED' && asaasSubscriptionId && paymentId) {
+      const { data: existingSub } = await supabaseAdmin
+        .from('subscriptions')
+        .select('is_trial, cancel_at_period_end')
+        .eq('asaas_subscription_id', asaasSubscriptionId)
+        .maybeSingle();
 
-        if (existingSub && existingSub.promo_ends_at) {
-          const promoEndsAt = new Date(existingSub.promo_ends_at);
-          const paymentDueDate = new Date(payment?.dueDate || body?.dueDate);
+      // The first post-trial invoice keeps the promo price. Recurring invoices
+      // after the trial must use the configured full price.
+      if (existingSub && !existingSub.is_trial && !existingSub.cancel_at_period_end) {
+        const { data: appSettings } = await supabaseAdmin
+          .from('app_settings')
+          .select('product_full_price')
+          .limit(1)
+          .single();
 
-          if (paymentDueDate <= promoEndsAt) {
-            // It's still within the promotional period, fetch app_settings for the promo price
-            const { data: appSettings } = await supabaseAdmin
-              .from('app_settings')
-              .select('product_promo_price')
-              .limit(1)
-              .single();
-
-            if (appSettings && appSettings.product_promo_price) {
-              const promoPrice = Number(appSettings.product_promo_price);
-
-              // Apply discount if there is a promotional code
-              let finalPromoPrice = promoPrice;
-              if (registration?.promotional_code_id) {
-                const { data: promoCode } = await supabaseAdmin
-                  .from('promotional_codes')
-                  .select('discount_percentage')
-                  .eq('id', registration.promotional_code_id)
-                  .single();
-                if (promoCode) {
-                  finalPromoPrice = promoPrice * (1 - (Number(promoCode.discount_percentage) / 100));
-                }
-              }
-              finalPromoPrice = Math.round(finalPromoPrice * 100) / 100;
-
-              // Only update if the payment value is different
-              if (Number(payment?.value) !== finalPromoPrice) {
-                try {
-                  await fetch(`${ASAAS_BASE_URL}/payments/${paymentId}`, {
-                    method: 'POST',
-                    headers: {
-                      'accept': 'application/json',
-                      'content-type': 'application/json',
-                      'access_token': ASAAS_API_KEY
-                    },
-                    body: JSON.stringify({ value: finalPromoPrice })
-                  });
-                  console.log(`Updated payment ${paymentId} to promo price ${finalPromoPrice} for subscription ${asaasSubscriptionId}`);
-                } catch (e) {
-                  console.warn('Failed to update PAYMENT_CREATED value for promo duration:', e);
-                }
-              }
+        const fullPrice = Number(appSettings?.product_full_price || 0);
+        if (fullPrice > 0 && Number(payment?.value) !== fullPrice) {
+          try {
+            const updatePaymentRes = await fetch(`${ASAAS_BASE_URL}/payments/${paymentId}`, {
+              method: 'POST',
+              headers: {
+                'accept': 'application/json',
+                'content-type': 'application/json',
+                'access_token': ASAAS_API_KEY
+              },
+              body: JSON.stringify({ value: fullPrice })
+            });
+            const updatePaymentData = await updatePaymentRes.json().catch(() => ({}));
+            if (!updatePaymentRes.ok || updatePaymentData?.errors) {
+              console.warn('Failed to update recurring payment to full price:', updatePaymentData);
+            } else {
+              console.log(`Updated recurring payment ${paymentId} to full price ${fullPrice}`);
             }
+          } catch (e) {
+            console.warn('Exception while updating recurring payment to full price:', e);
           }
         }
       }
