@@ -33,6 +33,7 @@ serve(async (req) => {
     const eventType = event || body?.event || rawBody?.event;
     const paymentStatus = payment?.status || payment?.Status || body?.status || rawBody?.status;
     const externalReference = payment?.externalReference ?? payment?.external_reference ?? body?.externalReference ?? body?.external_reference ?? rawBody?.externalReference;
+    const asaasSubscriptionId = payment?.subscription || body?.subscription || body?.subscriptionId || body?.subscription_id || rawBody?.subscription;
 
     if (!paymentId && !externalReference && !customerId) {
       console.error('Webhook sem paymentId, externalReference nem customerId. Body recebido:', JSON.stringify({ ...body, payment: body?.payment ? '[presente]' : 'ausente' }).slice(0, 500));
@@ -117,6 +118,39 @@ serve(async (req) => {
 
     const paidStatuses = ['CONFIRMED', 'RECEIVED', 'RECEIVED_IN_CASH'];
     const isPaidStatus = paidStatuses.includes(paymentStatus);
+
+    const updateSubscriptionByAsaasReference = async (updates: Record<string, unknown>) => {
+      const nowIso = new Date().toISOString();
+      const payload = { ...updates, updated_at: nowIso };
+
+      if (asaasSubscriptionId) {
+        const { data: subById } = await supabaseAdmin
+          .from('subscriptions')
+          .select('id')
+          .eq('asaas_subscription_id', asaasSubscriptionId)
+          .maybeSingle();
+
+        if (subById?.id) {
+          await supabaseAdmin.from('subscriptions').update(payload).eq('id', subById.id);
+          return true;
+        }
+      }
+
+      const fallbackCustomerId = customerId || registration?.asaas_customer_id;
+      if (fallbackCustomerId) {
+        const { data: subByCustomer } = await supabaseAdmin
+          .from('subscriptions')
+          .select('id')
+          .eq('asaas_customer_id', fallbackCustomerId)
+          .maybeSingle();
+        if (subByCustomer?.id) {
+          await supabaseAdmin.from('subscriptions').update(payload).eq('id', subByCustomer.id);
+          return true;
+        }
+      }
+
+      return false;
+    };
 
     if (regError || !registration) {
       console.log('Registration not found:', { paymentId, externalReference, customerId, error: regError });
@@ -242,7 +276,6 @@ serve(async (req) => {
       // UPDATE SUBSCRIPTION (for recurring subscription payments)
       // ============================================
       // Check if this payment belongs to an Asaas subscription
-      const asaasSubscriptionId = payment?.subscription || body?.subscription;
       let subscriptionUpdated = false;
 
       if (asaasSubscriptionId) {
@@ -263,6 +296,8 @@ serve(async (req) => {
             .update({
               is_trial: false,
               status: 'active',
+              cancel_at_period_end: false,
+              cancelled_at: null,
               current_period_start: new Date().toISOString().split('T')[0],
               current_period_end: periodEnd.toISOString().split('T')[0],
               updated_at: new Date().toISOString()
@@ -290,6 +325,8 @@ serve(async (req) => {
                 .update({
                   is_trial: false,
                   status: 'active',
+                  cancel_at_period_end: false,
+                  cancelled_at: null,
                   asaas_subscription_id: asaasSubscriptionId,
                   current_period_start: new Date().toISOString().split('T')[0],
                   current_period_end: periodEnd.toISOString().split('T')[0],
@@ -323,6 +360,8 @@ serve(async (req) => {
             .update({
               is_trial: false,
               status: 'active',
+              cancel_at_period_end: false,
+              cancelled_at: null,
               current_period_start: new Date().toISOString().split('T')[0],
               current_period_end: periodEnd.toISOString().split('T')[0],
               updated_at: new Date().toISOString()
@@ -460,6 +499,12 @@ serve(async (req) => {
       console.log('Registration marked as expired due to overdue payment:', registration.id);
     }
 
+    if (eventType === 'PAYMENT_OVERDUE') {
+      await updateSubscriptionByAsaasReference({
+        status: 'overdue'
+      });
+    }
+
     if (registration && (eventType === 'PAYMENT_DELETED' || eventType === 'PAYMENT_REFUNDED')) {
       await supabaseAdmin
         .from('pending_registrations')
@@ -470,6 +515,25 @@ serve(async (req) => {
         .eq('id', registration.id);
 
       console.log('Registration cancelled:', registration.id);
+    }
+
+    if (eventType === 'PAYMENT_DELETED' || eventType === 'PAYMENT_REFUNDED') {
+      const nowIso = new Date().toISOString();
+      const today = nowIso.split('T')[0];
+      await updateSubscriptionByAsaasReference({
+        status: 'cancelled',
+        cancel_at_period_end: true,
+        cancelled_at: nowIso,
+        current_period_end: today
+      });
+    }
+
+    if (eventType === 'SUBSCRIPTION_DELETED' || eventType === 'SUBSCRIPTION_CANCELLED' || eventType === 'SUBSCRIPTION_INACTIVATED') {
+      const nowIso = new Date().toISOString();
+      await updateSubscriptionByAsaasReference({
+        cancel_at_period_end: true,
+        cancelled_at: nowIso
+      });
     }
 
     return new Response(

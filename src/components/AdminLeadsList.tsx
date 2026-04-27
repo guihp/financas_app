@@ -78,10 +78,21 @@ export const AdminLeadsList = () => {
             // - subscriptions where trial expired and they haven't paid
             
             const now = new Date();
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+
             const activeSubUserIds = new Set(subscriptions?.filter(s => {
                 const isActive = s.status === 'active' || s.status === 'ACTIVE';
-                const isExpiredTrial = s.is_trial && s.trial_ends_at && new Date(s.trial_ends_at) < now;
-                return isActive && !isExpiredTrial;
+                if (!isActive) return false;
+
+                if (s.is_trial) {
+                    const isExpiredTrial = s.trial_ends_at && new Date(s.trial_ends_at) < now;
+                    return !isExpiredTrial;
+                }
+
+                const periodEnd = s.current_period_end ? new Date(s.current_period_end) : null;
+                if (periodEnd) periodEnd.setHours(0, 0, 0, 0);
+                return !!periodEnd && periodEnd >= today;
             }).map(s => s.user_id));
             
             const canceledUserIds = new Set(desistentes?.map(d => d.user_id));
@@ -122,10 +133,15 @@ export const AdminLeadsList = () => {
             const c3: KanbanCard[] = [];
             // Col 4: Pagantes Oficiais (is_trial = false & status = active)
             const c4: KanbanCard[] = [];
+            // Col 5: Cancelados (Desistentes + Subscriptions Inactive)
+            const c5: KanbanCard[] = [];
             
             subscriptions?.forEach(s => {
                 const isActiveStatus = s.status === 'active' || s.status === 'ACTIVE';
                 const isExpiredTrial = s.is_trial && s.trial_ends_at && new Date(s.trial_ends_at) < now;
+                const periodEnd = s.current_period_end ? new Date(s.current_period_end) : null;
+                if (periodEnd) periodEnd.setHours(0, 0, 0, 0);
+                const hasActivePeriod = !!periodEnd && periodEnd >= today;
                 
                 if (isActiveStatus) {
                     const prof = profiles?.find(p => p.user_id === s.user_id);
@@ -143,14 +159,15 @@ export const AdminLeadsList = () => {
                         c2.push(card);
                     } else if (s.is_trial) {
                         c3.push(card);
-                    } else {
+                    } else if (hasActivePeriod) {
                         c4.push(card);
+                    } else {
+                        card.tag = 'Periodo Expirado';
+                        c5.push(card);
                     }
                 }
             });
 
-            // Col 5: Cancelados (Desistentes + Subscriptions Inactive)
-            const c5: KanbanCard[] = [];
             desistentes?.forEach(d => {
                 c5.push({
                     id: d.id,
@@ -172,7 +189,9 @@ export const AdminLeadsList = () => {
                         email: prof?.email,
                         phone: prof?.phone || "",
                         date: s.created_at,
-                        tag: s.status === 'canceled' || s.status === 'CANCELED' ? 'Cancelado' : 'Inativo'
+                        tag: (s.status === 'canceled' || s.status === 'CANCELED' || s.status === 'cancelled' || s.status === 'CANCELLED')
+                            ? 'Cancelado'
+                            : 'Inativo'
                     });
                 }
             });

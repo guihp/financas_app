@@ -57,6 +57,7 @@ interface UserSubscription {
   current_period_end?: string;
   plan_name?: string;
   plan_price?: number;
+  cancel_at_period_end?: boolean;
 }
 
 export const AdminSubscriptions = () => {
@@ -103,6 +104,20 @@ export const AdminSubscriptions = () => {
       // Combine user data with subscription data
       const combined: UserSubscription[] = allUsers.map((user: any) => {
         const sub = subscriptions?.find((s: any) => s.user_id === user.id);
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const periodEndDate = sub?.current_period_end ? new Date(sub.current_period_end) : null;
+        if (periodEndDate) periodEndDate.setHours(0, 0, 0, 0);
+        const cancellationPeriodEnded = Boolean(
+          sub?.cancel_at_period_end &&
+          periodEndDate &&
+          periodEndDate < today
+        );
+        const derivedStatus =
+          cancellationPeriodEnded && (sub?.status === "active" || sub?.status === "overdue")
+            ? "cancelled"
+            : sub?.status || "none";
+
         return {
           id: user.id,
           email: user.email,
@@ -110,11 +125,12 @@ export const AdminSubscriptions = () => {
           phone: user.phone,
           created_at: user.created_at,
           subscription_id: sub?.id,
-          subscription_status: sub?.status || "none",
+          subscription_status: derivedStatus,
           is_trial: sub?.is_trial || false,
           trial_ends_at: sub?.trial_ends_at,
           current_period_start: sub?.current_period_start,
           current_period_end: sub?.current_period_end,
+          cancel_at_period_end: sub?.cancel_at_period_end || false,
           plan_name: "Plano Mensal",
           plan_price: 39.9,
         };
@@ -189,7 +205,10 @@ export const AdminSubscriptions = () => {
   const stats = {
     total: users.length,
     active: users.filter(
-      (u) => u.subscription_status === "active" && !u.is_trial
+      (u) => u.subscription_status === "active" && !u.is_trial && !u.cancel_at_period_end
+    ).length,
+    cancelScheduled: users.filter(
+      (u) => u.subscription_status === "active" && !u.is_trial && u.cancel_at_period_end
     ).length,
     trial: users.filter((u) => {
       if (!u.is_trial) return false;
@@ -244,7 +263,15 @@ export const AdminSubscriptions = () => {
       return (
         matchesSearch &&
         user.subscription_status === "active" &&
-        !user.is_trial
+        !user.is_trial &&
+        !user.cancel_at_period_end
+      );
+    if (filterStatus === "cancel_scheduled")
+      return (
+        matchesSearch &&
+        user.subscription_status === "active" &&
+        !user.is_trial &&
+        user.cancel_at_period_end
       );
     if (filterStatus === "expired")
       return (
@@ -300,6 +327,17 @@ export const AdminSubscriptions = () => {
 
     switch (user.subscription_status) {
       case "active":
+        if (user.cancel_at_period_end) {
+          return (
+            <Badge
+              variant="secondary"
+              className="gap-1 bg-amber-500/20 text-amber-400 border-amber-500/30"
+            >
+              <AlertTriangle className="h-3 w-3" />
+              Cancel. agendado
+            </Badge>
+          );
+        }
         return (
           <Badge
             variant="default"
@@ -358,7 +396,7 @@ export const AdminSubscriptions = () => {
   return (
     <div className="space-y-6">
       {/* Stats Cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 sm:gap-4">
         <Card className="bg-gradient-to-br from-green-500/10 to-green-500/5 border-green-500/20">
           <CardContent className="p-4">
             <div className="flex items-center justify-between mb-2">
@@ -397,6 +435,19 @@ export const AdminSubscriptions = () => {
             <div className="text-2xl font-bold text-yellow-400">{stats.trialExpired}</div>
             <p className="text-xs text-muted-foreground mt-1">
               Aguardando pagamento
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card className="bg-gradient-to-br from-amber-500/10 to-amber-500/5 border-amber-500/20">
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between mb-2">
+              <Clock className="h-4 w-4 text-amber-400" />
+              <span className="text-xs text-muted-foreground">Cancel. Agendado</span>
+            </div>
+            <div className="text-2xl font-bold text-amber-400">{stats.cancelScheduled}</div>
+            <p className="text-xs text-muted-foreground mt-1">
+              Sem renovacao futura
             </p>
           </CardContent>
         </Card>
@@ -464,6 +515,7 @@ export const AdminSubscriptions = () => {
               <SelectContent>
                 <SelectItem value="all">Todos</SelectItem>
                 <SelectItem value="paid">Pagos</SelectItem>
+                <SelectItem value="cancel_scheduled">Cancel. Agendado</SelectItem>
                 <SelectItem value="trial">Em Trial</SelectItem>
                 <SelectItem value="trial_expiring">Trial Expirando (3d)</SelectItem>
                 <SelectItem value="trial_expired">Trial Expirado</SelectItem>
