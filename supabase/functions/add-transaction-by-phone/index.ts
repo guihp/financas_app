@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.53.0";
+import { normalizeCategorySlug } from "../_shared/categories.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -133,7 +134,8 @@ serve(async (req) => {
     const type = body.type as string | undefined;
     const amount = body.amount;
     const description = body.description as string | undefined;
-    const category = body.category as string | undefined;
+    const rawCategory = body.category as string | undefined;
+    const category = rawCategory ? normalizeCategorySlug(rawCategory) : rawCategory;
     const date = body.date as string | undefined;
     const payment_method = body.payment_method as string | undefined;
     const bank_account_id = body.bank_account_id as string | undefined;

@@ -8,6 +8,7 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
 import { isValidAmount, sanitizeDescription, sanitizeCategoryName } from "@/utils/validation";
+import { normalizeCategorySlug } from "@/utils/category";
 import { CategorySelect } from "./CategorySelect";
 
 export interface Transaction {
@@ -122,7 +123,7 @@ export const AddTransactionDialog = ({
 
     // Sanitizar descrição e categoria
     const sanitizedDescription = sanitizeDescription(description);
-    const sanitizedCategory = sanitizeCategoryName(category);
+    const sanitizedCategory = normalizeCategorySlug(sanitizeCategoryName(category));
 
     if (!sanitizedDescription || sanitizedDescription.length < 3) {
       toast({

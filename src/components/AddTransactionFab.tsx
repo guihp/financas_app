@@ -9,6 +9,7 @@ import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { isValidAmount, sanitizeDescription, sanitizeCategoryName } from "@/utils/validation";
+import { normalizeCategorySlug } from "@/utils/category";
 import { CreditCard, Banknote, Zap, FileText, Building2, ArrowLeftRight } from "lucide-react";
 import { FIXED_CATEGORIES, CATEGORY_GROUPS, getCategoryLabel, getCategoriesByType, getCategoryGroupsByType } from "@/constants/financialData";
 import { CategorySelect } from "./CategorySelect";
@@ -164,7 +165,7 @@ export const AddTransactionFab = ({ open, onOpenChange, onTransactionAdded }: Ad
     }
 
     const sanitizedDescription = sanitizeDescription(description);
-    const sanitizedCategory = sanitizeCategoryName(category);
+    const sanitizedCategory = normalizeCategorySlug(sanitizeCategoryName(category));
 
     if (!sanitizedDescription || sanitizedDescription.length < 3) {
       toast({ title: "Erro", description: "Descrição deve ter pelo menos 3 caracteres", variant: "destructive" });
