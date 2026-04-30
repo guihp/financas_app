@@ -208,7 +208,7 @@ const OrcamentosPage = () => {
   };
 
   return (
-    <div className="p-4 md:p-8 pt-20 max-w-4xl mx-auto space-y-6">
+    <div className="p-4 md:p-8 pt-20 pb-24 lg:pb-6 max-w-4xl mx-auto space-y-6">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Teto de Gastos</h1>
