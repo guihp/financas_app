@@ -3,6 +3,10 @@ FROM node:20-alpine AS builder
 
 WORKDIR /app
 
+# Cache buster — alterar este valor força rebuild completo (invalida layers abaixo)
+ARG CACHE_BUSTER=2026-05-01a
+RUN echo "Cache buster: $CACHE_BUSTER"
+
 # Copy package files
 COPY package*.json ./
 
