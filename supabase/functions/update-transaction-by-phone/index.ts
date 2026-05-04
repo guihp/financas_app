@@ -1,4 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { normalizeCategorySlug } from '../_shared/categories.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -126,7 +127,9 @@ Deno.serve(async (req) => {
     if (type !== undefined) updateData.type = type
     if (amount !== undefined) updateData.amount = amount
     if (description !== undefined) updateData.description = description
-    if (category !== undefined) updateData.category = category
+    if (category !== undefined) {
+      updateData.category = normalizeCategorySlug(String(category))
+    }
     if (date !== undefined) {
       const normalized = normalizeDateInputToYyyyMmDd(String(date))
       if (!normalized) {

@@ -9,7 +9,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useConnectedUserIds } from "@/hooks/useConnectedUserIds";
 import { useOutletContext } from "react-router-dom";
 import { ShieldAlert, Plus, Pencil, AlertTriangle } from "lucide-react";
-import { getCategoryLabel } from "@/constants/financialData";
+import { getCategoryLabel, normalizeCategorySlug } from "@/constants/financialData";
 import { Progress } from "@/components/ui/progress";
 import { CategorySelect } from "@/components/CategorySelect";
 import { isValidAmount } from "@/utils/validation";
@@ -121,7 +121,7 @@ const OrcamentosPage = () => {
       if (txErr) throw txErr;
 
       const grouped = (txData || []).reduce((acc: Record<string, number>, tx: { amount: number; category: string; user_id: string }) => {
-        const key = `${tx.user_id}::${tx.category}`;
+        const key = `${tx.user_id}::${normalizeCategorySlug(tx.category)}`;
         acc[key] = (acc[key] || 0) + Number(tx.amount);
         return acc;
       }, {});
@@ -154,7 +154,7 @@ const OrcamentosPage = () => {
   const handleOpenEdit = (b: Budget) => {
     setIsEditMode(true);
     setEditId(b.id);
-    setSelectedCat(b.category);
+    setSelectedCat(normalizeCategorySlug(b.category));
     setBudgetAmount(
       Number(b.amount).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
     );
@@ -185,7 +185,7 @@ const OrcamentosPage = () => {
           .from("budgets")
           .insert({
             user_id: user.id,
-            category: selectedCat,
+            category: normalizeCategorySlug(selectedCat),
             amount: val,
             month_year: currentMonthStr
           });
@@ -238,7 +238,7 @@ const OrcamentosPage = () => {
 
         {budgets.map(b => {
           const label = getCategoryLabel(b.category);
-          const spent = spentByUserCategory[`${b.user_id}::${b.category}`] || 0;
+          const spent = spentByUserCategory[`${b.user_id}::${normalizeCategorySlug(b.category)}`] || 0;
           const limit = Number(b.amount);
           const perc = limit > 0 ? Math.min((spent / limit) * 100, 100) : 0;
           const isOver = spent > limit;

@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.53.0";
+import { normalizeCategorySlug } from "../_shared/categories.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -322,8 +323,9 @@ serve(async (req) => {
     if (action === "add_item") {
       const listId = typeof body.list_id === "string" ? body.list_id : "";
       const itemName = typeof body.name === "string" ? body.name.trim() : "";
-      const category =
-        typeof body.category === "string" ? body.category.trim() : "";
+      const category = normalizeCategorySlug(
+        typeof body.category === "string" ? body.category.trim() : "",
+      );
       if (!listId || !itemName || !category) {
         return apiError(
           "VALIDATION_ERROR",
@@ -422,7 +424,7 @@ serve(async (req) => {
       const patch: Record<string, unknown> = {};
       if (typeof body.name === "string") patch.name = body.name.trim();
       if (typeof body.category === "string") {
-        patch.category = body.category.trim();
+        patch.category = normalizeCategorySlug(body.category.trim());
       }
       if (body.quantity != null) patch.quantity = Number(body.quantity);
       if (body.unit_type === "kg" || body.unit_type === "un") {

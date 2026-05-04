@@ -178,11 +178,81 @@ export const getCategoriesByType = (type: 'income' | 'expense'): CategoryItem[] 
     return FIXED_CATEGORIES.filter(c => c.type === type || c.type === 'both');
 };
 
+function levenshteinDistance(a: string, b: string): number {
+    if (a === b) return 0;
+    const m = a.length;
+    const n = b.length;
+    if (m === 0) return n;
+    if (n === 0) return m;
+    const row = new Array<number>(n + 1);
+    for (let j = 0; j <= n; j++) row[j] = j;
+    for (let i = 1; i <= m; i++) {
+        let prev = row[0];
+        row[0] = i;
+        for (let j = 1; j <= n; j++) {
+            const tmp = row[j];
+            const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+            row[j] = Math.min(row[j] + 1, row[j - 1] + 1, prev + cost);
+            prev = tmp;
+        }
+    }
+    return row[n];
+}
+
+/** Remove prefixos de emoji antes do texto (ex.: "🛒 Supermercado"). */
+function stripEmojiPrefix(raw: string): string {
+    let s = raw.normalize('NFKC').trimStart();
+    let guard = 0;
+    while (s.length > 0 && guard++ < 50) {
+        const m = s.match(/^(\p{Extended_Pictographic}\uFE0F?)+/u);
+        if (!m) break;
+        s = s.slice(m[0].length).trimStart();
+    }
+    return s.trim();
+}
+
+function collapseSpaces(s: string): string {
+    return s.replace(/\s+/g, ' ').trim();
+}
+
+/**
+ * Normaliza categoria (slug ou rótulo de FIXED_CATEGORIES) para o slug canónico.
+ * Emoji inicial, unicode NFKC, fuzzy conservador (Levenshtein 1 vs rótulos, input ≥ 8 chars).
+ * Categorias custom com nome quase igual a uma fixa podem colapsar para o slug fixo.
+ */
+export function normalizeCategorySlug(input: string | null | undefined): string {
+    if (!input || typeof input !== 'string') return '';
+    const s0 = collapseSpaces(stripEmojiPrefix(input));
+    if (!s0) return '';
+
+    const bySlug = FIXED_CATEGORIES.find((c) => c.value === s0);
+    if (bySlug) return bySlug.value;
+
+    const lower = s0.toLowerCase();
+    const byLabel = FIXED_CATEGORIES.find((c) => c.label.toLowerCase() === lower);
+    if (byLabel) return byLabel.value;
+
+    if (lower.length >= 8) {
+        const candidates: CategoryItem[] = [];
+        for (const c of FIXED_CATEGORIES) {
+            const lab = c.label.toLowerCase();
+            if (Math.abs(lab.length - lower.length) > 1) continue;
+            if (levenshteinDistance(lower, lab) <= 1) candidates.push(c);
+        }
+        if (candidates.length === 1) return candidates[0].value;
+    }
+
+    return s0;
+}
+
 // Helper: get display label for a category value
 export function getCategoryLabel(value: string): string {
-    const found = FIXED_CATEGORIES.find(c => c.value === value);
+    const key = normalizeCategorySlug(value);
+    const found = FIXED_CATEGORIES.find((c) => c.value === key);
     if (found) return `${found.emoji} ${found.label}`;
-    return value.charAt(0).toUpperCase() + value.slice(1);
+    const display = key || (value?.trim() ?? '');
+    if (!display) return '';
+    return display.charAt(0).toUpperCase() + display.slice(1);
 }
 
 // ============================================

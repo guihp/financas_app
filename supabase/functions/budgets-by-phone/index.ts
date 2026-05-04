@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.53.0";
+import { normalizeCategorySlug } from "../_shared/categories.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -224,8 +225,9 @@ serve(async (req) => {
 
     // ── upsert ─────────────────────────────────
     if (action === "upsert") {
-      const category =
+      const categoryRaw =
         typeof body.category === "string" ? body.category.trim() : "";
+      const category = normalizeCategorySlug(categoryRaw);
       if (!category) {
         return apiError(
           "MISSING_CATEGORY",
@@ -327,8 +329,9 @@ serve(async (req) => {
     if (action === "delete") {
       const budgetId =
         typeof body.budget_id === "string" ? body.budget_id : "";
-      const delCategory =
-        typeof body.category === "string" ? body.category.trim() : "";
+      const delCategory = normalizeCategorySlug(
+        typeof body.category === "string" ? body.category.trim() : "",
+      );
       const delMonth =
         typeof body.month_year === "string" && /^\d{4}-\d{2}$/.test(body.month_year)
           ? body.month_year

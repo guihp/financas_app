@@ -123,16 +123,66 @@ const LABEL_TO_SLUG = new Map<string, string>(
   FIXED.map((c) => [c.label.toLowerCase(), c.value]),
 );
 
+function levenshteinDistance(a: string, b: string): number {
+  if (a === b) return 0;
+  const m = a.length;
+  const n = b.length;
+  if (m === 0) return n;
+  if (n === 0) return m;
+  const row = new Array<number>(n + 1);
+  for (let j = 0; j <= n; j++) row[j] = j;
+  for (let i = 1; i <= m; i++) {
+    let prev = row[0];
+    row[0] = i;
+    for (let j = 1; j <= n; j++) {
+      const tmp = row[j];
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      row[j] = Math.min(row[j] + 1, row[j - 1] + 1, prev + cost);
+      prev = tmp;
+    }
+  }
+  return row[n];
+}
+
+function stripEmojiPrefix(raw: string): string {
+  let s = raw.normalize("NFKC").trimStart();
+  let guard = 0;
+  while (s.length > 0 && guard++ < 50) {
+    const m = s.match(/^(\p{Extended_Pictographic}\uFE0F?)+/u);
+    if (!m) break;
+    s = s.slice(m[0].length).trimStart();
+  }
+  return s.trim();
+}
+
+function collapseSpaces(s: string): string {
+  return s.replace(/\s+/g, " ").trim();
+}
+
 /**
- * Aceita slug ou label e devolve o slug canônico. Mantém o input original
- * para categorias custom (não encontradas em FIXED).
+ * Aceita slug ou label e devolve o slug canônico. Mantém o input tratado
+ * para categorias custom. Manter em sincronia com src/constants/financialData.ts.
  */
 export function normalizeCategorySlug(input: string | null | undefined): string {
   if (!input || typeof input !== "string") return "";
-  const trimmed = input.trim();
-  if (!trimmed) return "";
-  if (SLUG_SET.has(trimmed)) return trimmed;
-  const slug = LABEL_TO_SLUG.get(trimmed.toLowerCase());
-  if (slug) return slug;
-  return trimmed;
+  const s0 = collapseSpaces(stripEmojiPrefix(input));
+  if (!s0) return "";
+
+  if (SLUG_SET.has(s0)) return s0;
+
+  const lower = s0.toLowerCase();
+  const exactLabel = LABEL_TO_SLUG.get(lower);
+  if (exactLabel) return exactLabel;
+
+  if (lower.length >= 8) {
+    const candidates: string[] = [];
+    for (const c of FIXED) {
+      const lab = c.label.toLowerCase();
+      if (Math.abs(lab.length - lower.length) > 1) continue;
+      if (levenshteinDistance(lower, lab) <= 1) candidates.push(c.value);
+    }
+    if (candidates.length === 1) return candidates[0];
+  }
+
+  return s0;
 }
