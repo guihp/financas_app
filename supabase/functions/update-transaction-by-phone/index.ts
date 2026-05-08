@@ -1,5 +1,6 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { normalizeCategorySlug } from '../_shared/categories.ts'
+import { isUserSubscriptionInactive, SUBSCRIPTION_BLOCK_MESSAGE, SUBSCRIPTION_INACTIVE_CODE } from "../_shared/subscription.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -121,6 +122,13 @@ Deno.serve(async (req) => {
     }
 
     console.log('User ID found:', userId)
+
+    if (await isUserSubscriptionInactive(supabase, userId)) {
+      return new Response(
+        JSON.stringify({ error: SUBSCRIPTION_INACTIVE_CODE, message: SUBSCRIPTION_BLOCK_MESSAGE }),
+        { status: 402, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
 
     // Prepare update data - only include fields that are provided
     const updateData: any = {}

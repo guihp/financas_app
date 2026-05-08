@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.53.0";
 import { normalizeCategorySlug } from "../_shared/categories.ts";
+import { isUserSubscriptionInactive, SUBSCRIPTION_BLOCK_MESSAGE, SUBSCRIPTION_INACTIVE_CODE } from "../_shared/subscription.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -200,6 +201,10 @@ serve(async (req) => {
         404,
         { hint: "Confirme o número (ex.: 5511999999999)." },
       );
+    }
+
+    if (await isUserSubscriptionInactive(supabase, userId)) {
+      return apiError(SUBSCRIPTION_INACTIVE_CODE, SUBSCRIPTION_BLOCK_MESSAGE, 402);
     }
 
     let resolvedBankAccountId = bank_account_id || null;

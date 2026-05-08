@@ -23,6 +23,7 @@ import {
   PHONE_COUNTRY_NAMES,
   type PhoneCountry
 } from "@/utils/validation";
+import { checkSubscriptionAccess, SUBSCRIPTION_BLOCK_MESSAGE } from "@/utils/subscription";
 import {
   Select,
   SelectContent,
@@ -83,22 +84,26 @@ const Auth = ({ defaultTab = "login" }: AuthProps) => {
   };
 
   useEffect(() => {
+    let cancelled = false;
+
     const checkUser = async () => {
       const { data: { session } } = await supabase.auth.getSession();
-      if (session) {
+      if (!session?.user || cancelled) return;
+
+      const access = await checkSubscriptionAccess(session.user.id);
+      if (cancelled) return;
+
+      if (access.allowed) {
         navigate("/");
+      } else {
+        await supabase.auth.signOut();
+        setMessage(SUBSCRIPTION_BLOCK_MESSAGE);
       }
     };
     checkUser();
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      if (session) {
-        navigate("/");
-      }
-    });
-
     return () => {
-      subscription.unsubscribe();
+      cancelled = true;
     };
   }, [navigate]);
 
@@ -122,7 +127,7 @@ const Auth = ({ defaultTab = "login" }: AuthProps) => {
     const sanitizedEmail = email.trim().toLowerCase();
 
     try {
-      const { error } = await supabase.auth.signInWithPassword({
+      const { data, error } = await supabase.auth.signInWithPassword({
         email: sanitizedEmail,
         password,
       });
@@ -133,12 +138,29 @@ const Auth = ({ defaultTab = "login" }: AuthProps) => {
         } else {
           setMessage(error.message);
         }
-      } else {
-        toast({
-          title: "Login realizado com sucesso!",
-          description: "Bem-vindo de volta.",
-        });
+        setLoading(false);
+        return;
       }
+
+      if (!data?.user) {
+        setMessage("Erro inesperado ao autenticar.");
+        setLoading(false);
+        return;
+      }
+
+      const access = await checkSubscriptionAccess(data.user.id);
+      if (!access.allowed) {
+        await supabase.auth.signOut();
+        setMessage(SUBSCRIPTION_BLOCK_MESSAGE);
+        setLoading(false);
+        return;
+      }
+
+      toast({
+        title: "Login realizado com sucesso!",
+        description: "Bem-vindo de volta.",
+      });
+      navigate("/");
     } catch (error) {
       setMessage("Erro inesperado. Tente novamente.");
     } finally {

@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.53.0";
+import { isUserSubscriptionInactive, SUBSCRIPTION_BLOCK_MESSAGE, SUBSCRIPTION_INACTIVE_CODE } from "../_shared/subscription.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -71,6 +72,13 @@ serve(async (req) => {
       return new Response(
         JSON.stringify({ error: 'Usuário não encontrado com esse número de telefone' }),
         { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    if (await isUserSubscriptionInactive(supabase, userId)) {
+      return new Response(
+        JSON.stringify({ error: SUBSCRIPTION_INACTIVE_CODE, message: SUBSCRIPTION_BLOCK_MESSAGE }),
+        { status: 402, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 

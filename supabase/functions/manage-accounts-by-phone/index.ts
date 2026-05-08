@@ -3,6 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { jsPDF } from "npm:jspdf";
 import autoTable from "npm:jspdf-autotable";
 import { logoBase64 } from "./logo.ts";
+import { isUserSubscriptionInactive, SUBSCRIPTION_BLOCK_MESSAGE, SUBSCRIPTION_INACTIVE_CODE } from "../_shared/subscription.ts";
 
 const corsHeaders = {
     'Access-Control-Allow-Origin': '*',
@@ -63,6 +64,13 @@ serve(async (req) => {
                 return new Response(
                     JSON.stringify({ error: 'Usuário não encontrado', phone }),
                     { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+                );
+            }
+
+            if (await isUserSubscriptionInactive(supabase, userId)) {
+                return new Response(
+                    JSON.stringify({ error: SUBSCRIPTION_INACTIVE_CODE, message: SUBSCRIPTION_BLOCK_MESSAGE }),
+                    { status: 402, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
                 );
             }
 
@@ -412,6 +420,13 @@ serve(async (req) => {
                 );
             }
 
+            if (await isUserSubscriptionInactive(supabase, userId)) {
+                return new Response(
+                    JSON.stringify({ error: SUBSCRIPTION_INACTIVE_CODE, message: SUBSCRIPTION_BLOCK_MESSAGE }),
+                    { status: 402, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+                );
+            }
+
             if (action === 'create_bank') {
                 const resolvedColor = color || BANK_PRESETS[name.toLowerCase()] || '#6B7280';
                 const initialBalance = body.balance !== undefined ? parseFloat(body.balance) : 0;
@@ -600,6 +615,13 @@ serve(async (req) => {
                 );
             }
 
+            if (await isUserSubscriptionInactive(supabase, userId)) {
+                return new Response(
+                    JSON.stringify({ error: SUBSCRIPTION_INACTIVE_CODE, message: SUBSCRIPTION_BLOCK_MESSAGE }),
+                    { status: 402, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+                );
+            }
+
             if (action === 'edit_bank') {
                 const { bank_id, name, color, balance } = body;
 
@@ -756,6 +778,13 @@ serve(async (req) => {
                 return new Response(
                     JSON.stringify({ error: 'Usuário não encontrado', phone }),
                     { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+                );
+            }
+
+            if (await isUserSubscriptionInactive(supabase, userId)) {
+                return new Response(
+                    JSON.stringify({ error: SUBSCRIPTION_INACTIVE_CODE, message: SUBSCRIPTION_BLOCK_MESSAGE }),
+                    { status: 402, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
                 );
             }
 

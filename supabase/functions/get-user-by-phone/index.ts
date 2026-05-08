@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { isUserSubscriptionInactive, SUBSCRIPTION_BLOCK_MESSAGE, SUBSCRIPTION_INACTIVE_CODE } from "../_shared/subscription.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -97,16 +98,23 @@ serve(async (req) => {
 
     if (!userId) {
       return new Response(
-        JSON.stringify({ 
+        JSON.stringify({
           error: 'User not found with this phone number',
           phone: phone,
           active: false
         }),
-        { 
-          status: 404, 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        {
+          status: 404,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
         }
       )
+    }
+
+    if (await isUserSubscriptionInactive(supabase, userId)) {
+      return new Response(
+        JSON.stringify({ error: SUBSCRIPTION_INACTIVE_CODE, message: SUBSCRIPTION_BLOCK_MESSAGE, active: false }),
+        { status: 402, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     }
 
     // Get user profile data
