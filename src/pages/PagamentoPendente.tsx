@@ -16,8 +16,12 @@ import {
   ExternalLink,
   Shield,
   Gift,
-  Tag
+  Tag,
+  CreditCard,
+  QrCode,
+  Copy
 } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { Logo } from "@/components/Logo";
@@ -86,6 +90,14 @@ const PagamentoPendente = () => {
   const [address, setAddress] = useState<PaymentAddress | null>(null);
   const hasAutoSearched = useRef(false);
 
+  // Payment method selection (Cartão | PIX). null = user hasn't picked yet.
+  const initialMethod = (searchParams.get('method') === 'PIX' ? 'PIX' : searchParams.get('method') === 'CREDIT_CARD' ? 'CREDIT_CARD' : null) as 'CREDIT_CARD' | 'PIX' | null;
+  const [selectedMethod, setSelectedMethod] = useState<'CREDIT_CARD' | 'PIX' | null>(initialMethod);
+  const [pixCpfCnpj, setPixCpfCnpj] = useState("");
+  const [pixAccepted, setPixAccepted] = useState(false);
+  const [pixData, setPixData] = useState<{ paymentId: string; pixCode?: string; pixQrCodeUrl?: string; invoiceUrl?: string } | null>(null);
+  const pixPollTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+
   const navigate = useNavigate();
   const { toast } = useToast();
 
@@ -136,7 +148,7 @@ const PagamentoPendente = () => {
     }
   };
 
-  const createPayment = async (billingType: 'CREDIT_CARD', creditCard?: CreditCardData, creditCardHolderInfo?: CardHolderInfo) => {
+  const createPayment = async (billingType: 'CREDIT_CARD' | 'PIX', creditCard?: CreditCardData, creditCardHolderInfo?: CardHolderInfo, pixCpf?: string) => {
     // Payment creation initiated
     if (!pendingPayment?.id) {
       setMessage("Dados do pagamento incompletos. Busque pelo e-mail novamente.");
@@ -181,7 +193,7 @@ const PagamentoPendente = () => {
       toast({ title: "Endereço obrigatório", description: "Preencha todos os campos do endereço.", variant: "destructive" });
       return;
     }
-    if (!creditCard || !creditCardHolderInfo) {
+    if (billingType === 'CREDIT_CARD' && (!creditCard || !creditCardHolderInfo)) {
       setCreatingPayment(false);
       setShowCardForm(true);
       return;
@@ -192,7 +204,7 @@ const PagamentoPendente = () => {
       const body: any = {
         customerId,
         registrationId: pendingPayment.id,
-        billingType: 'CREDIT_CARD',
+        billingType,
         promoCode: appliedPromo?.code || undefined,
         address: address ? {
           postalCode: address.postalCode,
@@ -204,7 +216,10 @@ const PagamentoPendente = () => {
           state: address.state
         } : undefined
       };
-      if (creditCard && creditCardHolderInfo) {
+      if (billingType === 'PIX' && pixCpf) {
+        body.cpfCnpj = pixCpf.replace(/\D/g, '');
+      }
+      if (billingType === 'CREDIT_CARD' && creditCard && creditCardHolderInfo) {
         body.creditCard = creditCard;
         const postalCode = (creditCardHolderInfo.postalCode || address?.postalCode || '').replace(/\D/g, '');
         const addressNumber = creditCardHolderInfo.addressNumber || address?.number || '0';
@@ -235,6 +250,18 @@ const PagamentoPendente = () => {
         throw new Error(errMsg);
       }
       if (data?.error) throw new Error(data.error);
+      if (billingType === 'PIX' && data?.paymentId) {
+        const qrUrl = data.pixQrCodeBase64 ? `data:image/png;base64,${data.pixQrCodeBase64}` : undefined;
+        setPixData({
+          paymentId: data.paymentId,
+          pixCode: data.pixCode,
+          pixQrCodeUrl: qrUrl,
+          invoiceUrl: data.invoiceUrl
+        });
+        setMessage("");
+        setCreatingPayment(false);
+        return;
+      }
       if (data?.isPaid) {
         setPaymentStatus('paid');
         const hasRegisterError = !!data?.registerUserError;
@@ -478,6 +505,54 @@ const PagamentoPendente = () => {
     createPayment('CREDIT_CARD', cardData, holderInfo);
   };
 
+  const createPaymentWithPix = async () => {
+    if (!isPaymentAddressValid(address)) {
+      toast({ title: "Endereço obrigatório", description: "Preencha o endereço acima antes de gerar o PIX.", variant: "destructive" });
+      return;
+    }
+    const cleanCpf = pixCpfCnpj.replace(/\D/g, '');
+    if (cleanCpf.length !== 11 && cleanCpf.length !== 14) {
+      toast({ title: "CPF/CNPJ obrigatório", description: "Informe um CPF (11 dígitos) ou CNPJ (14 dígitos) válido.", variant: "destructive" });
+      return;
+    }
+    if (!pixAccepted) {
+      toast({ title: "Aceite os termos", description: "Marque o aceite de que pagamentos PIX não são reembolsáveis.", variant: "destructive" });
+      return;
+    }
+    createPayment('PIX', undefined, undefined, cleanCpf);
+  };
+
+  // Auto-poll payment status while PIX QR is shown
+  useEffect(() => {
+    if (!pixData?.paymentId || !pendingPayment?.id) {
+      if (pixPollTimer.current) {
+        clearInterval(pixPollTimer.current);
+        pixPollTimer.current = null;
+      }
+      return;
+    }
+    pixPollTimer.current = setInterval(() => {
+      checkPaymentStatus(pendingPayment.id);
+    }, 5000);
+    return () => {
+      if (pixPollTimer.current) {
+        clearInterval(pixPollTimer.current);
+        pixPollTimer.current = null;
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pixData?.paymentId, pendingPayment?.id]);
+
+  const copyPixCode = async () => {
+    if (!pixData?.pixCode) return;
+    try {
+      await navigator.clipboard.writeText(pixData.pixCode);
+      toast({ title: "Código copiado", description: "Cole no app do banco para pagar." });
+    } catch {
+      toast({ title: "Erro ao copiar", description: "Selecione o código manualmente.", variant: "destructive" });
+    }
+  };
+
   const formatExpirationDate = (dateStr: string) => {
     const date = new Date(dateStr);
     return date.toLocaleString('pt-BR', {
@@ -701,8 +776,35 @@ const PagamentoPendente = () => {
                 </div>
               )}
 
+              {/* Payment method selector */}
+              {(!pendingPayment.paymentMethod || (!pendingPayment.boletoUrl && !pendingPayment.invoiceUrl)) && !pixData && (
+                <div className="space-y-2">
+                  <p className="text-sm font-medium">Escolha como pagar</p>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setSelectedMethod('CREDIT_CARD')}
+                      className={`p-3 rounded-lg border text-left transition ${selectedMethod === 'CREDIT_CARD' ? 'border-primary bg-primary/10' : 'border-border hover:border-primary/40'}`}
+                    >
+                      <CreditCard className="h-5 w-5 mb-1 text-primary" />
+                      <p className="text-sm font-semibold">Cartão</p>
+                      <p className="text-[11px] text-muted-foreground">7 dias grátis · recorrente</p>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedMethod('PIX')}
+                      className={`p-3 rounded-lg border text-left transition ${selectedMethod === 'PIX' ? 'border-primary bg-primary/10' : 'border-border hover:border-primary/40'}`}
+                    >
+                      <QrCode className="h-5 w-5 mb-1 text-primary" />
+                      <p className="text-sm font-semibold">PIX</p>
+                      <p className="text-[11px] text-muted-foreground">30 dias · sem reembolso</p>
+                    </button>
+                  </div>
+                </div>
+              )}
+
               {/* Credit Card Form */}
-              {(!pendingPayment.paymentMethod || (!pendingPayment.boletoUrl && !pendingPayment.invoiceUrl)) && (
+              {selectedMethod === 'CREDIT_CARD' && !pixData && (!pendingPayment.paymentMethod || (!pendingPayment.boletoUrl && !pendingPayment.invoiceUrl)) && (
                 <div className="space-y-4">
                   {/* Trial Info */}
                   <div className="p-3 bg-blue-500/10 border border-blue-500/20 rounded-lg">
@@ -740,6 +842,94 @@ const PagamentoPendente = () => {
                   <p className="text-[10px] text-center text-muted-foreground">
                     Ao continuar, você aceita que após o período gratuito de 7 dias, a cobrança de R$ {plan?.price.toFixed(2).replace('.', ',')}/mês será feita automaticamente no cartão cadastrado.
                   </p>
+                </div>
+              )}
+
+              {/* PIX Form */}
+              {selectedMethod === 'PIX' && !pixData && (!pendingPayment.paymentMethod || (!pendingPayment.boletoUrl && !pendingPayment.invoiceUrl)) && (
+                <div className="space-y-4">
+                  <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-lg space-y-1">
+                    <div className="flex items-center gap-2">
+                      <AlertCircle className="h-4 w-4 text-amber-500" />
+                      <p className="text-sm font-semibold text-amber-500">Pagamento PIX — sem reembolso</p>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Você paga <strong>R$ {plan?.price.toFixed(2).replace('.', ',')}</strong> agora e libera <strong>30 dias de acesso</strong> ao IAFÉ Finanças. Ao final dos 30 dias, gere um novo PIX dentro da plataforma para continuar. <strong>Pagamentos via PIX não são reembolsáveis</strong> em nenhuma hipótese.
+                    </p>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="pix-cpf">CPF ou CNPJ do pagador</Label>
+                    <Input
+                      id="pix-cpf"
+                      value={pixCpfCnpj}
+                      onChange={(e) => setPixCpfCnpj(formatCpfCnpj(e.target.value))}
+                      placeholder="000.000.000-00"
+                      maxLength={18}
+                      disabled={creatingPayment}
+                    />
+                  </div>
+
+                  <label className="flex items-start gap-2 text-xs text-muted-foreground cursor-pointer">
+                    <Checkbox
+                      checked={pixAccepted}
+                      onCheckedChange={(v) => setPixAccepted(v === true)}
+                      disabled={creatingPayment}
+                    />
+                    <span>
+                      Li e aceito que <strong>pagamentos via PIX não são reembolsáveis</strong>, garantindo 30 dias de acesso à plataforma após a confirmação do pagamento.
+                    </span>
+                  </label>
+
+                  <Button
+                    className="w-full"
+                    disabled={creatingPayment || !pixAccepted || !pixCpfCnpj}
+                    onClick={createPaymentWithPix}
+                  >
+                    {creatingPayment ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <QrCode className="h-4 w-4 mr-2" />}
+                    {creatingPayment ? "Gerando PIX..." : `Gerar PIX de R$ ${plan?.price.toFixed(2).replace('.', ',')}`}
+                  </Button>
+                </div>
+              )}
+
+              {/* PIX QR Display */}
+              {pixData && (
+                <div className="space-y-3 text-center">
+                  <h3 className="font-semibold flex items-center justify-center gap-2">
+                    <QrCode className="h-5 w-5 text-primary" />
+                    Pague o PIX para liberar 30 dias
+                  </h3>
+                  {pixData.pixQrCodeUrl && (
+                    <img src={pixData.pixQrCodeUrl} alt="QR Code PIX" className="mx-auto w-56 h-56 bg-white p-2 rounded-lg" />
+                  )}
+                  {pixData.pixCode && (
+                    <div className="space-y-2">
+                      <Label className="text-xs text-muted-foreground">Código PIX copia e cola</Label>
+                      <div className="flex items-center gap-2">
+                        <Input value={pixData.pixCode} readOnly className="text-[10px] font-mono" />
+                        <Button type="button" variant="outline" onClick={copyPixCode}>
+                          <Copy className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                  {pixData.invoiceUrl && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => window.open(pixData.invoiceUrl, '_blank')}
+                      className="w-full"
+                    >
+                      <ExternalLink className="h-4 w-4 mr-2" />
+                      Ver fatura no Asaas
+                    </Button>
+                  )}
+                  <Alert>
+                    <AlertCircle className="h-4 w-4" />
+                    <AlertDescription>
+                      Aguardando confirmação do PIX. Esta tela atualiza sozinha quando o pagamento for identificado.
+                    </AlertDescription>
+                  </Alert>
                 </div>
               )}
 

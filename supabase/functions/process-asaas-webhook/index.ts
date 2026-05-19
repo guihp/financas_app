@@ -176,6 +176,69 @@ serve(async (req) => {
       console.log('Found registration:', registration.id, 'current status:', registration.status);
     }
 
+    // ============================================
+    // RENEWAL PIX: externalReference="renewal:USER_ID"
+    // Extends subscription period by 30 days, no register-user.
+    // ============================================
+    const renewalUserId = typeof externalReference === 'string' && externalReference.startsWith('renewal:')
+      ? externalReference.slice('renewal:'.length)
+      : null;
+    if (renewalUserId && (isPaidEvent || isPaidStatus)) {
+      const nowIso = new Date().toISOString();
+      const today = new Date();
+      const periodEnd = new Date(today);
+      periodEnd.setDate(periodEnd.getDate() + 30);
+
+      const { data: targetSub } = await supabaseAdmin
+        .from('subscriptions')
+        .select('id, current_period_end, status')
+        .eq('user_id', renewalUserId)
+        .maybeSingle();
+
+      if (targetSub?.id) {
+        // If subscription still has remaining days, stack the new 30d on top.
+        let baseDate = today;
+        if (targetSub.current_period_end) {
+          const existing = new Date(targetSub.current_period_end);
+          if (existing > today) baseDate = existing;
+        }
+        const newEnd = new Date(baseDate);
+        newEnd.setDate(newEnd.getDate() + 30);
+
+        await supabaseAdmin.from('subscriptions').update({
+          status: 'active',
+          is_trial: false,
+          cancel_at_period_end: false,
+          cancelled_at: null,
+          current_period_start: today.toISOString().split('T')[0],
+          current_period_end: newEnd.toISOString().split('T')[0],
+          updated_at: nowIso
+        }).eq('id', targetSub.id);
+
+        await supabaseAdmin.from('payment_history').insert({
+          user_id: renewalUserId,
+          subscription_id: targetSub.id,
+          asaas_payment_id: paymentId,
+          asaas_customer_id: customerId,
+          amount: payment?.value || 0,
+          status: paymentStatus || 'CONFIRMED',
+          payment_method: 'PIX',
+          paid_at: nowIso,
+          due_date: payment?.dueDate,
+          invoice_url: payment?.invoiceUrl
+        });
+
+        console.log('Renewal applied for user', renewalUserId, 'new period_end:', newEnd.toISOString().split('T')[0]);
+      } else {
+        console.warn('Renewal PIX received but subscription not found for user:', renewalUserId);
+      }
+
+      return new Response(
+        JSON.stringify({ success: true, message: 'Renewal processed', user_id: renewalUserId }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
     if (registration && (isPaidEvent || isPaidStatus)) {
       // Update registration to paid
       const { error: updateError } = await supabaseAdmin

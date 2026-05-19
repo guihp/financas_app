@@ -67,10 +67,11 @@ const TERMS_SECTIONS = [
     id: "7",
     title: "ASSINATURA E CONDIÇÕES DE USO",
     items: [
-      "O acesso à Plataforma é disponibilizado mediante assinatura recorrente, conforme plano contratado.",
+      "O acesso à Plataforma é disponibilizado mediante assinatura, conforme plano contratado.",
+      "Cartão de crédito: cobrança recorrente automática após o período gratuito (trial) de 7 dias. O Usuário pode cancelar a renovação a qualquer momento; em caso de cancelamento, a assinatura permanece válida até o fim do período já pago e não há reembolso proporcional do período em curso.",
+      "PIX: pagamento avulso que libera 30 (trinta) dias corridos de acesso a partir da confirmação. Não há renovação automática — ao final dos 30 dias, o Usuário deverá gerar nova cobrança PIX dentro da Plataforma para continuar utilizando o serviço.",
+      "Não-reembolso de PIX: pagamentos efetuados via PIX são imediatos e definitivos. O Usuário declara estar ciente e concorda que pagamentos via PIX NÃO SÃO REEMBOLSÁVEIS em nenhuma hipótese, inclusive nos casos de desistência, falta de uso, cancelamento ou descontentamento com o serviço.",
       "O não pagamento poderá acarretar suspensão ou cancelamento do acesso.",
-      "O Usuário poderá cancelar a assinatura a qualquer momento, respeitadas as condições comerciais vigentes no momento da contratação.",
-      "Em caso de cancelamento, a assinatura permanecerá válida até o seu vencimento.",
     ],
   },
   {

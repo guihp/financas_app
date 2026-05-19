@@ -30,7 +30,14 @@ import {
   Shield,
   XCircle,
   Loader2,
+  QrCode,
+  Copy,
+  ExternalLink,
+  AlertCircle,
 } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
 
 interface OutletContextType {
   user: User;
@@ -46,6 +53,14 @@ interface SubscriptionInfo {
   cancel_at_period_end: boolean;
 }
 
+const formatCpfCnpj = (value: string): string => {
+  const clean = value.replace(/\D/g, '');
+  if (clean.length <= 11) {
+    return clean.replace(/(\d{3})(\d)/, '$1.$2').replace(/(\d{3})(\d)/, '$1.$2').replace(/(\d{3})(\d{1,2})$/, '$1-$2');
+  }
+  return clean.slice(0, 14).replace(/(\d{2})(\d)/, '$1.$2').replace(/(\d{3})(\d)/, '$1.$2').replace(/(\d{3})(\d)/, '$1/$2').replace(/(\d{4})(\d{1,2})$/, '$1-$2');
+};
+
 const Assinatura = () => {
   const { user } = useOutletContext<OutletContextType>();
   const navigate = useNavigate();
@@ -53,6 +68,12 @@ const Assinatura = () => {
   const [loading, setLoading] = useState(true);
   const [cancelling, setCancelling] = useState(false);
   const [appSettings, setAppSettings] = useState<{ full: number, promo: number, promoDays: number } | null>(null);
+  // PIX renewal state
+  const [pixRenewalOpen, setPixRenewalOpen] = useState(false);
+  const [pixCpf, setPixCpf] = useState("");
+  const [pixAccepted, setPixAccepted] = useState(false);
+  const [pixGenerating, setPixGenerating] = useState(false);
+  const [pixRenewalData, setPixRenewalData] = useState<{ paymentId: string; pixCode?: string; pixQrCodeUrl?: string; invoiceUrl?: string } | null>(null);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -158,6 +179,70 @@ const Assinatura = () => {
     subscription &&
     subscription.cancel_at_period_end === true &&
     subscription.status === "active";
+
+  const generateRenewalPix = async () => {
+    const cleanCpf = pixCpf.replace(/\D/g, '');
+    if (cleanCpf.length !== 11 && cleanCpf.length !== 14) {
+      toast({ title: "CPF/CNPJ obrigatório", description: "Informe um CPF ou CNPJ válido.", variant: "destructive" });
+      return;
+    }
+    if (!pixAccepted) {
+      toast({ title: "Aceite os termos", description: "Confirme que pagamentos PIX não são reembolsáveis.", variant: "destructive" });
+      return;
+    }
+    setPixGenerating(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('create-renewal-pix', {
+        body: { cpfCnpj: cleanCpf }
+      });
+      if (error) throw new Error(error.message);
+      if (data?.error) throw new Error(data.error);
+      if (!data?.paymentId) throw new Error('Resposta inválida ao gerar PIX.');
+      const qrUrl = data.pixQrCodeBase64 ? `data:image/png;base64,${data.pixQrCodeBase64}` : undefined;
+      setPixRenewalData({
+        paymentId: data.paymentId,
+        pixCode: data.pixCode,
+        pixQrCodeUrl: qrUrl,
+        invoiceUrl: data.invoiceUrl
+      });
+      toast({ title: "PIX gerado", description: "Pague para liberar +30 dias." });
+    } catch (err: any) {
+      toast({ title: "Erro ao gerar PIX", description: err.message || "Tente novamente.", variant: "destructive" });
+    } finally {
+      setPixGenerating(false);
+    }
+  };
+
+  const copyRenewalPix = async () => {
+    if (!pixRenewalData?.pixCode) return;
+    try {
+      await navigator.clipboard.writeText(pixRenewalData.pixCode);
+      toast({ title: "Código copiado", description: "Cole no app do banco." });
+    } catch {
+      toast({ title: "Erro ao copiar", description: "Selecione manualmente.", variant: "destructive" });
+    }
+  };
+
+  // Poll subscription status while PIX renewal is pending
+  useEffect(() => {
+    if (!pixRenewalData?.paymentId) return;
+    const id = setInterval(async () => {
+      await loadSubscription();
+    }, 5000);
+    return () => clearInterval(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pixRenewalData?.paymentId]);
+
+  // When sub becomes active after PIX confirmation, close the PIX dialog
+  useEffect(() => {
+    if (pixRenewalData && subscription?.status === 'active' && !subscription?.is_trial && subscription.days_remaining > 0) {
+      setPixRenewalData(null);
+      setPixRenewalOpen(false);
+      setPixCpf("");
+      setPixAccepted(false);
+      toast({ title: "Pagamento confirmado", description: "Sua assinatura foi renovada por 30 dias." });
+    }
+  }, [subscription, pixRenewalData, toast]);
 
   const handleCancelSubscription = async () => {
     setCancelling(true);
@@ -408,7 +493,7 @@ const Assinatura = () => {
 
             {/* Payment Methods */}
             <div className="space-y-3">
-              <p className="text-sm font-medium">Cadastre seu cartão para começar:</p>
+              <p className="text-sm font-medium">Escolha como continuar:</p>
 
               {/* Credit Card with Trial */}
               <Button
@@ -429,15 +514,112 @@ const Assinatura = () => {
                   <CreditCard className="h-5 w-5" />
                 </div>
                 <div className="text-left">
-                  <p className="font-medium">Começar 7 dias grátis</p>
+                  <p className="font-medium">{isExpired ? "Reativar com cartão" : "Começar 7 dias grátis"}</p>
                   <p className="text-xs opacity-70">
-                    Cartão de crédito · Sem cobrança agora
+                    {isExpired ? "Cobrança recorrente mensal" : "Cartão de crédito · Sem cobrança agora"}
                   </p>
                 </div>
               </Button>
 
+              {/* PIX renewal — visible when user is logged in */}
+              <Button
+                className="w-full h-14 justify-start gap-4 bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-400 border border-emerald-600/30"
+                variant="outline"
+                onClick={() => setPixRenewalOpen(true)}
+              >
+                <div className="h-9 w-9 rounded-lg bg-emerald-600/20 flex items-center justify-center">
+                  <QrCode className="h-5 w-5" />
+                </div>
+                <div className="text-left">
+                  <p className="font-medium">Pagar com PIX</p>
+                  <p className="text-xs opacity-70">
+                    R$ {appSettings?.full ? appSettings.full.toFixed(2).replace(".", ",") : "29,90"} · 30 dias de acesso · sem reembolso
+                  </p>
+                </div>
+              </Button>
+
+              {pixRenewalOpen && !pixRenewalData && (
+                <div className="p-4 border border-emerald-500/30 bg-emerald-500/5 rounded-lg space-y-3">
+                  <div className="flex items-start gap-2">
+                    <AlertCircle className="h-4 w-4 text-amber-500 flex-shrink-0 mt-0.5" />
+                    <p className="text-xs text-muted-foreground">
+                      Você paga <strong>R$ {appSettings?.full ? appSettings.full.toFixed(2).replace(".", ",") : "29,90"}</strong> agora e libera <strong>30 dias de acesso</strong>. Quando acabar, gere um novo PIX por aqui. <strong>Pagamentos via PIX não são reembolsáveis</strong>.
+                    </p>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="renew-cpf" className="text-sm">CPF ou CNPJ do pagador</Label>
+                    <Input
+                      id="renew-cpf"
+                      value={pixCpf}
+                      onChange={(e) => setPixCpf(formatCpfCnpj(e.target.value))}
+                      placeholder="000.000.000-00"
+                      maxLength={18}
+                      disabled={pixGenerating}
+                    />
+                  </div>
+                  <label className="flex items-start gap-2 text-xs text-muted-foreground cursor-pointer">
+                    <Checkbox
+                      checked={pixAccepted}
+                      onCheckedChange={(v) => setPixAccepted(v === true)}
+                      disabled={pixGenerating}
+                    />
+                    <span>
+                      Li e aceito que <strong>pagamentos via PIX não são reembolsáveis</strong>, e que estou contratando 30 dias de acesso após a confirmação do pagamento.
+                    </span>
+                  </label>
+                  <div className="flex gap-2">
+                    <Button
+                      variant="ghost"
+                      className="flex-1"
+                      onClick={() => { setPixRenewalOpen(false); setPixCpf(""); setPixAccepted(false); }}
+                      disabled={pixGenerating}
+                    >
+                      Cancelar
+                    </Button>
+                    <Button
+                      className="flex-1"
+                      onClick={generateRenewalPix}
+                      disabled={pixGenerating || !pixCpf || !pixAccepted}
+                    >
+                      {pixGenerating ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <QrCode className="h-4 w-4 mr-1" />}
+                      Gerar PIX
+                    </Button>
+                  </div>
+                </div>
+              )}
+
+              {pixRenewalData && (
+                <div className="p-4 border border-emerald-500/30 bg-emerald-500/5 rounded-lg space-y-3 text-center">
+                  <h4 className="font-semibold flex items-center justify-center gap-2 text-sm">
+                    <QrCode className="h-4 w-4 text-emerald-500" />
+                    Pague o PIX para liberar 30 dias
+                  </h4>
+                  {pixRenewalData.pixQrCodeUrl && (
+                    <img src={pixRenewalData.pixQrCodeUrl} alt="QR PIX" className="mx-auto w-48 h-48 bg-white p-2 rounded-lg" />
+                  )}
+                  {pixRenewalData.pixCode && (
+                    <div className="space-y-1">
+                      <Label className="text-xs text-muted-foreground">Código copia e cola</Label>
+                      <div className="flex gap-2">
+                        <Input value={pixRenewalData.pixCode} readOnly className="text-[10px] font-mono" />
+                        <Button variant="outline" onClick={copyRenewalPix}><Copy className="h-4 w-4" /></Button>
+                      </div>
+                    </div>
+                  )}
+                  {pixRenewalData.invoiceUrl && (
+                    <Button variant="outline" className="w-full" onClick={() => window.open(pixRenewalData.invoiceUrl, '_blank')}>
+                      <ExternalLink className="h-4 w-4 mr-2" />
+                      Ver fatura no Asaas
+                    </Button>
+                  )}
+                  <p className="text-[11px] text-muted-foreground">
+                    Aguardando confirmação. A tela libera automaticamente quando o pagamento for identificado.
+                  </p>
+                </div>
+              )}
+
               <p className="text-[10px] text-center text-muted-foreground">
-                Nenhuma cobrança será feita durante os 7 dias gratuitos. Cancele a qualquer momento antes do término do trial.
+                Cartão: 7 dias grátis + cobrança automática. PIX: paga R$ {appSettings?.full ? appSettings.full.toFixed(2).replace(".", ",") : "29,90"} e libera 30 dias, sem renovação automática.
               </p>
             </div>
           </CardContent>
