@@ -63,7 +63,7 @@ serve(async (req) => {
             );
         }
 
-        if (subscription.status === 'cancelled' || subscription.status === 'expired') {
+        if (subscription.status === 'cancelled') {
             return new Response(
                 JSON.stringify({ error: 'Assinatura já está cancelada' }),
                 { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -206,10 +206,12 @@ serve(async (req) => {
                 { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
             );
         } else {
-            // PAID: Cancel at period end - keep access until current_period_end
+            // PAID: subscription already deleted on Asaas above; mark cancelled locally
+            // (keeps access in UI until current_period_end via is_subscription_inactive logic)
             await supabaseAdmin
                 .from('subscriptions')
                 .update({
+                    status: 'cancelled',
                     cancel_at_period_end: true,
                     cancelled_at: now.toISOString(),
                     updated_at: now.toISOString()

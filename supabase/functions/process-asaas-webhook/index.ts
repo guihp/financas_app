@@ -21,6 +21,19 @@ serve(async (req) => {
   }
 
   try {
+    // Validate Asaas signature (token configured no painel Asaas)
+    const expectedToken = Deno.env.get('ASAAS_WEBHOOK_TOKEN') ?? '';
+    if (expectedToken) {
+      const receivedToken = req.headers.get('asaas-access-token') ?? req.headers.get('Asaas-Access-Token') ?? '';
+      if (receivedToken !== expectedToken) {
+        console.warn('Invalid asaas-access-token header. Rejecting.');
+        return new Response(JSON.stringify({ error: 'invalid signature' }), {
+          status: 401,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        });
+      }
+    }
+
     const rawBody = await req.json();
     // n8n pode enviar o payload em body.body ou no root
     const body = rawBody?.body && typeof rawBody.body === 'object' ? rawBody.body : rawBody;
@@ -513,9 +526,12 @@ serve(async (req) => {
 
     if (eventType === 'SUBSCRIPTION_DELETED' || eventType === 'SUBSCRIPTION_CANCELLED' || eventType === 'SUBSCRIPTION_INACTIVATED') {
       const nowIso = new Date().toISOString();
+      const today = nowIso.split('T')[0];
       await updateSubscriptionByAsaasReference({
+        status: 'cancelled',
         cancel_at_period_end: true,
-        cancelled_at: nowIso
+        cancelled_at: nowIso,
+        current_period_end: today
       });
     }
 

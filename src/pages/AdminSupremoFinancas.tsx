@@ -160,19 +160,20 @@ const AdminSupremoFinancas = () => {
                 .not("promotional_code_id", "is", null);
             promoUsersCount = countPromo || 0;
 
-            // Calculate MRR and Top Promo Code
-            const { data: subsData } = await supabase
-                .from("subscriptions")
-                .select("promotional_code_id, status, is_trial");
+            // Calculate MRR and Top Promo Code (uses real plan price from app_settings)
+            const [{ data: subsData }, { data: settingsForMrr }] = await Promise.all([
+                supabase.from("subscriptions").select("promotional_code_id, status, is_trial"),
+                supabase.from("app_settings").select("product_full_price").limit(1).single()
+            ]);
 
+            const planPrice = Number(settingsForMrr?.product_full_price || 0);
             let currentMrr = 0;
             const promoCounts: Record<string, number> = {};
 
             if (subsData) {
                 subsData.forEach(sub => {
                     if (sub.status === 'active' && !sub.is_trial) {
-                        // Base value check or 29.9 default
-                        currentMrr += 29.90; // Fixed plan base estimation for MVP
+                        currentMrr += planPrice;
                     }
                     if (sub.promotional_code_id) {
                         promoCounts[sub.promotional_code_id] = (promoCounts[sub.promotional_code_id] || 0) + 1;
