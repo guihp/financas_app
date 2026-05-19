@@ -70,6 +70,7 @@ export const AdminSubscriptions = () => {
   const [extendDialogOpen, setExtendDialogOpen] = useState(false);
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
   const [selectedUserEmail, setSelectedUserEmail] = useState<string>("");
+  const [planPrice, setPlanPrice] = useState<number>(0);
 
   useEffect(() => {
     fetchSubscriptionData();
@@ -79,11 +80,12 @@ export const AdminSubscriptions = () => {
     try {
       setLoading(true);
 
-      // Fetch all users
-      const debugResponse = await supabase.functions.invoke(
-        "debug-list-users",
-        { method: "GET" }
-      );
+      // Fetch users, subscriptions and the configured plan price in parallel
+      const [debugResponse, subsResponse, settingsResponse] = await Promise.all([
+        supabase.functions.invoke("debug-list-users", { method: "GET" }),
+        supabase.from("subscriptions").select("*"),
+        supabase.from("app_settings").select("product_full_price").limit(1).single(),
+      ]);
 
       if (debugResponse.error) {
         toast.error("Erro ao carregar usuários");
@@ -91,11 +93,10 @@ export const AdminSubscriptions = () => {
       }
 
       const allUsers = debugResponse.data?.users || [];
-
-      // Fetch all subscriptions (super admin has SELECT access)
-      const { data: subscriptions, error: subError } = await supabase
-        .from("subscriptions")
-        .select("*");
+      const subscriptions = subsResponse.data;
+      const subError = subsResponse.error;
+      const currentPlanPrice = Number(settingsResponse.data?.product_full_price || 0);
+      setPlanPrice(currentPlanPrice);
 
       if (subError) {
         console.error("Error fetching subscriptions:", subError);
@@ -132,7 +133,7 @@ export const AdminSubscriptions = () => {
           current_period_end: sub?.current_period_end,
           cancel_at_period_end: sub?.cancel_at_period_end || false,
           plan_name: "Plano Mensal",
-          plan_price: 39.9,
+          plan_price: currentPlanPrice,
         };
       });
 
@@ -236,7 +237,7 @@ export const AdminSubscriptions = () => {
     ).length,
     revenue: users.filter(
       (u) => u.subscription_status === "active" && !u.is_trial
-    ).length * 29.9,
+    ).length * planPrice,
   };
 
   // Filter users

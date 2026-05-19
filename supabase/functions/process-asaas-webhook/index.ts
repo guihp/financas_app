@@ -21,6 +21,19 @@ serve(async (req) => {
   }
 
   try {
+    // Validate Asaas signature (token configured no painel Asaas)
+    const expectedToken = Deno.env.get('ASAAS_WEBHOOK_TOKEN') ?? '';
+    if (expectedToken) {
+      const receivedToken = req.headers.get('asaas-access-token') ?? req.headers.get('Asaas-Access-Token') ?? '';
+      if (receivedToken !== expectedToken) {
+        console.warn('Invalid asaas-access-token header. Rejecting.');
+        return new Response(JSON.stringify({ error: 'invalid signature' }), {
+          status: 401,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        });
+      }
+    }
+
     const rawBody = await req.json();
     // n8n pode enviar o payload em body.body ou no root
     const body = rawBody?.body && typeof rawBody.body === 'object' ? rawBody.body : rawBody;
@@ -161,6 +174,69 @@ serve(async (req) => {
       console.log('Proceeding anyway to update existing subscription if applicable.');
     } else {
       console.log('Found registration:', registration.id, 'current status:', registration.status);
+    }
+
+    // ============================================
+    // RENEWAL PIX: externalReference="renewal:USER_ID"
+    // Extends subscription period by 30 days, no register-user.
+    // ============================================
+    const renewalUserId = typeof externalReference === 'string' && externalReference.startsWith('renewal:')
+      ? externalReference.slice('renewal:'.length)
+      : null;
+    if (renewalUserId && (isPaidEvent || isPaidStatus)) {
+      const nowIso = new Date().toISOString();
+      const today = new Date();
+      const periodEnd = new Date(today);
+      periodEnd.setDate(periodEnd.getDate() + 30);
+
+      const { data: targetSub } = await supabaseAdmin
+        .from('subscriptions')
+        .select('id, current_period_end, status')
+        .eq('user_id', renewalUserId)
+        .maybeSingle();
+
+      if (targetSub?.id) {
+        // If subscription still has remaining days, stack the new 30d on top.
+        let baseDate = today;
+        if (targetSub.current_period_end) {
+          const existing = new Date(targetSub.current_period_end);
+          if (existing > today) baseDate = existing;
+        }
+        const newEnd = new Date(baseDate);
+        newEnd.setDate(newEnd.getDate() + 30);
+
+        await supabaseAdmin.from('subscriptions').update({
+          status: 'active',
+          is_trial: false,
+          cancel_at_period_end: false,
+          cancelled_at: null,
+          current_period_start: today.toISOString().split('T')[0],
+          current_period_end: newEnd.toISOString().split('T')[0],
+          updated_at: nowIso
+        }).eq('id', targetSub.id);
+
+        await supabaseAdmin.from('payment_history').insert({
+          user_id: renewalUserId,
+          subscription_id: targetSub.id,
+          asaas_payment_id: paymentId,
+          asaas_customer_id: customerId,
+          amount: payment?.value || 0,
+          status: paymentStatus || 'CONFIRMED',
+          payment_method: 'PIX',
+          paid_at: nowIso,
+          due_date: payment?.dueDate,
+          invoice_url: payment?.invoiceUrl
+        });
+
+        console.log('Renewal applied for user', renewalUserId, 'new period_end:', newEnd.toISOString().split('T')[0]);
+      } else {
+        console.warn('Renewal PIX received but subscription not found for user:', renewalUserId);
+      }
+
+      return new Response(
+        JSON.stringify({ success: true, message: 'Renewal processed', user_id: renewalUserId }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     }
 
     if (registration && (isPaidEvent || isPaidStatus)) {
@@ -428,47 +504,16 @@ serve(async (req) => {
       );
     }
 
-    // Handle other events (overdue, cancelled, etc)
-    if (eventType === 'PAYMENT_CREATED' && asaasSubscriptionId && paymentId) {
-      const { data: existingSub } = await supabaseAdmin
-        .from('subscriptions')
-        .select('is_trial, cancel_at_period_end')
-        .eq('asaas_subscription_id', asaasSubscriptionId)
-        .maybeSingle();
-
-      // The first post-trial invoice keeps the promo price. Recurring invoices
-      // after the trial must use the configured full price.
-      if (existingSub && !existingSub.is_trial && !existingSub.cancel_at_period_end) {
-        const { data: appSettings } = await supabaseAdmin
-          .from('app_settings')
-          .select('product_full_price')
-          .limit(1)
-          .single();
-
-        const fullPrice = Number(appSettings?.product_full_price || 0);
-        if (fullPrice > 0 && Number(payment?.value) !== fullPrice) {
-          try {
-            const updatePaymentRes = await fetch(`${ASAAS_BASE_URL}/payments/${paymentId}`, {
-              method: 'POST',
-              headers: {
-                'accept': 'application/json',
-                'content-type': 'application/json',
-                'access_token': ASAAS_API_KEY
-              },
-              body: JSON.stringify({ value: fullPrice })
-            });
-            const updatePaymentData = await updatePaymentRes.json().catch(() => ({}));
-            if (!updatePaymentRes.ok || updatePaymentData?.errors) {
-              console.warn('Failed to update recurring payment to full price:', updatePaymentData);
-            } else {
-              console.log(`Updated recurring payment ${paymentId} to full price ${fullPrice}`);
-            }
-          } catch (e) {
-            console.warn('Exception while updating recurring payment to full price:', e);
-          }
-        }
-      }
-    }
+    // PAYMENT_CREATED: no price mutation here.
+    // - For new subscribers, create-asaas-payment already PUTs the subscription
+    //   to baseSubscriptionPrice with updatePendingPayments:false right after
+    //   creation, so the first invoice keeps the promo/coupon price and recurring
+    //   invoices use the configured full price.
+    // - The previous attempt to mutate payment.value here used POST /payments/{id},
+    //   which Asaas silently ignores for credit-card subscription invoices, so it
+    //   never worked. Re-pricing legacy subscriptions must be done explicitly via
+    //   the admin-only update-subscriptions-price function to avoid surprise
+    //   charges on grandfathered customers.
 
     if (registration && eventType === 'PAYMENT_OVERDUE') {
       await supabaseAdmin
@@ -513,9 +558,12 @@ serve(async (req) => {
 
     if (eventType === 'SUBSCRIPTION_DELETED' || eventType === 'SUBSCRIPTION_CANCELLED' || eventType === 'SUBSCRIPTION_INACTIVATED') {
       const nowIso = new Date().toISOString();
+      const today = nowIso.split('T')[0];
       await updateSubscriptionByAsaasReference({
+        status: 'cancelled',
         cancel_at_period_end: true,
-        cancelled_at: nowIso
+        cancelled_at: nowIso,
+        current_period_end: today
       });
     }
 
