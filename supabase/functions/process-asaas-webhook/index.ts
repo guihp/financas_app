@@ -441,47 +441,16 @@ serve(async (req) => {
       );
     }
 
-    // Handle other events (overdue, cancelled, etc)
-    if (eventType === 'PAYMENT_CREATED' && asaasSubscriptionId && paymentId) {
-      const { data: existingSub } = await supabaseAdmin
-        .from('subscriptions')
-        .select('is_trial, cancel_at_period_end')
-        .eq('asaas_subscription_id', asaasSubscriptionId)
-        .maybeSingle();
-
-      // The first post-trial invoice keeps the promo price. Recurring invoices
-      // after the trial must use the configured full price.
-      if (existingSub && !existingSub.is_trial && !existingSub.cancel_at_period_end) {
-        const { data: appSettings } = await supabaseAdmin
-          .from('app_settings')
-          .select('product_full_price')
-          .limit(1)
-          .single();
-
-        const fullPrice = Number(appSettings?.product_full_price || 0);
-        if (fullPrice > 0 && Number(payment?.value) !== fullPrice) {
-          try {
-            const updatePaymentRes = await fetch(`${ASAAS_BASE_URL}/payments/${paymentId}`, {
-              method: 'POST',
-              headers: {
-                'accept': 'application/json',
-                'content-type': 'application/json',
-                'access_token': ASAAS_API_KEY
-              },
-              body: JSON.stringify({ value: fullPrice })
-            });
-            const updatePaymentData = await updatePaymentRes.json().catch(() => ({}));
-            if (!updatePaymentRes.ok || updatePaymentData?.errors) {
-              console.warn('Failed to update recurring payment to full price:', updatePaymentData);
-            } else {
-              console.log(`Updated recurring payment ${paymentId} to full price ${fullPrice}`);
-            }
-          } catch (e) {
-            console.warn('Exception while updating recurring payment to full price:', e);
-          }
-        }
-      }
-    }
+    // PAYMENT_CREATED: no price mutation here.
+    // - For new subscribers, create-asaas-payment already PUTs the subscription
+    //   to baseSubscriptionPrice with updatePendingPayments:false right after
+    //   creation, so the first invoice keeps the promo/coupon price and recurring
+    //   invoices use the configured full price.
+    // - The previous attempt to mutate payment.value here used POST /payments/{id},
+    //   which Asaas silently ignores for credit-card subscription invoices, so it
+    //   never worked. Re-pricing legacy subscriptions must be done explicitly via
+    //   the admin-only update-subscriptions-price function to avoid surprise
+    //   charges on grandfathered customers.
 
     if (registration && eventType === 'PAYMENT_OVERDUE') {
       await supabaseAdmin
