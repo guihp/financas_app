@@ -39,24 +39,28 @@ serve(async (req) => {
     const body = rawBody?.body && typeof rawBody.body === 'object' ? rawBody.body : rawBody;
     console.log('Received Asaas webhook (keys):', Object.keys(body || {}));
 
-    // Asaas webhook format: { event, payment: { id, externalReference, ... } }
-    // n8n pode repassar com estrutura diferente
+    // Asaas webhook format varies by event family:
+    // - PAYMENT_*       => { event, payment: { id, customer, subscription, externalReference, ... } }
+    // - SUBSCRIPTION_*  => { event, subscription: { id, customer, ... } }
     const payment = body?.payment || body?.Payment || rawBody?.payment;
+    const subscription = body?.subscription || body?.Subscription || rawBody?.subscription;
     const event = body?.event || body?.Event || rawBody?.event;
 
     // paymentId: Asaas usa "pay_xxx"; body.id pode ser o payment quando n8n repassa
     const paymentId = payment?.id || payment?.ID || body?.paymentId || body?.payment_id || rawBody?.paymentId || (typeof body?.id === 'string' && body.id.startsWith('pay_') ? body.id : null);
-    const customerId = payment?.customer || payment?.Customer || body?.customerId || body?.customer_id;
+    // customerId pode vir em payment.customer OR subscription.customer
+    const customerId = payment?.customer || payment?.Customer || subscription?.customer || subscription?.Customer || body?.customerId || body?.customer_id;
     const eventType = event || body?.event || rawBody?.event;
     const paymentStatus = payment?.status || payment?.Status || body?.status || rawBody?.status;
-    const externalReference = payment?.externalReference ?? payment?.external_reference ?? body?.externalReference ?? body?.external_reference ?? rawBody?.externalReference;
-    const asaasSubscriptionId = payment?.subscription || body?.subscription || body?.subscriptionId || body?.subscription_id || rawBody?.subscription;
+    const externalReference = payment?.externalReference ?? payment?.external_reference ?? subscription?.externalReference ?? subscription?.external_reference ?? body?.externalReference ?? body?.external_reference ?? rawBody?.externalReference;
+    // subscriptionId pode vir em payment.subscription (events PAYMENT_*) OR no proprio subscription.id (events SUBSCRIPTION_*)
+    const asaasSubscriptionId = payment?.subscription || subscription?.id || subscription?.ID || body?.subscription?.id || body?.subscriptionId || body?.subscription_id || rawBody?.subscription;
 
-    if (!paymentId && !externalReference && !customerId) {
-      console.error('Webhook sem paymentId, externalReference nem customerId. Body recebido:', JSON.stringify({ ...body, payment: body?.payment ? '[presente]' : 'ausente' }).slice(0, 500));
+    if (!paymentId && !externalReference && !customerId && !asaasSubscriptionId) {
+      console.error('Webhook sem paymentId, subscriptionId, externalReference nem customerId. Body recebido:', JSON.stringify({ ...body, payment: body?.payment ? '[presente]' : 'ausente', subscription: body?.subscription ? '[presente]' : 'ausente' }).slice(0, 500));
       return new Response(
         JSON.stringify({
-          error: 'paymentId, externalReference ou customerId é obrigatório',
+          error: 'paymentId, subscriptionId, externalReference ou customerId é obrigatório',
           receivedKeys: Object.keys(body || {})
         }),
         {
