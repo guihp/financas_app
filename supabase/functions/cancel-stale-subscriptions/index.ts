@@ -63,7 +63,43 @@ serve(async (req) => {
         asaas_subscription_id: sub.asaas_subscription_id
       };
 
+      // Guard against race condition: if Asaas already received payment for
+      // this billing cycle but the webhook hasn't synced yet (e.g. it was
+      // interrupted), skip cancellation. The webhook will eventually renew
+      // the local sub when it processes the queued PAYMENT_RECEIVED event.
       if (sub.asaas_subscription_id && ASAAS_API_KEY) {
+        try {
+          const checkRes = await fetch(`${ASAAS_BASE_URL}/subscriptions/${sub.asaas_subscription_id}`, {
+            headers: { 'accept': 'application/json', 'access_token': ASAAS_API_KEY }
+          });
+          if (checkRes.ok) {
+            const checkData = await checkRes.json();
+            // Look at the most recent payment for this sub
+            const payRes = await fetch(`${ASAAS_BASE_URL}/payments?subscription=${sub.asaas_subscription_id}&limit=5`, {
+              headers: { 'accept': 'application/json', 'access_token': ASAAS_API_KEY }
+            });
+            if (payRes.ok) {
+              const payJson = await payRes.json();
+              const recent = (payJson.data || []) as any[];
+              const cutoff = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+              const recentPaid = recent.find((p: any) => {
+                if (!['CONFIRMED', 'RECEIVED', 'RECEIVED_IN_CASH'].includes(p.status)) return false;
+                const when = p.confirmedDate || p.paymentDate || p.dateCreated;
+                if (!when) return false;
+                return new Date(when) >= cutoff;
+              });
+              if (recentPaid && checkData.status === 'ACTIVE') {
+                entry.skipped_reason = `recent paid payment ${recentPaid.id} status=${recentPaid.status}`;
+                console.log(`Skipping cancel for ${sub.id}: ${entry.skipped_reason}`);
+                results.push(entry);
+                continue;
+              }
+            }
+          }
+        } catch (e) {
+          console.warn('payment-guard check failed (proceeding):', e);
+        }
+
         try {
           const resp = await fetch(`${ASAAS_BASE_URL}/subscriptions/${sub.asaas_subscription_id}`, {
             method: 'DELETE',
