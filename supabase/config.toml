@@ -20,3 +20,14 @@ entrypoint = "./functions/update-old-subscriptions/index.ts"
 # Specifies static files to be bundled with the function. Supports glob patterns.
 # For example, if you want to serve static HTML pages in your function:
 # static_files = [ "./functions/update-old-subscriptions/*.html" ]
+
+# Asaas chama process-asaas-webhook diretamente, sem JWT Supabase. A
+# autenticidade do payload e validada dentro do handler via header
+# `asaas-access-token` comparado com a env var ASAAS_WEBHOOK_TOKEN.
+# Se verify_jwt=true o gateway Supabase rejeita as chamadas do Asaas
+# antes do handler rodar (UNAUTHORIZED_NO_AUTH_HEADER), e a fila de
+# eventos fica `interrupted` no painel do Asaas.
+[functions.process-asaas-webhook]
+enabled = true
+verify_jwt = false
+entrypoint = "./functions/process-asaas-webhook/index.ts"
