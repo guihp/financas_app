@@ -237,7 +237,7 @@ const PagamentoPendente = () => {
       // Calling payment API
       // Usar fetch para capturar o body em respostas 4xx (Supabase invoke não retorna o body no erro)
       const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || "https://dlbiwguzbiosaoyrcvay.supabase.co";
-      const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+      const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRsYml3Z3V6Ymlvc2FveXJjdmF5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njc5NTgxNzIsImV4cCI6MjA4MzUzNDE3Mn0.g31h4C8ugNXinlYVGXL-GrP1TQxUOX-u-eqxhI_Rkjk";
       const res = await fetch(`${supabaseUrl}/functions/v1/create-asaas-payment`, {
         method: "POST",
         headers: { "Content-Type": "application/json", "Authorization": `Bearer ${supabaseKey}` },
@@ -371,7 +371,7 @@ const PagamentoPendente = () => {
       if (data.paid && data.registration?.id) {
         // Chama check-payment-status para garantir que register-user seja executado (cria conta se ainda não existe)
         const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || "https://dlbiwguzbiosaoyrcvay.supabase.co";
-        const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+        const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRsYml3Z3V6Ymlvc2FveXJjdmF5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njc5NTgxNzIsImV4cCI6MjA4MzUzNDE3Mn0.g31h4C8ugNXinlYVGXL-GrP1TQxUOX-u-eqxhI_Rkjk";
         const checkRes = await fetch(`${supabaseUrl}/functions/v1/check-payment-status`, {
           method: "POST",
           headers: { "Content-Type": "application/json", "Authorization": `Bearer ${supabaseKey}` },
@@ -418,7 +418,7 @@ const PagamentoPendente = () => {
 
   const checkPaymentStatus = async (registrationId: string) => {
     const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || "https://dlbiwguzbiosaoyrcvay.supabase.co";
-    const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+    const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRsYml3Z3V6Ymlvc2FveXJjdmF5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njc5NTgxNzIsImV4cCI6MjA4MzUzNDE3Mn0.g31h4C8ugNXinlYVGXL-GrP1TQxUOX-u-eqxhI_Rkjk";
 
     const callCheckPaymentStatus = async (regId: string) => {
       const res = await fetch(`${supabaseUrl}/functions/v1/check-payment-status`, {
