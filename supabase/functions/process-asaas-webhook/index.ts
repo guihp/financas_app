@@ -244,6 +244,35 @@ serve(async (req) => {
     }
 
     if (registration && (isPaidEvent || isPaidStatus)) {
+      // Short-circuit: if the registration was already cancelled or already
+      // turned into an account, this is a late/duplicate payment delivery for an
+      // already-resolved flow. Record history and return 200 so the Asaas queue
+      // does not penalize the endpoint with infinite retries.
+      if (registration.status === 'cancelled' || registration.status === 'registered') {
+        const { error: histErr } = await supabaseAdmin
+          .from('payment_history')
+          .insert({
+            asaas_payment_id: paymentId,
+            asaas_customer_id: customerId || registration?.asaas_customer_id,
+            amount: payment?.value || 0,
+            status: paymentStatus || 'CONFIRMED',
+            payment_method: payment?.billingType || registration?.payment_method,
+            paid_at: new Date().toISOString(),
+            due_date: payment?.dueDate,
+            invoice_url: payment?.invoiceUrl || registration?.invoice_url
+          });
+        if (histErr) console.warn('Failed to insert payment_history for late payment:', histErr);
+        console.log(`Late payment for ${registration.status} registration ${registration.id} — skipping user creation, returning 200`);
+        return new Response(
+          JSON.stringify({
+            success: true,
+            message: `Late payment skipped (registration is ${registration.status})`,
+            registrationId: registration.id
+          }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
       // Update registration to paid
       const { error: updateError } = await supabaseAdmin
         .from('pending_registrations')
