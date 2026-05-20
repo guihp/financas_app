@@ -43,14 +43,18 @@ const DashPage = () => {
   const [dateRange, setDateRange] = useState<DateRange>({ start: null, end: null });
   const { allUserIds, loading: loadingConnections } = useConnectedUserIds(user?.id);
 
-  const loadTransactions = async () => {
-    if (allUserIds.length === 0) return;
+  const loadTransactions = async (overrideIds?: string[]) => {
+    const ids = overrideIds && overrideIds.length > 0 ? overrideIds : allUserIds;
+    if (ids.length === 0) {
+      setLoading(false);
+      return;
+    }
     try {
       // Load transactions
       const { data, error } = await supabase
         .from("transactions")
         .select("*")
-        .in("user_id", allUserIds)
+        .in("user_id", ids)
         .order("date", { ascending: false });
 
       if (error) throw error;
@@ -72,7 +76,7 @@ const DashPage = () => {
       const { data: cardsData } = await supabase
         .from("credit_cards")
         .select("id, name, closing_day, due_day, card_limit, color")
-        .in("user_id", allUserIds)
+        .in("user_id", ids)
         .order("name");
       setCreditCards(cardsData || []);
 
@@ -80,7 +84,7 @@ const DashPage = () => {
       const { data: paidData } = await supabase
         .from("transactions")
         .select("description, amount, credit_card_id")
-        .in("user_id", allUserIds)
+        .in("user_id", ids)
         .eq("category", "pagamento_fatura");
       setPaidInvoices(
         paidData?.map(p => ({
@@ -97,9 +101,24 @@ const DashPage = () => {
   };
 
   useEffect(() => {
-    if (user?.id && !loadingConnections && allUserIds.length > 0) {
-      loadTransactions();
+    if (!user?.id) return;
+
+    // Once connections are resolved, load transactions using whatever ids the hook
+    // returned. Fall back to the current user alone if the hook crashed or RLS hid
+    // the account_connections row so we never get stuck on the spinner.
+    if (!loadingConnections) {
+      const ids = allUserIds.length > 0 ? allUserIds : [user.id];
+      loadTransactions(ids);
+      return;
     }
+
+    // Safety net: if the connection hook never resolves (network/RLS hang), force
+    // exit the loading state after 8s using just the current user's data.
+    const fallbackTimer = setTimeout(() => {
+      console.warn("DashPage: connections hook did not resolve in 8s, falling back to current user only");
+      loadTransactions([user.id]);
+    }, 8000);
+    return () => clearTimeout(fallbackTimer);
   }, [user?.id, allUserIds, loadingConnections]);
 
   const filteredTransactions = useMemo(

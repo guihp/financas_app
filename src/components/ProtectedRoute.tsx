@@ -80,8 +80,13 @@ export const ProtectedRoute = ({ children }: ProtectedRouteProps) => {
     };
   }, []);
 
+  // Re-check subscription access only when the user ID or pathname change.
+  // Using the full `user` object as a dependency caused onAuthStateChange events
+  // (TOKEN_REFRESHED, INITIAL_SESSION, USER_UPDATED) to retrigger this effect on
+  // every render, which made checkSubscriptionAccess loop and left some routes
+  // (notably /dash) stuck on the spinner until the user manually navigated away.
   useEffect(() => {
-    if (!user) return;
+    if (!user?.id) return;
     let cancelled = false;
     checkSubscriptionAccess(user.id).then((access) => {
       if (!cancelled) setAccessResult(access);
@@ -89,7 +94,7 @@ export const ProtectedRoute = ({ children }: ProtectedRouteProps) => {
     return () => {
       cancelled = true;
     };
-  }, [user, location.pathname]);
+  }, [user?.id, location.pathname]);
 
   if (loading) {
     return (
