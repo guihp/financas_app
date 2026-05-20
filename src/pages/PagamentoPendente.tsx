@@ -279,7 +279,7 @@ const PagamentoPendente = () => {
           title: isTrialStart ? "Cartão validado!" : "Pagamento confirmado!",
           description: hasRegisterError ? data.registerUserError : "Redirecionando para login..."
         });
-        setTimeout(() => navigate('/auth'), hasRegisterError ? 4000 : 1500);
+        autoLoginAndGo(hasRegisterError ? 4000 : 1500);
         return;
       }
       const { data: refetch } = await supabase.functions.invoke('get-pending-payment', {
@@ -392,14 +392,14 @@ const PagamentoPendente = () => {
           title: "Pagamento confirmado!",
           description: hasRegisterError ? checkData.registerUserError : "Redirecionando para login..."
         });
-        setTimeout(() => navigate('/auth'), hasRegisterError ? 4000 : 1500);
+        autoLoginAndGo(hasRegisterError ? 4000 : 1500);
         return;
       }
       if (data.paid) {
         setPaymentStatus('paid');
         setMessage("Pagamento confirmado. Faça login com seu e-mail e a senha definida no cadastro.");
         toast({ title: "Pagamento confirmado!", description: "Redirecionando para login..." });
-        setTimeout(() => navigate('/auth'), 1500);
+        autoLoginAndGo(1500);
         return;
       }
 
@@ -444,7 +444,7 @@ const PagamentoPendente = () => {
         title: "Pagamento confirmado!",
         description: hasRegisterError ? String(checkData.registerUserError) : "Redirecionando para login..."
       });
-      setTimeout(() => navigate('/auth'), hasRegisterError ? 4000 : 1500);
+      autoLoginAndGo(hasRegisterError ? 4000 : 1500);
     };
 
     try {
@@ -550,6 +550,39 @@ const PagamentoPendente = () => {
       toast({ title: "Código copiado", description: "Cole no app do banco para pagar." });
     } catch {
       toast({ title: "Erro ao copiar", description: "Selecione o código manualmente.", variant: "destructive" });
+    }
+  };
+
+  // Auto-login after payment confirmation. Falls back to /auth if credentials
+  // are missing from sessionStorage or the password doesn't match (e.g. flow
+  // started in a different tab).
+  const autoLoginAndGo = async (delayMs = 800) => {
+    const pwd = (() => { try { return sessionStorage.getItem('pending_auth_password') || ''; } catch { return ''; } })();
+    const emailStored = (() => { try { return sessionStorage.getItem('pending_auth_email') || ''; } catch { return ''; } })();
+    const emailToUse = emailStored || pendingPayment?.email || email;
+    if (!pwd || !emailToUse) {
+      setTimeout(() => navigate('/auth'), delayMs);
+      return;
+    }
+    await new Promise(r => setTimeout(r, delayMs));
+    try {
+      const { error } = await supabase.auth.signInWithPassword({
+        email: emailToUse,
+        password: pwd
+      });
+      if (error) {
+        console.warn('auto-login failed, redirecting to /auth:', error.message);
+        setTimeout(() => navigate('/auth'), 200);
+        return;
+      }
+      try {
+        sessionStorage.removeItem('pending_auth_password');
+        sessionStorage.removeItem('pending_auth_email');
+      } catch (_) { /* ignore */ }
+      navigate('/dash');
+    } catch (e) {
+      console.error('auto-login exception:', e);
+      setTimeout(() => navigate('/auth'), 200);
     }
   };
 

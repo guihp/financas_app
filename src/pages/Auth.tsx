@@ -259,6 +259,12 @@ const Auth = ({ defaultTab = "login" }: AuthProps) => {
       }
 
       setRegistrationComplete(true);
+      // Persist credentials in sessionStorage so PagamentoPendente can auto-login
+      // the user as soon as the payment is confirmed. Cleared after sign in.
+      try {
+        sessionStorage.setItem('pending_auth_email', sanitizedEmail);
+        sessionStorage.setItem('pending_auth_password', password);
+      } catch (_) { /* ignore quota errors */ }
       toast({
         title: "Cadastro iniciado",
         description: "Conclua o pagamento para ativar sua conta.",
