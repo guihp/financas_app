@@ -86,15 +86,33 @@ serve(async (req) => {
       });
     }
 
-    // Ensure customer has CPF on Asaas (PIX requires it)
+    // Ensure customer has CPF on Asaas (PIX requires it). If the PUT fails (e.g.
+    // invalid CPF, customer deleted, or duplicate cpfCnpj on another customer),
+    // surface the actual error so the user sees something useful instead of the
+    // downstream "Para criar esta cobrança é necessário preencher o CPF" 400.
     try {
-      await fetch(`${ASAAS_BASE_URL}/customers/${sub.asaas_customer_id}`, {
+      const putRes = await fetch(`${ASAAS_BASE_URL}/customers/${sub.asaas_customer_id}`, {
         method: 'PUT',
         headers: { 'accept': 'application/json', 'content-type': 'application/json', 'access_token': ASAAS_API_KEY },
         body: JSON.stringify({ cpfCnpj })
       });
+      const putText = await putRes.text();
+      let putData: any = {};
+      try { putData = putText ? JSON.parse(putText) : {}; } catch (_) { putData = {}; }
+      if (!putRes.ok || putData?.errors) {
+        const errMsg = Array.isArray(putData?.errors)
+          ? putData.errors.map((e: any) => e.description || e.code).filter(Boolean).join('. ')
+          : `Falha ao atualizar CPF no Asaas (HTTP ${putRes.status}).`;
+        console.error('Failed to PUT customer CPF on Asaas:', putRes.status, putData);
+        return new Response(JSON.stringify({ error: errMsg, details: putData?.errors }), {
+          status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        });
+      }
     } catch (e) {
-      console.warn('Failed to PUT customer CPF (non-fatal):', e);
+      console.error('Exception while PUT customer CPF:', e);
+      return new Response(JSON.stringify({ error: 'Erro de comunicação ao atualizar CPF no Asaas.' }), {
+        status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
     }
 
     const dueDate = new Date();

@@ -114,7 +114,12 @@ serve(async (req) => {
             }
           }
         );
-        const listData = await listRes.json();
+        const listText = await listRes.text();
+        let listData: any = {};
+        try { listData = listText ? JSON.parse(listText) : {}; } catch (_) {
+          console.warn('Asaas list payments returned non-JSON body, treating as empty:', listText.slice(0, 200));
+          listData = {};
+        }
         const paidStatuses = ['CONFIRMED', 'RECEIVED', 'RECEIVED_IN_CASH'];
         const paidPayment = (listData?.data ?? []).find((p: { status: string }) => paidStatuses.includes(p.status));
         if (paidPayment) {
@@ -160,7 +165,12 @@ serve(async (req) => {
       }
     });
 
-    const paymentData = await paymentResponse.json();
+    const paymentText = await paymentResponse.text();
+    let paymentData: any = {};
+    try { paymentData = paymentText ? JSON.parse(paymentText) : {}; } catch (_) {
+      console.warn('Asaas GET payment returned non-JSON body, body:', paymentText.slice(0, 200));
+      paymentData = {};
+    }
     console.log('Asaas payment status:', paymentData);
 
     if (paymentData.errors) {
