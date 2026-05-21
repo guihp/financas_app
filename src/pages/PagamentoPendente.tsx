@@ -28,6 +28,7 @@ import { Logo } from "@/components/Logo";
 import { isValidEmail } from "@/utils/validation";
 import { CreditCardInput, type CreditCardData, type CardHolderInfo } from "@/components/ui/credit-card-input";
 import { AddressForm, type PaymentAddress, isPaymentAddressValid } from "@/components/AddressForm";
+import { friendlyError } from "@/utils/friendlyError";
 
 interface PendingPayment {
   id: string;
@@ -291,9 +292,10 @@ const PagamentoPendente = () => {
         setPendingPayment(refetch.registration);
       }
       setShowCardForm(false);
-    } catch (err: any) {
-      setMessage(err.message || "Erro ao criar pagamento.");
-      toast({ title: "Erro", description: err.message, variant: "destructive" });
+    } catch (err: unknown) {
+      const description = friendlyError(err, "Não foi possível processar o pagamento agora. Tente novamente em instantes.");
+      setMessage(description);
+      toast({ title: "Não foi possível processar o pagamento", description, variant: "destructive" });
     } finally {
       setCreatingPayment(false);
     }
@@ -409,8 +411,8 @@ const PagamentoPendente = () => {
       setPlan(data.plan);
       if (data.registration?.address) setAddress(data.registration.address);
 
-    } catch (error: any) {
-      setMessage(error.message || "Erro ao buscar pagamento.");
+    } catch (error: unknown) {
+      setMessage(friendlyError(error, "Não foi possível buscar o pagamento agora. Tente novamente em instantes."));
     } finally {
       setLoading(false);
     }

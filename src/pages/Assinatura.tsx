@@ -38,6 +38,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
+import { friendlyError } from "@/utils/friendlyError";
 
 interface OutletContextType {
   user: User;
@@ -192,12 +193,22 @@ const Assinatura = () => {
     }
     setPixGenerating(true);
     try {
-      const { data, error } = await supabase.functions.invoke('create-renewal-pix', {
-        body: { cpfCnpj: cleanCpf }
+      // Use fetch directly so we can read the actual JSON body of 4xx/5xx
+      // responses. supabase.functions.invoke swallows the body and surfaces
+      // only "Edge Function returned a non-2xx status code".
+      const { data: { session } } = await supabase.auth.getSession();
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || "https://dlbiwguzbiosaoyrcvay.supabase.co";
+      const accessToken = session?.access_token || (import.meta.env.VITE_SUPABASE_ANON_KEY as string);
+      const res = await fetch(`${supabaseUrl}/functions/v1/create-renewal-pix`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${accessToken}` },
+        body: JSON.stringify({ cpfCnpj: cleanCpf })
       });
-      if (error) throw new Error(error.message);
-      if (data?.error) throw new Error(data.error);
-      if (!data?.paymentId) throw new Error('Resposta inválida ao gerar PIX.');
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || data?.error) {
+        throw new Error(data?.error || "Não foi possível gerar o PIX agora.");
+      }
+      if (!data?.paymentId) throw new Error("Não conseguimos gerar o código PIX. Tente novamente em instantes.");
       const qrUrl = data.pixQrCodeBase64 ? `data:image/png;base64,${data.pixQrCodeBase64}` : undefined;
       setPixRenewalData({
         paymentId: data.paymentId,
@@ -206,8 +217,9 @@ const Assinatura = () => {
         invoiceUrl: data.invoiceUrl
       });
       toast({ title: "PIX gerado", description: "Pague para liberar +30 dias." });
-    } catch (err: any) {
-      toast({ title: "Erro ao gerar PIX", description: err.message || "Tente novamente.", variant: "destructive" });
+    } catch (err: unknown) {
+      const description = friendlyError(err, "Não foi possível gerar o PIX agora. Tente novamente em instantes.");
+      toast({ title: "Não foi possível gerar o PIX", description, variant: "destructive" });
     } finally {
       setPixGenerating(false);
     }
@@ -258,11 +270,11 @@ const Assinatura = () => {
 
       // Reload subscription data
       await loadSubscription();
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Cancel error:', err);
       toast({
         title: "Erro ao cancelar",
-        description: err.message || "Tente novamente.",
+        description: friendlyError(err, "Não foi possível cancelar agora. Tente novamente em instantes."),
         variant: "destructive",
       });
     } finally {
