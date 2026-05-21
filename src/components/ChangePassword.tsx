@@ -6,6 +6,7 @@ import { Label } from "@/components/ui/label";
 import { Eye, EyeOff, Lock, CheckCircle, XCircle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
+import { friendlyError } from "@/utils/friendlyError";
 
 const PasswordRequirement = ({ met, text }: { met: boolean; text: string }) => (
   <div className="flex items-center gap-2 text-sm">
@@ -93,7 +94,7 @@ export const ChangePassword = () => {
       if (error) {
         toast({
           title: "Erro ao alterar senha",
-          description: error.message,
+          description: friendlyError(error),
           variant: "destructive",
         });
       } else {
@@ -108,7 +109,7 @@ export const ChangePassword = () => {
     } catch (error: any) {
       toast({
         title: "Erro",
-        description: error.message || "Ocorreu um erro inesperado.",
+        description: friendlyError(error, "Ocorreu um erro inesperado."),
         variant: "destructive",
       });
     } finally {

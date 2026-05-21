@@ -4,6 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { User } from "@supabase/supabase-js";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { friendlyError } from "@/utils/friendlyError";
 import {
     Dialog,
     DialogContent,
@@ -286,7 +287,7 @@ const FaturasPage = () => {
             setPaidInvoices(prev => [...prev, { description: expenseDesc, amount: paymentData.amount, credit_card_id: paymentData.cardId }]);
             toast({ title: "Fatura Paga", description: "✅ O valor da fatura foi debitado da sua conta bancária!" });
         } catch (err: any) {
-            toast({ title: "Erro ao pagar", description: err.message, variant: "destructive" });
+            toast({ title: "Erro ao pagar", description: friendlyError(err), variant: "destructive" });
         } finally {
             setPayingCardId(null);
             setPaymentData(null);

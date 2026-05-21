@@ -13,6 +13,7 @@ import { normalizeCategorySlug } from "@/utils/category";
 import { CreditCard, Banknote, Zap, FileText, Building2, ArrowLeftRight } from "lucide-react";
 import { FIXED_CATEGORIES, CATEGORY_GROUPS, getCategoryLabel, getCategoriesByType, getCategoryGroupsByType } from "@/constants/financialData";
 import { CategorySelect } from "./CategorySelect";
+import { friendlyError } from "@/utils/friendlyError";
 interface AddTransactionFabProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -284,7 +285,7 @@ export const AddTransactionFab = ({ open, onOpenChange, onTransactionAdded }: Ad
       onTransactionAdded?.();
     } catch (error: any) {
       console.error("Error adding transaction:", error);
-      toast({ title: "Erro", description: error.message || "Erro ao adicionar transação", variant: "destructive" });
+      toast({ title: "Erro", description: friendlyError(error, "Erro ao adicionar transação"), variant: "destructive" });
     } finally {
       setLoading(false);
     }

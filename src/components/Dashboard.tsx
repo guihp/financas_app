@@ -18,6 +18,7 @@ import { Appointments } from "./Appointments";
 import { ChangePassword } from "./ChangePassword";
 import { TestWebhook } from "./TestWebhook";
 import { MobileBottomNav } from "./ui/mobile-bottom-nav";
+import { friendlyError } from "@/utils/friendlyError";
 
 
 export interface Transaction {
@@ -291,7 +292,7 @@ export const Dashboard = ({ user }: DashboardProps) => {
     if (error) {
       toast({
         title: "Erro ao adicionar transação",
-        description: error.message,
+        description: friendlyError(error),
         variant: "destructive",
       });
       return;
@@ -339,7 +340,7 @@ export const Dashboard = ({ user }: DashboardProps) => {
       console.error("Erro Supabase ao criar categoria:", error);
       toast({
         title: "Erro ao criar categoria",
-        description: error.message || "Erro desconhecido ao salvar categoria.",
+        description: friendlyError(error, "Erro desconhecido ao salvar categoria."),
         variant: "destructive",
       });
       return false;
@@ -375,7 +376,7 @@ export const Dashboard = ({ user }: DashboardProps) => {
     if (error) {
       toast({
         title: "Erro ao sair",
-        description: error.message,
+        description: friendlyError(error),
         variant: "destructive",
       });
     } else {

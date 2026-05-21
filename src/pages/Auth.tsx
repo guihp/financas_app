@@ -12,6 +12,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Logo } from "@/components/Logo";
 import { TermsOfUseContent } from "@/components/TermsOfUseContent";
 import { Checkbox } from "@/components/ui/checkbox";
+import { friendlyError } from "@/utils/friendlyError";
 import {
   isValidEmail,
   isValidPhoneForCountry,
@@ -278,10 +279,10 @@ const Auth = ({ defaultTab = "login" }: AuthProps) => {
       navigate(checkoutUrl);
     } catch (err: any) {
       console.error('create-asaas-customer error:', err);
-      setMessage(err.message || "Erro ao iniciar cadastro.");
+      setMessage(friendlyError(err, "Erro ao iniciar cadastro."));
       toast({
         title: "Erro",
-        description: err.message || "Erro ao iniciar cadastro.",
+        description: friendlyError(err, "Erro ao iniciar cadastro."),
         variant: "destructive"
       });
     } finally {

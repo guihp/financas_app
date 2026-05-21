@@ -13,6 +13,7 @@ import { getCategoryLabel, normalizeCategorySlug } from "@/constants/financialDa
 import { Progress } from "@/components/ui/progress";
 import { CategorySelect } from "@/components/CategorySelect";
 import { isValidAmount } from "@/utils/validation";
+import { friendlyError } from "@/utils/friendlyError";
 
 interface User {
   id: string;
@@ -201,7 +202,7 @@ const OrcamentosPage = () => {
       setShowDialog(false);
       loadData();
     } catch (err: any) {
-      toast({ title: "Erro", description: err.message, variant: "destructive" });
+      toast({ title: "Erro", description: friendlyError(err), variant: "destructive" });
     } finally {
       setIsSubmitting(false);
     }
