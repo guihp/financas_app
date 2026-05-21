@@ -204,87 +204,55 @@ export const AppLayout = () => {
   useEffect(() => {
     let mounted = true;
 
-    const loadUser = async () => {
+    const loadProfileAndSubscription = async (sessionUser: User) => {
+      setUser(sessionUser);
+      setLoading(false);
+
+      let isSuperAdminStatus = false;
+      let isAdminStatus = false;
       try {
-        const { data: { session } } = await supabase.auth.getSession();
+        const { data: roleData } = await supabase.rpc("is_super_admin");
+        isSuperAdminStatus = roleData === true;
+        if (mounted) setIsSuperAdmin(isSuperAdminStatus);
 
-        if (!session?.user) {
-          if (mounted) {
-            setLoading(false);
-            navigate("/auth");
-          }
-          return;
+        if (!isSuperAdminStatus) {
+          const { data: roles } = await supabase
+            .from("user_roles")
+            .select("role")
+            .eq("user_id", sessionUser.id);
+          isAdminStatus = roles?.some((r) => r.role === "admin") === true;
+          if (mounted) setIsAdminRole(isAdminStatus);
         }
+      } catch (e) {
+        console.warn("Could not check super admin status");
+      }
 
-        if (mounted) {
-          setUser(session.user);
-        }
-
-        // Check if super admin or admin
-        let isSuperAdminStatus = false;
-        let isAdminStatus = false;
-        try {
-          const { data: roleData } = await supabase.rpc('is_super_admin');
-          isSuperAdminStatus = roleData === true;
-          if (mounted) {
-            setIsSuperAdmin(isSuperAdminStatus);
-          }
-          
-          if (!isSuperAdminStatus) {
-            const { data: roles } = await supabase
-              .from('user_roles')
-              .select('role')
-              .eq('user_id', session.user.id);
-            const userIsAdmin = roles?.some(r => r.role === 'admin');
-            isAdminStatus = userIsAdmin === true;
-            if (mounted) {
-              setIsAdminRole(isAdminStatus);
-            }
-          }
-        } catch (e) {
-          console.warn("Could not check super admin status");
-        }
-
-        // Check subscription (skip for super admin or admin)
-        if (!isSuperAdminStatus && !isAdminStatus) {
-          const subCheck = await checkSubscription(session.user.id);
-          if (mounted) {
-            setSubscriptionCheck(subCheck);
-          }
-        }
-
-        if (mounted) {
-          setLoading(false);
-        }
-      } catch (error) {
-        console.error("Error loading user:", error);
-        if (mounted) {
-          setLoading(false);
-        }
+      if (!isSuperAdminStatus && !isAdminStatus) {
+        const subCheck = await checkSubscription(sessionUser.id);
+        if (mounted) setSubscriptionCheck(subCheck);
       }
     };
 
-    loadUser();
-
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (event, session) => {
-        if (event === 'SIGNED_OUT') {
-          if (mounted) {
-            setUser(null);
-            navigate("/auth");
-          }
-        } else if (session?.user && mounted) {
-          setUser(session.user);
+        if (!mounted) return;
+
+        if (event === "SIGNED_OUT" || !session?.user) {
+          setUser(null);
+          setLoading(false);
+          if (event === "SIGNED_OUT") navigate("/auth");
+          return;
         }
+
+        void loadProfileAndSubscription(session.user);
       }
     );
 
-    // Timeout de segurança
     const timeout = setTimeout(() => {
-      if (mounted && loading) {
-        setLoading(false);
+      if (mounted) {
+        setLoading((prev) => (prev ? false : prev));
       }
-    }, 5000);
+    }, 8000);
 
     return () => {
       mounted = false;

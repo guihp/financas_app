@@ -28,50 +28,26 @@ export const ProtectedRoute = ({ children }: ProtectedRouteProps) => {
       if (mounted) setAccessResult(access);
     };
 
-    const checkAuth = async () => {
-      try {
-        const { data: { session }, error } = await supabase.auth.getSession();
-
-        if (error || !session?.user) {
-          if (mounted) {
-            setUser(null);
-            setAccessResult(null);
-            setLoading(false);
-          }
-          return;
-        }
-
-        if (mounted) setUser(session.user);
-        await runAccessCheck(session.user);
-        if (mounted) setLoading(false);
-      } catch (error) {
-        console.error("Error checking auth:", error);
-        if (mounted) {
-          setUser(null);
-          setAccessResult(null);
-          setLoading(false);
-        }
-      }
-    };
-
-    checkAuth();
-
+    // Use only onAuthStateChange for session bootstrap. Calling getSession() while
+    // the listener is active can deadlock the Supabase auth client (no network, spinner forever).
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (_event, session) => {
+      (_event, session) => {
         if (!mounted) return;
-        const nextUser = session?.user || null;
+        const nextUser = session?.user ?? null;
         setUser(nextUser);
-        await runAccessCheck(nextUser);
-        if (mounted) setLoading(false);
+        setLoading(false);
+        void runAccessCheck(nextUser);
       }
     );
 
     const timeout = setTimeout(() => {
-      if (mounted && loading) {
-        console.warn("Auth timeout, redirecting to login");
-        setLoading(false);
+      if (mounted) {
+        setLoading((prev) => {
+          if (prev) console.warn("Auth timeout, redirecting to login");
+          return false;
+        });
       }
-    }, 5000);
+    }, 8000);
 
     return () => {
       mounted = false;
@@ -81,10 +57,6 @@ export const ProtectedRoute = ({ children }: ProtectedRouteProps) => {
   }, []);
 
   // Re-check subscription access only when the user ID or pathname change.
-  // Using the full `user` object as a dependency caused onAuthStateChange events
-  // (TOKEN_REFRESHED, INITIAL_SESSION, USER_UPDATED) to retrigger this effect on
-  // every render, which made checkSubscriptionAccess loop and left some routes
-  // (notably /dash) stuck on the spinner until the user manually navigated away.
   useEffect(() => {
     if (!user?.id) return;
     let cancelled = false;
