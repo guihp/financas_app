@@ -400,14 +400,23 @@ serve(async (req) => {
             const body = await req.json();
             const { phone, action, name, color, closing_day, due_day, card_limit, bank_account_id } = body;
 
-            if (!phone || !action || !name) {
+            if (!phone || !action) {
                 return new Response(
                     JSON.stringify({
-                        error: 'Campos obrigatórios: phone, action, name',
-                        actions: ['create_bank', 'create_card'],
+                        error: 'Campos obrigatórios: phone, action',
+                        actions: ['create_bank', 'create_card', 'pay_invoice'],
                         exemplo_banco: { phone: '5511999999999', action: 'create_bank', name: 'Nubank' },
-                        exemplo_cartao: { phone: '5511999999999', action: 'create_card', name: 'Nubank Crédito', closing_day: 3, due_day: 10 }
+                        exemplo_cartao: { phone: '5511999999999', action: 'create_card', name: 'Nubank Crédito', closing_day: 3, due_day: 10 },
+                        exemplo_pagar_fatura: { phone: '5511999999999', action: 'pay_invoice', card_id: '<uuid>', month_name: 'Maio', amount: 1200, bank_account_id: '<uuid>' }
                     }),
+                    { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+                );
+            }
+
+            // name é exigido só nas actions de criação (pay_invoice/edit/delete não usam name)
+            if ((action === 'create_bank' || action === 'create_card') && !name) {
+                return new Response(
+                    JSON.stringify({ error: `Para ${action}, o campo name é obrigatório` }),
                     { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
                 );
             }
