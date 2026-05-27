@@ -188,7 +188,7 @@ const PagamentoPendente = () => {
         return;
       }
     }
-    if (!isPaymentAddressValid(address)) {
+    if (billingType === 'CREDIT_CARD' && !isPaymentAddressValid(address)) {
       setCreatingPayment(false);
       setMessage("Preencha o endereço completo (CEP, logradouro, número, bairro, cidade e UF) antes de continuar.");
       toast({ title: "Endereço obrigatório", description: "Preencha todos os campos do endereço.", variant: "destructive" });
@@ -508,10 +508,7 @@ const PagamentoPendente = () => {
   };
 
   const createPaymentWithPix = async () => {
-    if (!isPaymentAddressValid(address)) {
-      toast({ title: "Endereço obrigatório", description: "Preencha o endereço acima antes de gerar o PIX.", variant: "destructive" });
-      return;
-    }
+    // PIX não exige endereço (o Asaas não usa endereço numa cobrança PIX avulsa)
     const cleanCpf = pixCpfCnpj.replace(/\D/g, '');
     if (cleanCpf.length !== 11 && cleanCpf.length !== 14) {
       toast({ title: "CPF/CNPJ obrigatório", description: "Informe um CPF (11 dígitos) ou CNPJ (14 dígitos) válido.", variant: "destructive" });
@@ -756,60 +753,9 @@ const PagamentoPendente = () => {
                         </div>
                       )}
                     </div>
-                    
-                    {/* Promo Code Input */}
-                    <div className="p-4 bg-muted/30 border border-border rounded-lg space-y-3">
-                      <Label htmlFor="promo-code" className="text-sm flex items-center gap-2">
-                        <Gift className="w-4 h-4 text-primary" />
-                        Possui um cupom de desconto?
-                      </Label>
-                      <div className="flex gap-2">
-                        <Input 
-                          id="promo-code"
-                          placeholder="EX: IAFERAP"
-                          value={promoCode}
-                          onChange={(e) => setPromoCode(e.target.value.toUpperCase())}
-                          className="uppercase flex-1"
-                          disabled={validatingPromo}
-                        />
-                        <Button 
-                          type="button" 
-                          variant="secondary"
-                          onClick={applyPromoCode}
-                          disabled={!promoCode || validatingPromo || appliedPromo?.code === promoCode}
-                        >
-                          {validatingPromo ? <Loader2 className="w-4 h-4 animate-spin"/> : "Aplicar"}
-                        </Button>
-                      </div>
-                      {promoMessage && (
-                        <p className={`text-xs font-medium flex items-center gap-1 ${promoMessage.type === 'success' ? 'text-green-500' : 'text-red-500'}`}>
-                          {promoMessage.type === 'error' && <AlertCircle className="w-3 h-3" />}
-                          {promoMessage.type === 'success' && <CheckCircle2 className="w-3 h-3" />}
-                          {promoMessage.text}
-                        </p>
-                      )}
-                    </div>
                   </div>
                 );
               })()}
-
-              {/* Expiration Info */}
-              <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <Clock className="h-4 w-4" />
-                <span>Expira em: {formatExpirationDate(pendingPayment.expiresAt)}</span>
-              </div>
-
-              {/* Address Form */}
-              {(!pendingPayment.paymentMethod || (!pendingPayment.boletoUrl && !pendingPayment.invoiceUrl)) && (
-                <div className="space-y-2">
-                  <p className="text-sm font-medium">Endereço (obrigatório)</p>
-                  <AddressForm
-                    value={address}
-                    onChange={setAddress}
-                    disabled={creatingPayment}
-                  />
-                </div>
-              )}
 
               {/* Payment method selector */}
               {(!pendingPayment.paymentMethod || (!pendingPayment.boletoUrl && !pendingPayment.invoiceUrl)) && !pixData && (
@@ -835,6 +781,59 @@ const PagamentoPendente = () => {
                       <p className="text-[11px] text-muted-foreground">30 dias · sem reembolso</p>
                     </button>
                   </div>
+                </div>
+              )}
+
+              {/* Promo Code Input */}
+              {plan && (
+                <div className="p-4 bg-muted/30 border border-border rounded-lg space-y-3">
+                  <Label htmlFor="promo-code" className="text-sm flex items-center gap-2">
+                    <Gift className="w-4 h-4 text-primary" />
+                    Possui um cupom de desconto?
+                  </Label>
+                  <div className="flex gap-2">
+                    <Input
+                      id="promo-code"
+                      placeholder="EX: IAFERAP"
+                      value={promoCode}
+                      onChange={(e) => setPromoCode(e.target.value.toUpperCase())}
+                      className="uppercase flex-1"
+                      disabled={validatingPromo}
+                    />
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      onClick={applyPromoCode}
+                      disabled={!promoCode || validatingPromo || appliedPromo?.code === promoCode}
+                    >
+                      {validatingPromo ? <Loader2 className="w-4 h-4 animate-spin"/> : "Aplicar"}
+                    </Button>
+                  </div>
+                  {promoMessage && (
+                    <p className={`text-xs font-medium flex items-center gap-1 ${promoMessage.type === 'success' ? 'text-green-500' : 'text-red-500'}`}>
+                      {promoMessage.type === 'error' && <AlertCircle className="w-3 h-3" />}
+                      {promoMessage.type === 'success' && <CheckCircle2 className="w-3 h-3" />}
+                      {promoMessage.text}
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {/* Expiration Info */}
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Clock className="h-4 w-4" />
+                <span>Expira em: {formatExpirationDate(pendingPayment.expiresAt)}</span>
+              </div>
+
+              {/* Address Form — só no Cartão; PIX não exige endereço */}
+              {selectedMethod === 'CREDIT_CARD' && !pixData && (!pendingPayment.paymentMethod || (!pendingPayment.boletoUrl && !pendingPayment.invoiceUrl)) && (
+                <div className="space-y-2">
+                  <p className="text-sm font-medium">Endereço (obrigatório)</p>
+                  <AddressForm
+                    value={address}
+                    onChange={setAddress}
+                    disabled={creatingPayment}
+                  />
                 </div>
               )}
 

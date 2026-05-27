@@ -65,7 +65,8 @@ serve(async (req) => {
       );
     }
 
-    // Address is required for both PIX and Cartão (save to DB)
+    // Address: obrigatório só no Cartão (Asaas usa no antifraude). PIX não precisa
+    // de endereço — quando vier, é salvo no banco; quando não vier, segue sem bloquear.
     const addrFields = address && typeof address === 'object' ? {
       postalCode: address.postalCode != null && String(address.postalCode).trim() !== '',
       street: address.street != null && String(address.street).trim() !== '',
@@ -75,7 +76,7 @@ serve(async (req) => {
       state: address.state != null && String(address.state).trim() !== ''
     } : null;
     const hasAddress = addrFields && Object.values(addrFields).every(Boolean);
-    if (!hasAddress) {
+    if (billingType === 'CREDIT_CARD' && !hasAddress) {
       const missing = addrFields ? Object.entries(addrFields).filter(([, v]) => !v).map(([k]) => k).join(', ') : 'endereço';
       return new Response(
         JSON.stringify({ error: `Endereço incompleto. Verifique: ${missing || 'CEP, logradouro, número, bairro, cidade e UF'}.` }),
