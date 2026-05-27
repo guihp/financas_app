@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -6,7 +6,7 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Mail, Lock, User, Eye, EyeOff, Loader2, CheckCircle2, Gift, Sparkles, FileText, ChevronDown } from "lucide-react";
+import { Mail, Lock, User, Eye, EyeOff, Loader2, CheckCircle2, Gift, Sparkles, FileText, ChevronDown, Circle, XCircle } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { Logo } from "@/components/Logo";
@@ -36,6 +36,55 @@ import {
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 
 const TRIAL_DAYS = 7;
+
+// Linha de requisito de senha: neutra (cinza) antes de digitar, verde quando ok,
+// vermelha quando falta. Espelha a regra de isStrongPassword (8+ chars, 3 de 4 tipos).
+function PwReqRow({ state, children }: { state: "neutral" | "ok" | "bad"; children: ReactNode }) {
+  return (
+    <li className="flex items-center gap-2">
+      {state === "neutral" ? (
+        <Circle className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+      ) : state === "ok" ? (
+        <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-green-600" />
+      ) : (
+        <XCircle className="h-3.5 w-3.5 shrink-0 text-destructive" />
+      )}
+      <span className={state === "neutral" ? "text-muted-foreground" : state === "ok" ? "text-green-700 dark:text-green-400" : "text-destructive"}>
+        {children}
+      </span>
+    </li>
+  );
+}
+
+function PasswordChecklist({ password }: { password: string }) {
+  const touched = password.length > 0;
+  const minLen = password.length >= 8;
+  const upper = /[A-Z]/.test(password);
+  const lower = /[a-z]/.test(password);
+  const number = /[0-9]/.test(password);
+  const special = /[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(password);
+  const typesCount = [upper, lower, number, special].filter(Boolean).length;
+  const typesOk = typesCount >= 3;
+  const st = (ok: boolean): "neutral" | "ok" | "bad" => (!touched ? "neutral" : ok ? "ok" : "bad");
+
+  return (
+    <div className="rounded-lg border border-border bg-muted/40 p-3 space-y-1.5">
+      <p className="text-xs font-semibold text-foreground">Requisitos da senha</p>
+      <ul className="space-y-1 text-xs">
+        <PwReqRow state={st(minLen)}>Pelo menos 8 caracteres</PwReqRow>
+        <PwReqRow state={st(typesOk)}>
+          Pelo menos 3 dos tipos abaixo{touched ? ` (você tem ${typesCount} de 4)` : ""}
+        </PwReqRow>
+      </ul>
+      <ul className="space-y-1 pl-5 text-xs">
+        <PwReqRow state={st(upper)}>Letra maiúscula (A-Z)</PwReqRow>
+        <PwReqRow state={st(lower)}>Letra minúscula (a-z)</PwReqRow>
+        <PwReqRow state={st(number)}>Número (0-9)</PwReqRow>
+        <PwReqRow state={st(special)}>Caractere especial (!@#$…)</PwReqRow>
+      </ul>
+    </div>
+  );
+}
 
 interface AuthProps {
   defaultTab?: "login" | "signup" | "forgot";
@@ -602,6 +651,8 @@ const Auth = ({ defaultTab = "login" }: AuthProps) => {
                     </div>
                   </div>
 
+                  <PasswordChecklist password={password} />
+
                   <div className="space-y-2">
                     <Label htmlFor="signup-confirm-password">Confirmar Senha *</Label>
                     <div className="relative">
@@ -624,6 +675,16 @@ const Auth = ({ defaultTab = "login" }: AuthProps) => {
                         {showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                       </button>
                     </div>
+                    {confirmPassword.length > 0 && confirmPassword !== password && (
+                      <p className="flex items-center gap-1.5 text-xs text-destructive">
+                        <XCircle className="h-3.5 w-3.5 shrink-0" /> As senhas não coincidem
+                      </p>
+                    )}
+                    {confirmPassword.length > 0 && confirmPassword === password && (
+                      <p className="flex items-center gap-1.5 text-xs text-green-700 dark:text-green-400">
+                        <CheckCircle2 className="h-3.5 w-3.5 shrink-0" /> As senhas coincidem
+                      </p>
+                    )}
                   </div>
 
                   <div className="flex items-start gap-3 rounded-lg border border-border bg-card p-3">
@@ -650,7 +711,7 @@ const Auth = ({ defaultTab = "login" }: AuthProps) => {
                   </div>
 
                   {message && (
-                    <Alert>
+                    <Alert variant="destructive">
                       <AlertDescription>{message}</AlertDescription>
                     </Alert>
                   )}
