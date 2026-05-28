@@ -244,11 +244,34 @@ serve(async (req) => {
     }
 
     if (registration && (isPaidEvent || isPaidStatus)) {
-      // Short-circuit: if the registration was already cancelled or already
-      // turned into an account, this is a late/duplicate payment delivery for an
-      // already-resolved flow. Record history and return 200 so the Asaas queue
-      // does not penalize the endpoint with infinite retries.
-      if (registration.status === 'cancelled' || registration.status === 'registered') {
+      // Resolve user_id and subscription_id by registration email so we can:
+      // (a) link payment_history rows instead of leaving them orphan, and
+      // (b) tell a paying renewal apart from a registration that was never
+      //     promoted to an account (the latter is the only true short-circuit).
+      let linkedUserId: string | null = null;
+      let linkedSubscriptionId: string | null = null;
+      if (registration?.email) {
+        const { data: prof } = await supabaseAdmin
+          .from('profiles')
+          .select('user_id')
+          .eq('email', registration.email)
+          .maybeSingle();
+        if (prof?.user_id) {
+          linkedUserId = prof.user_id;
+          const { data: sub } = await supabaseAdmin
+            .from('subscriptions')
+            .select('id')
+            .eq('user_id', linkedUserId)
+            .maybeSingle();
+          linkedSubscriptionId = sub?.id ?? null;
+        }
+      }
+
+      // Only short-circuit when the registration is cancelled AND there is no
+      // profile behind it (refund or never-activated). If a profile exists, this
+      // is a recurring payment for an existing customer — proceed to the
+      // subscription update block so they get IA + app released immediately.
+      if (registration.status === 'cancelled' && !linkedUserId) {
         const { error: histErr } = await supabaseAdmin
           .from('payment_history')
           .insert({
@@ -261,12 +284,12 @@ serve(async (req) => {
             due_date: payment?.dueDate,
             invoice_url: payment?.invoiceUrl || registration?.invoice_url
           });
-        if (histErr) console.warn('Failed to insert payment_history for late payment:', histErr);
-        console.log(`Late payment for ${registration.status} registration ${registration.id} — skipping user creation, returning 200`);
+        if (histErr) console.warn('Failed to insert payment_history for cancelled-registration payment:', histErr);
+        console.log(`Payment for cancelled registration ${registration.id} with no profile — short-circuit (no reactivation)`);
         return new Response(
           JSON.stringify({
             success: true,
-            message: `Late payment skipped (registration is ${registration.status})`,
+            message: 'Payment recorded for cancelled registration (no reactivation)',
             registrationId: registration.id
           }),
           { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -301,6 +324,8 @@ serve(async (req) => {
       const { error: historyError } = await supabaseAdmin
         .from('payment_history')
         .insert({
+          user_id: linkedUserId,
+          subscription_id: linkedSubscriptionId,
           asaas_payment_id: paymentId,
           asaas_customer_id: customerId || registration?.asaas_customer_id,
           amount: payment?.value || 0,
@@ -316,7 +341,10 @@ serve(async (req) => {
         // Don't fail the webhook
       }
 
-      let isUserRegistered = registration?.status === 'registered';
+      // Skip register-user when there is already a profile linked to the email —
+      // either the registration row is flagged 'registered' or the lookup above
+      // resolved an existing user (handles 'cancelled' renewals too).
+      let isUserRegistered = registration?.status === 'registered' || !!linkedUserId;
 
       if (registration && !isUserRegistered) {
         // Create user account (register-user with registrationId only), with 1 retry on failure
