@@ -12,7 +12,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Logo } from "@/components/Logo";
 import { TermsOfUseContent } from "@/components/TermsOfUseContent";
 import { Checkbox } from "@/components/ui/checkbox";
-import { friendlyError } from "@/utils/friendlyError";
+import { friendlyError, readInvokeError } from "@/utils/friendlyError";
 import {
   isValidEmail,
   isValidPhoneForCountry,
@@ -292,16 +292,11 @@ const Auth = ({ defaultTab = "login" }: AuthProps) => {
       });
 
       if (customerError) {
-        let errorMessage = "Erro ao iniciar cadastro.";
-        if (customerError.message) errorMessage = customerError.message;
-        else if (customerError.context?.body) {
-          try {
-            const body = typeof customerError.context.body === 'string'
-              ? JSON.parse(customerError.context.body) : customerError.context.body;
-            if (body?.error) errorMessage = body.error;
-          } catch (_) { }
-        }
-        throw new Error(errorMessage);
+        // invoke() engole o corpo da resposta e expõe só o genérico "non-2xx".
+        // Lê o erro real do edge (ex.: e-mail/telefone já cadastrado) para o
+        // usuário ver o motivo no próprio formulário de cadastro.
+        const realMsg = await readInvokeError(customerError);
+        throw new Error(realMsg || customerError.message || "Erro ao iniciar cadastro.");
       }
 
       if (customerData?.error) {
