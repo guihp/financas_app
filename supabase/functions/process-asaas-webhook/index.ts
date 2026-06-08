@@ -219,7 +219,7 @@ serve(async (req) => {
           updated_at: nowIso
         }).eq('id', targetSub.id);
 
-        await supabaseAdmin.from('payment_history').insert({
+        await supabaseAdmin.from('payment_history').upsert({
           user_id: renewalUserId,
           subscription_id: targetSub.id,
           asaas_payment_id: paymentId,
@@ -230,7 +230,7 @@ serve(async (req) => {
           paid_at: nowIso,
           due_date: payment?.dueDate,
           invoice_url: payment?.invoiceUrl
-        });
+        }, { onConflict: 'asaas_payment_id' });
 
         console.log('Renewal applied for user', renewalUserId, 'new period_end:', newEnd.toISOString().split('T')[0]);
       } else {
@@ -249,24 +249,80 @@ serve(async (req) => {
       // already-resolved flow. Record history and return 200 so the Asaas queue
       // does not penalize the endpoint with infinite retries.
       if (registration.status === 'cancelled' || registration.status === 'registered') {
-        const { error: histErr } = await supabaseAdmin
-          .from('payment_history')
-          .insert({
+        // The registration is already resolved (cancelled or turned into an
+        // account). Previously this branch only recorded payment_history and
+        // returned 200 WITHOUT extending the subscription — so every recurring
+        // renewal of an existing subscriber ('registered') was ignored and the
+        // cron later cancelled a paying customer. Fix: if a subscription exists
+        // for this customer, treat the payment as a renewal and EXTEND it.
+        const nowIso = new Date().toISOString();
+        const lookupCustomer = customerId || registration?.asaas_customer_id;
+        const { data: existingSub } = await supabaseAdmin
+          .from('subscriptions')
+          .select('id, user_id, current_period_end')
+          .eq('asaas_customer_id', lookupCustomer)
+          .maybeSingle();
+
+        if (existingSub?.id) {
+          const today = new Date();
+          let baseDate = today;
+          if (existingSub.current_period_end) {
+            const existing = new Date(existingSub.current_period_end);
+            if (existing > today) baseDate = existing; // stack onto remaining days
+          }
+          const newEnd = new Date(baseDate);
+          newEnd.setDate(newEnd.getDate() + 30);
+
+          await supabaseAdmin.from('subscriptions').update({
+            status: 'active',
+            is_trial: false,
+            cancel_at_period_end: false,
+            cancelled_at: null,
+            current_period_start: today.toISOString().split('T')[0],
+            current_period_end: newEnd.toISOString().split('T')[0],
+            updated_at: nowIso
+          }).eq('id', existingSub.id);
+
+          await supabaseAdmin.from('payment_history').upsert({
+            user_id: existingSub.user_id,
+            subscription_id: existingSub.id,
             asaas_payment_id: paymentId,
-            asaas_customer_id: customerId || registration?.asaas_customer_id,
+            asaas_customer_id: lookupCustomer,
             amount: payment?.value || 0,
             status: paymentStatus || 'CONFIRMED',
             payment_method: payment?.billingType || registration?.payment_method,
-            paid_at: new Date().toISOString(),
+            paid_at: nowIso,
             due_date: payment?.dueDate,
             invoice_url: payment?.invoiceUrl || registration?.invoice_url
-          });
-        if (histErr) console.warn('Failed to insert payment_history for late payment:', histErr);
-        console.log(`Late payment for ${registration.status} registration ${registration.id} — skipping user creation, returning 200`);
+          }, { onConflict: 'asaas_payment_id' });
+
+          console.log(`Renewal applied via ${registration.status} registration ${registration.id} for sub ${existingSub.id}, new period_end: ${newEnd.toISOString().split('T')[0]}`);
+          return new Response(
+            JSON.stringify({ success: true, message: 'Renewal applied', subscription_id: existingSub.id, user_id: existingSub.user_id }),
+            { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+
+        // No subscription for this customer — genuinely orphan payment. Record
+        // (idempotently) and return 200; reconciliation against Asaas catches it.
+        const { error: histErr } = await supabaseAdmin
+          .from('payment_history')
+          .upsert({
+            asaas_payment_id: paymentId,
+            asaas_customer_id: lookupCustomer,
+            amount: payment?.value || 0,
+            status: paymentStatus || 'CONFIRMED',
+            payment_method: payment?.billingType || registration?.payment_method,
+            paid_at: nowIso,
+            due_date: payment?.dueDate,
+            invoice_url: payment?.invoiceUrl || registration?.invoice_url
+          }, { onConflict: 'asaas_payment_id' });
+        if (histErr) console.warn('Failed to upsert payment_history for orphan late payment:', histErr);
+        console.log(`Late payment for ${registration.status} registration ${registration.id} with no subscription — recorded orphan history, returning 200`);
         return new Response(
           JSON.stringify({
             success: true,
-            message: `Late payment skipped (registration is ${registration.status})`,
+            message: `Late payment recorded (no subscription, registration ${registration.status})`,
             registrationId: registration.id
           }),
           { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -300,7 +356,7 @@ serve(async (req) => {
       // Record payment in history
       const { error: historyError } = await supabaseAdmin
         .from('payment_history')
-        .insert({
+        .upsert({
           asaas_payment_id: paymentId,
           asaas_customer_id: customerId || registration?.asaas_customer_id,
           amount: payment?.value || 0,
@@ -309,7 +365,7 @@ serve(async (req) => {
           paid_at: new Date().toISOString(),
           due_date: payment?.dueDate,
           invoice_url: payment?.invoiceUrl || registration?.invoice_url
-        });
+        }, { onConflict: 'asaas_payment_id' });
 
       if (historyError) {
         console.error('Failed to record payment history:', historyError);
