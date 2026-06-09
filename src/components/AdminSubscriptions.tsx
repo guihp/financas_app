@@ -40,8 +40,15 @@ import {
   Users,
   TrendingUp,
   Gift,
+  QrCode,
+  RefreshCw,
 } from "lucide-react";
 import { toast } from "sonner";
+import {
+  AdminPaymentMethodBadge,
+  buildPaymentMethodByEmail,
+  resolvePaidPaymentMethod,
+} from "@/components/admin/AdminPaymentMethodBadge";
 
 interface UserSubscription {
   id: string;
@@ -58,6 +65,7 @@ interface UserSubscription {
   plan_name?: string;
   plan_price?: number;
   cancel_at_period_end?: boolean;
+  payment_method?: string | null;
 }
 
 export const AdminSubscriptions = () => {
@@ -65,6 +73,7 @@ export const AdminSubscriptions = () => {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [filterStatus, setFilterStatus] = useState<string>("all");
+  const [filterPaymentMethod, setFilterPaymentMethod] = useState<string>("all");
   const [extendingTrial, setExtendingTrial] = useState<string | null>(null);
   const [trialDays, setTrialDays] = useState("7");
   const [extendDialogOpen, setExtendDialogOpen] = useState(false);
@@ -81,11 +90,16 @@ export const AdminSubscriptions = () => {
       setLoading(true);
 
       // Fetch users, subscriptions and the configured plan price in parallel
-      const [debugResponse, subsResponse, settingsResponse] = await Promise.all([
-        supabase.functions.invoke("debug-list-users", { method: "GET" }),
-        supabase.from("subscriptions").select("*"),
-        supabase.from("app_settings").select("product_full_price").limit(1).single(),
-      ]);
+      const [debugResponse, subsResponse, settingsResponse, pendingRegsResponse] =
+        await Promise.all([
+          supabase.functions.invoke("debug-list-users", { method: "GET" }),
+          supabase.from("subscriptions").select("*"),
+          supabase.from("app_settings").select("product_full_price").limit(1).single(),
+          supabase
+            .from("pending_registrations")
+            .select("email, payment_method, created_at, status")
+            .not("payment_method", "is", null),
+        ]);
 
       if (debugResponse.error) {
         toast.error("Erro ao carregar usuários");
@@ -96,6 +110,9 @@ export const AdminSubscriptions = () => {
       const subscriptions = subsResponse.data;
       const subError = subsResponse.error;
       const currentPlanPrice = Number(settingsResponse.data?.product_full_price || 0);
+      const paymentMethodByEmail = buildPaymentMethodByEmail(
+        pendingRegsResponse.data || []
+      );
       setPlanPrice(currentPlanPrice);
 
       if (subError) {
@@ -134,6 +151,14 @@ export const AdminSubscriptions = () => {
           cancel_at_period_end: sub?.cancel_at_period_end || false,
           plan_name: "Plano Mensal",
           plan_price: currentPlanPrice,
+          payment_method:
+            derivedStatus === "active" && !sub?.is_trial
+              ? resolvePaidPaymentMethod(
+                  user.email,
+                  paymentMethodByEmail,
+                  sub?.asaas_subscription_id
+                )
+              : null,
         };
       });
 
@@ -238,6 +263,20 @@ export const AdminSubscriptions = () => {
     revenue: users.filter(
       (u) => u.subscription_status === "active" && !u.is_trial
     ).length * planPrice,
+    pixPaid: users.filter(
+      (u) =>
+        u.subscription_status === "active" &&
+        !u.is_trial &&
+        !u.cancel_at_period_end &&
+        u.payment_method === "PIX"
+    ).length,
+    cardPaid: users.filter(
+      (u) =>
+        u.subscription_status === "active" &&
+        !u.is_trial &&
+        !u.cancel_at_period_end &&
+        u.payment_method === "CREDIT_CARD"
+    ).length,
   };
 
   // Filter users
@@ -247,42 +286,49 @@ export const AdminSubscriptions = () => {
       user.full_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       user.phone?.includes(searchTerm);
 
-    if (filterStatus === "all") return matchesSearch;
-    if (filterStatus === "trial") return matchesSearch && user.is_trial;
+    if (!matchesSearch) return false;
+
+    const matchesPayment =
+      filterPaymentMethod === "all" ||
+      (filterPaymentMethod === "pix" && user.payment_method === "PIX") ||
+      (filterPaymentMethod === "card" && user.payment_method === "CREDIT_CARD") ||
+      (filterPaymentMethod === "unknown" && !user.payment_method);
+
+    if (!matchesPayment) return false;
+
+    if (filterStatus === "all") return true;
+    if (filterStatus === "trial") return user.is_trial;
     if (filterStatus === "trial_expiring") {
-      if (!matchesSearch || !user.is_trial || !user.trial_ends_at) return false;
+      if (!user.is_trial || !user.trial_ends_at) return false;
       const daysLeft = Math.ceil(
         (new Date(user.trial_ends_at).getTime() - Date.now()) / (1000 * 60 * 60 * 24)
       );
       return daysLeft <= 3 && daysLeft >= 0;
     }
     if (filterStatus === "trial_expired") {
-      if (!matchesSearch || !user.is_trial || !user.trial_ends_at) return false;
+      if (!user.is_trial || !user.trial_ends_at) return false;
       return new Date(user.trial_ends_at) < new Date();
     }
     if (filterStatus === "paid")
       return (
-        matchesSearch &&
         user.subscription_status === "active" &&
         !user.is_trial &&
         !user.cancel_at_period_end
       );
     if (filterStatus === "cancel_scheduled")
       return (
-        matchesSearch &&
         user.subscription_status === "active" &&
         !user.is_trial &&
         user.cancel_at_period_end
       );
     if (filterStatus === "expired")
       return (
-        matchesSearch &&
-        (user.subscription_status === "expired" ||
-          user.subscription_status === "cancelled")
+        user.subscription_status === "expired" ||
+        user.subscription_status === "cancelled"
       );
-    if (filterStatus === "none")
-      return matchesSearch && user.subscription_status === "none";
-    return matchesSearch;
+    if (filterStatus === "none") return user.subscription_status === "none";
+
+    return true;
   });
 
   const getStatusBadge = (user: UserSubscription) => {
@@ -397,8 +443,8 @@ export const AdminSubscriptions = () => {
   return (
     <div className="space-y-6">
       {/* Stats Cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 sm:gap-4">
-        <Card className="bg-gradient-to-br from-green-500/10 to-green-500/5 border-green-500/20">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-8 gap-3 sm:gap-4">
+        <Card className="bg-gradient-to-br from-green-500/10 to-green-500/5 border-green-500/20 shadow-sm">
           <CardContent className="p-4">
             <div className="flex items-center justify-between mb-2">
               <DollarSign className="h-4 w-4 text-green-400" />
@@ -406,8 +452,30 @@ export const AdminSubscriptions = () => {
             </div>
             <div className="text-2xl font-bold text-green-400">{stats.active}</div>
             <p className="text-xs text-muted-foreground mt-1">
-              R$ {stats.revenue.toFixed(2).replace(".", ",")}/mês
+              {new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(stats.revenue)}/mês
             </p>
+          </CardContent>
+        </Card>
+
+        <Card className="bg-gradient-to-br from-emerald-500/10 to-emerald-500/5 border-emerald-500/25 shadow-sm">
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between mb-2">
+              <QrCode className="h-4 w-4 text-emerald-400" />
+              <span className="text-xs text-muted-foreground">PIX</span>
+            </div>
+            <div className="text-2xl font-bold text-emerald-400">{stats.pixPaid}</div>
+            <p className="text-xs text-muted-foreground mt-1">Assinantes ativos</p>
+          </CardContent>
+        </Card>
+
+        <Card className="bg-gradient-to-br from-violet-500/10 to-violet-500/5 border-violet-500/25 shadow-sm">
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between mb-2">
+              <CreditCard className="h-4 w-4 text-violet-400" />
+              <span className="text-xs text-muted-foreground">Cartão</span>
+            </div>
+            <div className="text-2xl font-bold text-violet-400">{stats.cardPaid}</div>
+            <p className="text-xs text-muted-foreground mt-1">Assinantes ativos</p>
           </CardContent>
         </Card>
 
@@ -493,8 +561,9 @@ export const AdminSubscriptions = () => {
               onClick={fetchSubscriptionData}
               variant="outline"
               size="sm"
-              className="w-full sm:w-auto"
+              className="w-full sm:w-auto gap-2"
             >
+              <RefreshCw className="h-4 w-4" />
               Atualizar
             </Button>
           </CardTitle>
@@ -514,7 +583,7 @@ export const AdminSubscriptions = () => {
                 <SelectValue placeholder="Filtrar status" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">Todos</SelectItem>
+                <SelectItem value="all">Todos os status</SelectItem>
                 <SelectItem value="paid">Pagos</SelectItem>
                 <SelectItem value="cancel_scheduled">Cancel. Agendado</SelectItem>
                 <SelectItem value="trial">Em Trial</SelectItem>
@@ -522,6 +591,17 @@ export const AdminSubscriptions = () => {
                 <SelectItem value="trial_expired">Trial Expirado</SelectItem>
                 <SelectItem value="expired">Expirados/Cancelados</SelectItem>
                 <SelectItem value="none">Sem Assinatura</SelectItem>
+              </SelectContent>
+            </Select>
+            <Select value={filterPaymentMethod} onValueChange={setFilterPaymentMethod}>
+              <SelectTrigger className="w-full sm:w-[160px]">
+                <SelectValue placeholder="Pagamento" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todo pagamento</SelectItem>
+                <SelectItem value="pix">PIX</SelectItem>
+                <SelectItem value="card">Cartão</SelectItem>
+                <SelectItem value="unknown">Sem método</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -542,8 +622,17 @@ export const AdminSubscriptions = () => {
                         {user.email}
                       </p>
                     </div>
-                    <div className="flex-shrink-0 ml-2">
+                    <div className="flex flex-col items-end gap-1 shrink-0 ml-2">
                       {getStatusBadge(user)}
+                      {user.subscription_status === "active" &&
+                        !user.is_trial &&
+                        !user.cancel_at_period_end && (
+                          <AdminPaymentMethodBadge
+                            method={user.payment_method}
+                            size="xs"
+                            showUnknown
+                          />
+                        )}
                     </div>
                   </div>
 
@@ -624,6 +713,7 @@ export const AdminSubscriptions = () => {
                   <TableHead>Usuário</TableHead>
                   <TableHead>Email</TableHead>
                   <TableHead>Status</TableHead>
+                  <TableHead>Pagamento</TableHead>
                   <TableHead>Trial Expira</TableHead>
                   <TableHead>Período Atual</TableHead>
                   <TableHead>Cadastro</TableHead>
@@ -640,6 +730,18 @@ export const AdminSubscriptions = () => {
                       {user.email}
                     </TableCell>
                     <TableCell>{getStatusBadge(user)}</TableCell>
+                    <TableCell>
+                      {user.subscription_status === "active" &&
+                      !user.is_trial &&
+                      !user.cancel_at_period_end ? (
+                        <AdminPaymentMethodBadge
+                          method={user.payment_method}
+                          showUnknown
+                        />
+                      ) : (
+                        <span className="text-sm text-muted-foreground">—</span>
+                      )}
+                    </TableCell>
                     <TableCell>
                       {user.is_trial && user.trial_ends_at ? (
                         <span
@@ -706,7 +808,7 @@ export const AdminSubscriptions = () => {
                 {filteredUsers.length === 0 && (
                   <TableRow>
                     <TableCell
-                      colSpan={7}
+                      colSpan={8}
                       className="text-center py-8 text-muted-foreground"
                     >
                       Nenhum usuário encontrado

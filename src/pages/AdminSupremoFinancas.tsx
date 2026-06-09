@@ -4,7 +4,12 @@ import { supabase } from "@/integrations/supabase/client";
 import { User } from "@supabase/supabase-js";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Users, Shield, Gift, Activity, CircleUser, TrendingUp, UserPlus, CreditCard, CalendarDays, Settings } from "lucide-react";
+import { Users, Shield, Gift, Activity, CircleUser, TrendingUp, UserPlus, CreditCard, CalendarDays, Settings, QrCode } from "lucide-react";
+import { AdminFunnelSummary } from "@/components/admin/AdminFunnelSummary";
+import {
+    buildPaymentMethodByEmail,
+    resolvePaidPaymentMethod,
+} from "@/components/admin/AdminPaymentMethodBadge";
 import { toast } from "sonner";
 import { AdminPromotionalCodes } from "@/components/AdminPromotionalCodes";
 import { AdminUserList } from "@/components/AdminUserList";
@@ -35,7 +40,9 @@ const AdminSupremoFinancas = () => {
         trialUsers: 0,
         usersWithPromo: 0,
         mrr: 0,
-        topPromo: "Nenhum"
+        topPromo: "Nenhum",
+        payingPix: 0,
+        payingCard: 0,
     });
     const [growthData, setGrowthData] = useState<any[]>([]);
     const [chartPeriod, setChartPeriod] = useState("7");
@@ -162,7 +169,7 @@ const AdminSupremoFinancas = () => {
 
             // Calculate MRR and Top Promo Code (uses real plan price from app_settings)
             const [{ data: subsData }, { data: settingsForMrr }] = await Promise.all([
-                supabase.from("subscriptions").select("promotional_code_id, status, is_trial"),
+                supabase.from("subscriptions").select("promotional_code_id, status, is_trial, user_id, asaas_subscription_id"),
                 supabase.from("app_settings").select("product_full_price").limit(1).single()
             ]);
 
@@ -188,6 +195,42 @@ const AdminSupremoFinancas = () => {
                 if (pcData) topPromoName = `${pcData.code} (${promoCounts[topPromoId]} usos)`;
             }
 
+            let payingPix = 0;
+            let payingCard = 0;
+            const payingSubs = (subsData || []).filter(
+                (s) => s.status === "active" && !s.is_trial
+            );
+            const [{ data: payingProfiles }, { data: pendingRegs }] = await Promise.all([
+                payingSubs.length
+                    ? supabase
+                        .from("profiles")
+                        .select("email, user_id")
+                        .in("user_id", payingSubs.map((s) => s.user_id))
+                    : Promise.resolve({ data: [] as { email: string | null; user_id: string }[] }),
+                supabase
+                    .from("pending_registrations")
+                    .select("email, payment_method, created_at, status")
+                    .not("payment_method", "is", null),
+            ]);
+
+            if (payingProfiles?.length) {
+                const methodByEmail = buildPaymentMethodByEmail(pendingRegs || []);
+                const profileByUserId = new Map(
+                    payingProfiles.map((p) => [p.user_id, p.email])
+                );
+
+                for (const sub of payingSubs) {
+                    const email = profileByUserId.get(sub.user_id);
+                    const method = resolvePaidPaymentMethod(
+                        email,
+                        methodByEmail,
+                        (sub as { asaas_subscription_id?: string | null }).asaas_subscription_id
+                    );
+                    if (method === "PIX") payingPix++;
+                    else if (method === "CREDIT_CARD") payingCard++;
+                }
+            }
+
             setKpiStats({
                 totalUsers: totalUsersCount,
                 partialRegistrations: partialRegCount,
@@ -195,7 +238,9 @@ const AdminSupremoFinancas = () => {
                 trialUsers: trialUsersCount,
                 usersWithPromo: promoUsersCount,
                 mrr: currentMrr,
-                topPromo: topPromoName
+                topPromo: topPromoName,
+                payingPix,
+                payingCard,
             });
 
             // Initial fetch
@@ -324,6 +369,22 @@ const AdminSupremoFinancas = () => {
                 </TabsList>
 
                 <TabsContent value="overview" className="space-y-6">
+                    <Card className="border-border/80 bg-gradient-to-br from-card via-card to-orange-500/5 shadow-sm">
+                        <CardHeader className="pb-2">
+                            <CardTitle className="text-base font-semibold flex items-center gap-2">
+                                <Activity className="h-4 w-4 text-orange-500" />
+                                Funil de Conversão
+                            </CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                            <AdminFunnelSummary
+                                leads={kpiStats.partialRegistrations + kpiStats.trialUsers + kpiStats.payingUsers}
+                                trial={kpiStats.trialUsers}
+                                paying={kpiStats.payingUsers}
+                            />
+                        </CardContent>
+                    </Card>
+
                     {/* KPI Cards */}
                     <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
                         <Card className="bg-gradient-to-br from-emerald-600/10 to-emerald-600/5 border-emerald-600/30 col-span-2 lg:col-span-1 shadow-md relative overflow-hidden">
@@ -382,6 +443,36 @@ const AdminSupremoFinancas = () => {
                             <CardContent>
                                 <div className="text-xl font-bold text-purple-600 truncate" title={kpiStats.topPromo}>{kpiStats.topPromo}</div>
                                 <p className="text-xs text-purple-600/70 font-medium mt-1">Mais utilizado</p>
+                            </CardContent>
+                        </Card>
+
+                        <Card className="bg-gradient-to-br from-emerald-500/10 to-emerald-500/5 border-emerald-500/25">
+                            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                                <CardTitle className="text-sm font-medium text-emerald-500">Pagantes via PIX</CardTitle>
+                                <QrCode className="h-4 w-4 text-emerald-500" />
+                            </CardHeader>
+                            <CardContent>
+                                <div className="text-2xl font-bold text-emerald-500">{kpiStats.payingPix}</div>
+                                <p className="text-xs text-muted-foreground mt-1">
+                                    {kpiStats.payingUsers > 0
+                                        ? `${Math.round((kpiStats.payingPix / kpiStats.payingUsers) * 100)}% dos ativos`
+                                        : "Sem pagantes"}
+                                </p>
+                            </CardContent>
+                        </Card>
+
+                        <Card className="bg-gradient-to-br from-violet-500/10 to-violet-500/5 border-violet-500/25">
+                            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                                <CardTitle className="text-sm font-medium text-violet-400">Pagantes via Cartão</CardTitle>
+                                <CreditCard className="h-4 w-4 text-violet-400" />
+                            </CardHeader>
+                            <CardContent>
+                                <div className="text-2xl font-bold text-violet-400">{kpiStats.payingCard}</div>
+                                <p className="text-xs text-muted-foreground mt-1">
+                                    {kpiStats.payingUsers > 0
+                                        ? `${Math.round((kpiStats.payingCard / kpiStats.payingUsers) * 100)}% dos ativos`
+                                        : "Sem pagantes"}
+                                </p>
                             </CardContent>
                         </Card>
                     </div>
