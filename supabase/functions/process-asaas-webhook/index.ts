@@ -1,6 +1,7 @@
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { notifyWelcomeMessageN8n } from './n8n-welcome-webhook.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -244,6 +245,8 @@ serve(async (req) => {
     }
 
     if (registration && (isPaidEvent || isPaidStatus)) {
+      const isFirstTimeActivation = registration.status !== 'registered';
+
       // Short-circuit: if the registration was already cancelled or already
       // turned into an account, this is a late/duplicate payment delivery for an
       // already-resolved flow. Record history and return 200 so the Asaas queue
@@ -524,6 +527,34 @@ serve(async (req) => {
         console.error('Failed to inject platform fee transaction:', e);
       }
 
+      // Fallback: garante mensagem de boas-vindas no n8n se register-user não disparou
+      if (isUserRegistered && isFirstTimeActivation && registration.email) {
+        try {
+          const { data: profile } = await supabaseAdmin
+            .from('profiles')
+            .select('user_id, full_name, phone')
+            .eq('email', String(registration.email).toLowerCase().trim())
+            .maybeSingle();
+
+          if (profile?.user_id) {
+            const welcomeResult = await notifyWelcomeMessageN8n(
+              supabaseAdmin,
+              {
+                nome: profile.full_name || String(registration.full_name || ''),
+                email: String(registration.email).toLowerCase().trim(),
+                telefone: String(profile.phone || registration.phone || '').replace(/\D/g, '')
+              },
+              profile.user_id
+            );
+            console.log('process-asaas-webhook welcome n8n fallback:', welcomeResult);
+          } else {
+            console.warn('process-asaas-webhook: profile not found for welcome webhook', registration.email);
+          }
+        } catch (welcomeErr) {
+          console.error('process-asaas-webhook welcome n8n fallback failed:', welcomeErr);
+        }
+      }
+
       return new Response(
         JSON.stringify({
           success: true,
@@ -578,15 +609,24 @@ serve(async (req) => {
       console.log('Registration cancelled:', registration.id);
     }
 
-    if (eventType === 'PAYMENT_DELETED' || eventType === 'PAYMENT_REFUNDED') {
-      const nowIso = new Date().toISOString();
-      const today = nowIso.split('T')[0];
-      await updateSubscriptionByAsaasReference({
-        status: 'cancelled',
-        cancel_at_period_end: true,
-        cancelled_at: nowIso,
-        current_period_end: today
+    // PAYMENT_DELETED / PAYMENT_REFUNDED: apagar uma cobrança individual ou
+    // estornar um pagamento NAO significa cancelar a assinatura inteira. O
+    // admin pode estar so removendo um boleto duplicado, ou estornando uma
+    // taxa avulsa. O cancelamento de plano so vem via SUBSCRIPTION_DELETED.
+    // Por isso aqui apenas registramos no payment_history; nao mexemos no
+    // status local.
+    if ((eventType === 'PAYMENT_DELETED' || eventType === 'PAYMENT_REFUNDED') && paymentId) {
+      await supabaseAdmin.from('payment_history').insert({
+        asaas_payment_id: paymentId,
+        asaas_customer_id: customerId || registration?.asaas_customer_id,
+        amount: payment?.value || 0,
+        status: eventType === 'PAYMENT_REFUNDED' ? 'REFUNDED' : 'DELETED',
+        payment_method: payment?.billingType || registration?.payment_method,
+        paid_at: new Date().toISOString(),
+        due_date: payment?.dueDate,
+        invoice_url: payment?.invoiceUrl || registration?.invoice_url
       });
+      console.log(`Payment ${eventType.toLowerCase()} logged: ${paymentId} (sub local nao alterada)`);
     }
 
     if (eventType === 'SUBSCRIPTION_DELETED' || eventType === 'SUBSCRIPTION_CANCELLED' || eventType === 'SUBSCRIPTION_INACTIVATED') {
