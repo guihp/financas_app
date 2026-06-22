@@ -1,6 +1,7 @@
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { scheduleWelcomeMessageN8n } from './n8n-welcome-webhook.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -235,7 +236,14 @@ serve(async (req) => {
     if (!phoneCheckError && existingProfileByPhone) {
       console.error('register-user 400: Phone already exists', { phone: cleanPhone, registrationId: registrationId ?? null });
       return new Response(
-        JSON.stringify({ error: 'Este número de telefone já está cadastrado. Por favor, faça login ou use outro número.' }),
+        // error_code distinto para o webhook do Asaas nao confundir "phone dup"
+        // com "email dup". Sem isso, o webhook marcava isUserRegistered=true e
+        // continuava o fluxo achando que a conta ja existia, quando na verdade
+        // ela nunca foi criada (caso guilherme@iafeoficial.com em 19/05).
+        JSON.stringify({
+          error: 'Este número de telefone já está cadastrado. Por favor, faça login ou use outro número.',
+          error_code: 'phone_already_registered'
+        }),
         {
           status: 400,
           headers: { ...corsHeaders, 'Content-Type': 'application/json' }
@@ -433,35 +441,13 @@ serve(async (req) => {
     }
 
     // ============================================
-    // SEND WEBHOOK NOTIFICATION TO N8N
+    // SEND WEBHOOK NOTIFICATION TO N8N (deduped per user)
     // ============================================
-    try {
-      const webhookUrl = 'https://n8n-sgo8ksokg404ocg8sgc4sooc.vemprajogo.com/webhook/enviar-mensagem-inicio';
-      const n8nPromise = fetch(webhookUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          nome: full_name,
-          email: sanitizedEmail,
-          telefone: cleanPhone
-        })
-      }).then(res => res.text())
-        .then(text => console.log('n8n webhook response:', text))
-        .catch(err => console.error('Failed to notify n8n webhook:', err));
-
-      // Use waitUntil if available (Edge Runtime) to not block response
-      // @ts-ignore
-      if (typeof EdgeRuntime !== 'undefined') {
-        // @ts-ignore
-        EdgeRuntime.waitUntil(n8nPromise);
-      } else {
-        await n8nPromise;
-      }
-    } catch (error) {
-      console.error('Error preparing n8n webhook:', error);
-    }
+    scheduleWelcomeMessageN8n(supabaseAdmin, {
+      nome: full_name,
+      email: sanitizedEmail,
+      telefone: cleanPhone
+    }, authData.user.id);
 
     console.log('User created successfully:', {
       user_id: authData.user.id,

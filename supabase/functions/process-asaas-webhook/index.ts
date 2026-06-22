@@ -8,6 +8,18 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
+async function insertPaymentHistoryIdempotent(supabaseAdmin: any, row: Record<string, unknown>) {
+  // unique index payment_history_payment_status_uniq on (asaas_payment_id, status)
+  // prevents duplicates from webhook redelivery. Use upsert with ignoreDuplicates
+  // so the second delivery is a no-op instead of raising 23505.
+  if (!row.asaas_payment_id) {
+    return supabaseAdmin.from('payment_history').insert(row);
+  }
+  return supabaseAdmin
+    .from('payment_history')
+    .upsert(row, { onConflict: 'asaas_payment_id,status', ignoreDuplicates: true });
+}
+
 const ASAAS_API_KEY = Deno.env.get('ASAAS_API_KEY') ?? '';
 let ASAAS_BASE_URL = Deno.env.get('ASAAS_BASE_URL') ?? 'https://api-sandbox.asaas.com/v3';
 
@@ -22,11 +34,17 @@ serve(async (req) => {
   }
 
   try {
-    // Validate Asaas signature (token configured no painel Asaas)
+    // Validate Asaas signature (token configurado no painel Asaas).
+    // Suporta 2 tokens simultaneos (ASAAS_WEBHOOK_TOKEN + ASAAS_WEBHOOK_TOKEN_PREV)
+    // para evitar fila penalizada durante a rotacao do segredo. Quando trocar o
+    // token no painel Asaas, mantenha o antigo em ASAAS_WEBHOOK_TOKEN_PREV por
+    // 24h e o novo em ASAAS_WEBHOOK_TOKEN.
     const expectedToken = Deno.env.get('ASAAS_WEBHOOK_TOKEN') ?? '';
-    if (expectedToken) {
+    const expectedTokenPrev = Deno.env.get('ASAAS_WEBHOOK_TOKEN_PREV') ?? '';
+    if (expectedToken || expectedTokenPrev) {
       const receivedToken = req.headers.get('asaas-access-token') ?? req.headers.get('Asaas-Access-Token') ?? '';
-      if (receivedToken !== expectedToken) {
+      const accepted = [expectedToken, expectedTokenPrev].filter(Boolean);
+      if (!accepted.includes(receivedToken)) {
         console.warn('Invalid asaas-access-token header. Rejecting.');
         return new Response(JSON.stringify({ error: 'invalid signature' }), {
           status: 401,
@@ -220,7 +238,7 @@ serve(async (req) => {
           updated_at: nowIso
         }).eq('id', targetSub.id);
 
-        await supabaseAdmin.from('payment_history').insert({
+        await insertPaymentHistoryIdempotent(supabaseAdmin, {
           user_id: renewalUserId,
           subscription_id: targetSub.id,
           asaas_payment_id: paymentId,
@@ -249,12 +267,46 @@ serve(async (req) => {
 
       // Short-circuit: if the registration was already cancelled or already
       // turned into an account, this is a late/duplicate payment delivery for an
-      // already-resolved flow. Record history and return 200 so the Asaas queue
-      // does not penalize the endpoint with infinite retries.
+      // already-resolved flow. We must NOT try to recreate the user, but if the
+      // customer has a local subscription that is currently inactive, we should
+      // reactivate it for +30 days so the client who paid late gets access back.
+      // Caso real (22/06): Helry e Geremias pagaram boletos antigos depois da
+      // sub local virar cancelled e ficaram sem acesso porque o handler antigo
+      // apenas registrava o pagamento e retornava 200.
       if (registration.status === 'cancelled' || registration.status === 'registered') {
-        const { error: histErr } = await supabaseAdmin
-          .from('payment_history')
-          .insert({
+        const lookupCust = customerId || registration?.asaas_customer_id;
+        let reactivated = false;
+        if (lookupCust) {
+          const { data: localSub } = await supabaseAdmin
+            .from('subscriptions')
+            .select('id, status, current_period_end')
+            .eq('asaas_customer_id', lookupCust)
+            .maybeSingle();
+          if (localSub && localSub.status !== 'active') {
+            const todayDate = new Date();
+            let baseDate = todayDate;
+            if (localSub.current_period_end) {
+              const existing = new Date(localSub.current_period_end);
+              if (existing > todayDate) baseDate = existing;
+            }
+            const newEnd = new Date(baseDate);
+            newEnd.setDate(newEnd.getDate() + 30);
+            const nowIso = new Date().toISOString();
+            await supabaseAdmin.from('subscriptions').update({
+              status: 'active',
+              is_trial: false,
+              cancel_at_period_end: false,
+              cancelled_at: null,
+              current_period_start: todayDate.toISOString().split('T')[0],
+              current_period_end: newEnd.toISOString().split('T')[0],
+              updated_at: nowIso
+            }).eq('id', localSub.id);
+            reactivated = true;
+            console.log(`Late payment reactivated sub ${localSub.id} until ${newEnd.toISOString().split('T')[0]}`);
+          }
+        }
+
+        const { error: histErr } =  await insertPaymentHistoryIdempotent(supabaseAdmin, {
             asaas_payment_id: paymentId,
             asaas_customer_id: customerId || registration?.asaas_customer_id,
             amount: payment?.value || 0,
@@ -265,12 +317,15 @@ serve(async (req) => {
             invoice_url: payment?.invoiceUrl || registration?.invoice_url
           });
         if (histErr) console.warn('Failed to insert payment_history for late payment:', histErr);
-        console.log(`Late payment for ${registration.status} registration ${registration.id} — skipping user creation, returning 200`);
+        console.log(`Late payment for ${registration.status} registration ${registration.id} — reactivated=${reactivated}`);
         return new Response(
           JSON.stringify({
             success: true,
-            message: `Late payment skipped (registration is ${registration.status})`,
-            registrationId: registration.id
+            message: reactivated
+              ? 'Late payment processed and subscription reactivated for +30 days'
+              : `Late payment recorded (registration is ${registration.status}, no local sub to reactivate)`,
+            registrationId: registration.id,
+            reactivated
           }),
           { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
@@ -301,9 +356,7 @@ serve(async (req) => {
       console.log('Registration marked as paid:', registration.id);
 
       // Record payment in history
-      const { error: historyError } = await supabaseAdmin
-        .from('payment_history')
-        .insert({
+      const { error: historyError } =  await insertPaymentHistoryIdempotent(supabaseAdmin, {
           asaas_payment_id: paymentId,
           asaas_customer_id: customerId || registration?.asaas_customer_id,
           amount: payment?.value || 0,
@@ -346,16 +399,40 @@ serve(async (req) => {
           }
           if (!outcome.ok) {
             console.error('register-user failed after payment:', outcome.status, outcome.result);
-            
-            // Check if it's a known non-retryable error like user already exists
-            const errorStr = JSON.stringify(outcome.result || {}).toLowerCase();
-            const isUserExists = errorStr.includes('já está cadastrado') || 
-                                 errorStr.includes('already registered') || 
-                                 errorStr.includes('user already exists');
 
-            if (isUserExists) {
-              console.log('User already registered. Proceeding to update subscription without failing webhook.');
+            // Distinguish "email duplicate" (the same user already has an
+            // account — safe to skip) from "phone duplicate" (DIFFERENT user
+            // tried to use a phone already taken; account was NEVER created).
+            // Treating phone-dup as user-exists creates ghost accounts that
+            // never let the client log in even after they pay.
+            const errStr = JSON.stringify(outcome.result || {}).toLowerCase();
+            const errCode = (outcome.result as { error_code?: string } | undefined)?.error_code;
+            const isPhoneDup = errCode === 'phone_already_registered' || errStr.includes('telefone já está cadastrado');
+            const isEmailDup = !isPhoneDup && (
+              errStr.includes('e-mail já está cadastrado') ||
+              errStr.includes('email já está cadastrado') ||
+              errStr.includes('already registered') ||
+              errStr.includes('user already exists')
+            );
+
+            if (isEmailDup) {
+              console.log('User already registered (email dup). Proceeding to update subscription without failing webhook.');
               isUserRegistered = true;
+            } else if (isPhoneDup) {
+              // Account NOT created. Do not mark webhook as success — escalate
+              // for manual review. Returning 200 here prevents Asaas from
+              // retrying forever, but we keep registration in 'paid' so the
+              // admin can pick up and fix manually.
+              console.error('Phone duplicate: account NOT created for registration', registration.id, '. Manual review required.');
+              return new Response(
+                JSON.stringify({
+                  success: true,
+                  message: 'Pagamento registrado mas a conta nao pode ser criada (telefone duplicado). Suporte ira contatar o cliente.',
+                  registrationId: registration.id,
+                  needs_manual_review: true
+                }),
+                { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+              );
             } else {
               // Return 500 to trigger Asaas retry
               return new Response(
@@ -616,7 +693,7 @@ serve(async (req) => {
     // Por isso aqui apenas registramos no payment_history; nao mexemos no
     // status local.
     if ((eventType === 'PAYMENT_DELETED' || eventType === 'PAYMENT_REFUNDED') && paymentId) {
-      await supabaseAdmin.from('payment_history').insert({
+      await insertPaymentHistoryIdempotent(supabaseAdmin, {
         asaas_payment_id: paymentId,
         asaas_customer_id: customerId || registration?.asaas_customer_id,
         amount: payment?.value || 0,
@@ -632,6 +709,41 @@ serve(async (req) => {
     if (eventType === 'SUBSCRIPTION_DELETED' || eventType === 'SUBSCRIPTION_CANCELLED' || eventType === 'SUBSCRIPTION_INACTIVATED') {
       const nowIso = new Date().toISOString();
       const today = nowIso.split('T')[0];
+      await updateSubscriptionByAsaasReference({
+        status: 'cancelled',
+        cancel_at_period_end: true,
+        cancelled_at: nowIso,
+        current_period_end: today
+      });
+    }
+
+    // Chargeback: cliente solicitou estorno via cartao/banco. O Asaas vai
+    // forçar o estorno do valor. Cancelamos o acesso imediatamente para
+    // evitar fraude (cliente usar a plataforma sem pagar) e registramos
+    // o evento no historico para suporte revisar.
+    const chargebackEvents = [
+      'PAYMENT_CHARGEBACK_REQUESTED',
+      'PAYMENT_CHARGEBACK_DISPUTE',
+      'PAYMENT_AWAITING_CHARGEBACK_REVERSAL'
+    ];
+    if (chargebackEvents.includes(eventType || '')) {
+      const nowIso = new Date().toISOString();
+      const today = nowIso.split('T')[0];
+      console.warn(`Chargeback recebido para payment=${paymentId} customer=${customerId} sub=${asaasSubscriptionId} event=${eventType}`);
+      // Log no payment_history como CHARGEBACK
+      if (paymentId) {
+        await insertPaymentHistoryIdempotent(supabaseAdmin, {
+          asaas_payment_id: paymentId,
+          asaas_customer_id: customerId,
+          amount: payment?.value || 0,
+          status: 'CHARGEBACK',
+          payment_method: payment?.billingType,
+          paid_at: nowIso,
+          due_date: payment?.dueDate,
+          invoice_url: payment?.invoiceUrl
+        });
+      }
+      // Bloquear acesso da sub correspondente
       await updateSubscriptionByAsaasReference({
         status: 'cancelled',
         cancel_at_period_end: true,
