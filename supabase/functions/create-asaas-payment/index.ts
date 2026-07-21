@@ -349,11 +349,11 @@ serve(async (req) => {
         });
       }
 
-      // If promo duration applies, the recurring value should revert to baseSubscriptionPrice
-      // By updating the subscription with updatePendingPayments: false, the first charge (just created) remains at finalPrice
-      // but future charges will be baseSubscriptionPrice.
-      // se há promo ativa ou Cupom aplicado, ajusta recorrente pro preço cheio futuro
-      if ((promoDaysDuration > 0 || discountPercentage > 0) && subData.id && baseSubscriptionPrice > finalPrice) {
+      // COUPON = PERMANENT discount: when a coupon code was applied (discountPercentage > 0)
+      // the discounted price must stay for EVERY month, so we must NOT revert to full price.
+      // We only revert for the time-boxed app_settings promo (promoDaysDuration) when NO
+      // coupon is involved. With a coupon the subscription keeps `finalPrice` forever.
+      if (promoDaysDuration > 0 && discountPercentage === 0 && subData.id && baseSubscriptionPrice > finalPrice) {
         try {
           const updateRes = await fetch(`${ASAAS_BASE_URL}/subscriptions/${subData.id}`, {
             method: 'PUT',
