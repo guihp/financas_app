@@ -312,6 +312,43 @@ serve(async (req) => {
         );
       }
 
+      // Persist subscription id + card_registered IMMEDIATELY after Asaas confirms the
+      // subscription, BEFORE any other step (promo update / register-user). If a later
+      // step throws or times out, the subscription id is already saved, so the account can
+      // be provisioned on the next login/reconciliation instead of leaving the customer
+      // billed by Asaas but with no app account (bug that trapped adria_leticia, 2026-07).
+      const subUpdateData: any = {
+        asaas_subscription_id: subData.id,
+        payment_method: 'CREDIT_CARD',
+        status: 'card_registered',
+        updated_at: new Date().toISOString()
+      };
+      if (appliedPromoId) {
+        subUpdateData.promo_code_id = appliedPromoId;
+      }
+      if (address && typeof address === 'object') {
+        if (address.postalCode != null) subUpdateData.address_postal_code = String(address.postalCode).replace(/\D/g, '');
+        if (address.street != null) subUpdateData.address_street = address.street;
+        if (address.number != null) subUpdateData.address_number = address.number;
+        if (address.complement != null) subUpdateData.address_complement = address.complement;
+        if (address.neighborhood != null) subUpdateData.address_neighborhood = address.neighborhood;
+        if (address.city != null) subUpdateData.address_city = address.city;
+        if (address.state != null) subUpdateData.address_state = address.state;
+      }
+      const { error: subPersistError } = await supabaseAdmin
+        .from('pending_registrations')
+        .update(subUpdateData)
+        .eq('id', registrationId);
+      if (subPersistError) {
+        // Do not abort: the Asaas subscription already exists. Log loudly so the record
+        // can be reconciled. register-user below reads the same registration row.
+        console.error('CRITICAL: Asaas subscription created but failed to persist to pending_registrations', {
+          registrationId,
+          subscriptionId: subData.id,
+          error: subPersistError.message
+        });
+      }
+
       // If promo duration applies, the recurring value should revert to baseSubscriptionPrice
       // By updating the subscription with updatePendingPayments: false, the first charge (just created) remains at finalPrice
       // but future charges will be baseSubscriptionPrice.
@@ -340,31 +377,6 @@ serve(async (req) => {
           console.warn('Exception while updating subscription to base price:', err);
         }
       }
-
-      // Update pending registration with subscription info
-      const subUpdateData: any = {
-        asaas_subscription_id: subData.id,
-        payment_method: 'CREDIT_CARD',
-        status: 'card_registered',
-        updated_at: new Date().toISOString()
-      };
-      if (appliedPromoId) {
-        subUpdateData.promo_code_id = appliedPromoId;
-      }
-      if (address && typeof address === 'object') {
-        if (address.postalCode != null) subUpdateData.address_postal_code = String(address.postalCode).replace(/\D/g, '');
-        if (address.street != null) subUpdateData.address_street = address.street;
-        if (address.number != null) subUpdateData.address_number = address.number;
-        if (address.complement != null) subUpdateData.address_complement = address.complement;
-        if (address.neighborhood != null) subUpdateData.address_neighborhood = address.neighborhood;
-        if (address.city != null) subUpdateData.address_city = address.city;
-        if (address.state != null) subUpdateData.address_state = address.state;
-      }
-
-      await supabaseAdmin
-        .from('pending_registrations')
-        .update(subUpdateData)
-        .eq('id', registrationId);
 
       // Create user account immediately with trial
       let registerUserError: string | null = null;
