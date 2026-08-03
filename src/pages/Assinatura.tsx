@@ -38,6 +38,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
+import { CreditCardInput, CreditCardData, CardHolderInfo } from "@/components/ui/credit-card-input";
 import { friendlyError } from "@/utils/friendlyError";
 
 interface OutletContextType {
@@ -75,6 +76,22 @@ const Assinatura = () => {
   const [pixAccepted, setPixAccepted] = useState(false);
   const [pixGenerating, setPixGenerating] = useState(false);
   const [pixRenewalData, setPixRenewalData] = useState<{ paymentId: string; pixCode?: string; pixQrCodeUrl?: string; invoiceUrl?: string } | null>(null);
+  // Credit card renewal state
+  const [cardRenewalOpen, setCardRenewalOpen] = useState(false);
+  const [cardData, setCardData] = useState<CreditCardData | null>(null);
+  const [cardHolderInfo, setCardHolderInfo] = useState<CardHolderInfo | null>(null);
+  const [cardSubmitting, setCardSubmitting] = useState(false);
+  const [cardRenewalSent, setCardRenewalSent] = useState(false);
+  // Price this specific customer pays on reactivation. A coupon discount is
+  // permanent, so it is NOT always app_settings.product_full_price — only the
+  // backend can resolve it, via create-renewal-subscription { quote: true }.
+  const [renewalQuote, setRenewalQuote] = useState<{ value: number; fullPrice: number; discounted: boolean; couponApplied: string | null } | null>(null);
+  // Coupon the customer typed on the reactivation screen. `appliedCoupon` is only
+  // set once the backend has validated it, and is what gets sent on checkout.
+  const [couponInput, setCouponInput] = useState("");
+  const [appliedCoupon, setAppliedCoupon] = useState<string | null>(null);
+  const [couponChecking, setCouponChecking] = useState(false);
+  const [couponError, setCouponError] = useState<string | null>(null);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -153,21 +170,11 @@ const Assinatura = () => {
     }
   };
 
-  // Only mark as expired if:
-  // 1. Status is explicitly expired or cancelled, OR
-  // 2. Trial ended (is_trial is true AND days_remaining <= 0 AND trial_ends_at is in the past)
-  const isExpired =
-    subscription &&
-    (subscription.status === "expired" ||
-      subscription.status === "cancelled" ||
-      (subscription.is_trial &&
-        subscription.trial_ends_at &&
-        new Date(subscription.trial_ends_at) < new Date() &&
-        subscription.days_remaining <= 0));
-
   const isTrialActive =
     subscription &&
     subscription.is_trial &&
+    subscription.status !== "expired" &&
+    subscription.status !== "cancelled" &&
     subscription.days_remaining > 0;
 
   const isPaid =
@@ -175,6 +182,20 @@ const Assinatura = () => {
     subscription.status === "active" &&
     !subscription.is_trial &&
     subscription.days_remaining > 0;
+
+  // Anything that is neither an active paid plan nor a running trial means the user
+  // cannot use the app and MUST see the renewal options. The previous version only
+  // matched status "expired"/"cancelled", so every other blocked state — "none" (no
+  // subscription row, or the read failed), "overdue", "past_due", an active row whose
+  // period already ended, or a null subscription — rendered the red "Assinatura
+  // Expirada" header with NO way to pay: a dead end.
+  const isExpired = !isPaid && !isTrialActive;
+
+  // Never show the list price to a customer who carries a permanent coupon
+  // discount — the quote from the backend is the amount that will actually be
+  // charged. Falls back to the list price only until the quote arrives.
+  const renewalPrice = renewalQuote?.value ?? appSettings?.full ?? 29.9;
+  const renewalPriceLabel = renewalPrice.toFixed(2).replace(".", ",");
 
   const isCancellingAtEnd =
     subscription &&
@@ -202,7 +223,7 @@ const Assinatura = () => {
       const res = await fetch(`${supabaseUrl}/functions/v1/create-renewal-pix`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${accessToken}` },
-        body: JSON.stringify({ cpfCnpj: cleanCpf })
+        body: JSON.stringify({ cpfCnpj: cleanCpf, couponCode: appliedCoupon || undefined })
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok || data?.error) {
@@ -235,26 +256,136 @@ const Assinatura = () => {
     }
   };
 
-  // Poll subscription status while PIX renewal is pending
+  const callRenewalFunction = async (payload: Record<string, unknown>) => {
+    const { data: { session } } = await supabase.auth.getSession();
+    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || "https://dlbiwguzbiosaoyrcvay.supabase.co";
+    const accessToken = session?.access_token || (import.meta.env.VITE_SUPABASE_ANON_KEY as string);
+    const res = await fetch(`${supabaseUrl}/functions/v1/create-renewal-subscription`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${accessToken}` },
+      body: JSON.stringify(payload)
+    });
+    const data = await res.json().catch(() => ({}));
+    return { ok: res.ok, data };
+  };
+
+  const fetchRenewalQuote = async (couponCode?: string) => {
+    try {
+      const { ok, data } = await callRenewalFunction({ quote: true, couponCode: couponCode || undefined });
+      if (ok && typeof data?.value === "number") {
+        setRenewalQuote({
+          value: data.value,
+          fullPrice: data.fullPrice,
+          discounted: !!data.discounted,
+          couponApplied: data.couponApplied ?? null,
+        });
+        return { ok: true as const, data };
+      }
+      return { ok: false as const, data };
+    } catch {
+      // Quote is cosmetic: on failure the UI falls back to the list price.
+      return { ok: false as const, data: {} as Record<string, unknown> };
+    }
+  };
+
+  const applyCoupon = async () => {
+    const code = couponInput.trim().toUpperCase();
+    if (!code) return;
+    setCouponChecking(true);
+    setCouponError(null);
+    const { ok, data } = await fetchRenewalQuote(code);
+    setCouponChecking(false);
+    if (!ok) {
+      // Keep whatever price was already showing; only the coupon failed.
+      setAppliedCoupon(null);
+      setCouponError((data as { error?: string })?.error || "Não foi possível validar o cupom.");
+      return;
+    }
+    setAppliedCoupon(code);
+    const applied = (data as { value?: number; fullPrice?: number }) || {};
+    if (applied.value != null && applied.fullPrice != null && applied.value >= applied.fullPrice) {
+      // Valid code, but it does not beat the price the customer already had.
+      setCouponError("Cupom válido, mas seu preço atual já é melhor. Mantivemos o menor valor.");
+      return;
+    }
+    toast({ title: "Cupom aplicado", description: `Novo valor: R$ ${(applied.value ?? 0).toFixed(2).replace(".", ",")}` });
+  };
+
+  const removeCoupon = async () => {
+    setAppliedCoupon(null);
+    setCouponInput("");
+    setCouponError(null);
+    await fetchRenewalQuote();
+  };
+
+  const submitCardRenewal = async () => {
+    if (!cardData?.number || !cardData?.holderName || !cardData?.expiryMonth || !cardData?.expiryYear || !cardData?.ccv) {
+      toast({ title: "Dados do cartão incompletos", description: "Preencha todos os campos do cartão.", variant: "destructive" });
+      return;
+    }
+    const cleanCpf = (cardHolderInfo?.cpfCnpj || "").replace(/\D/g, '');
+    if (cleanCpf.length !== 11 && cleanCpf.length !== 14) {
+      toast({ title: "CPF/CNPJ obrigatório", description: "Informe o CPF ou CNPJ do titular do cartão.", variant: "destructive" });
+      return;
+    }
+    if ((cardHolderInfo?.postalCode || "").replace(/\D/g, '').length !== 8) {
+      toast({ title: "CEP obrigatório", description: "Informe o CEP do titular do cartão.", variant: "destructive" });
+      return;
+    }
+    setCardSubmitting(true);
+    try {
+      const { ok, data } = await callRenewalFunction({
+        creditCard: cardData,
+        creditCardHolderInfo: cardHolderInfo,
+        couponCode: appliedCoupon || undefined,
+      });
+      if (!ok || data?.error) {
+        throw new Error(data?.error || "Não foi possível reativar com cartão agora.");
+      }
+      setCardRenewalSent(true);
+      toast({ title: "Cartão enviado", description: "Aguardando confirmação da cobrança." });
+    } catch (err: unknown) {
+      toast({
+        title: "Não foi possível reativar",
+        description: friendlyError(err, "Não foi possível reativar com cartão agora. Tente novamente ou use PIX."),
+        variant: "destructive",
+      });
+    } finally {
+      setCardSubmitting(false);
+    }
+  };
+
+  // Resolve the customer's real reactivation price as soon as we know they are
+  // blocked, so the button subtitle never advertises the wrong amount.
   useEffect(() => {
-    if (!pixRenewalData?.paymentId) return;
+    if (loading || !isExpired || renewalQuote) return;
+    void fetchRenewalQuote();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, isExpired, renewalQuote]);
+
+  // Poll subscription status while a renewal (PIX or card) is pending
+  useEffect(() => {
+    if (!pixRenewalData?.paymentId && !cardRenewalSent) return;
     const id = setInterval(async () => {
       await loadSubscription();
     }, 5000);
     return () => clearInterval(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pixRenewalData?.paymentId]);
+  }, [pixRenewalData?.paymentId, cardRenewalSent]);
 
-  // When sub becomes active after PIX confirmation, close the PIX dialog
+  // When sub becomes active after payment confirmation, close the renewal panels
   useEffect(() => {
-    if (pixRenewalData && subscription?.status === 'active' && !subscription?.is_trial && subscription.days_remaining > 0) {
+    const renewalPending = pixRenewalData || cardRenewalSent;
+    if (renewalPending && subscription?.status === 'active' && !subscription?.is_trial && subscription.days_remaining > 0) {
       setPixRenewalData(null);
       setPixRenewalOpen(false);
       setPixCpf("");
       setPixAccepted(false);
+      setCardRenewalSent(false);
+      setCardRenewalOpen(false);
       toast({ title: "Pagamento confirmado", description: "Sua assinatura foi renovada por 30 dias." });
     }
-  }, [subscription, pixRenewalData, toast]);
+  }, [subscription, pixRenewalData, cardRenewalSent, toast]);
 
   const handleCancelSubscription = async () => {
     setCancelling(true);
@@ -449,7 +580,18 @@ const Assinatura = () => {
               </div>
               <div className="flex items-center gap-2 mb-3">
                 <div className="flex items-baseline gap-1">
-                  {appSettings?.promoDays && appSettings.promoDays > 0 ? (
+                  {renewalQuote?.discounted ? (
+                    /* Customer carries a permanent coupon discount — headline the
+                       price they will actually be charged, not the list price. */
+                    <>
+                      <span className="text-sm text-muted-foreground line-through">
+                        R$ {renewalQuote.fullPrice.toFixed(2).replace(".", ",")}
+                      </span>
+                      <span className="text-3xl font-bold text-green-400">
+                        R$ {renewalPriceLabel}
+                      </span>
+                    </>
+                  ) : appSettings?.promoDays && appSettings.promoDays > 0 ? (
                     <>
                       <span className="text-sm text-muted-foreground line-through">
                         R$ {appSettings.full.toFixed(2).replace(".", ",")}
@@ -465,11 +607,17 @@ const Assinatura = () => {
                   )}
                   <span className="text-sm text-muted-foreground">/mês</span>
                 </div>
-                {appSettings?.promoDays && appSettings.promoDays > 0 && (
+                {renewalQuote?.discounted ? (
+                  <Badge className="bg-green-500/20 text-green-400 border-green-500/30 text-[10px]">
+                    {renewalQuote.couponApplied ? `CUPOM ${renewalQuote.couponApplied}` : "SEU DESCONTO"}
+                  </Badge>
+                ) : /* promoDays is a number: `promoDays && ...` renders a literal 0 on the
+                      page when it is 0, so the check must produce a boolean. */
+                  (appSettings?.promoDays ?? 0) > 0 ? (
                   <Badge className="bg-green-500/20 text-green-400 border-green-500/30 text-[10px]">
                     PROMOÇÃO
                   </Badge>
-                )}
+                ) : null}
               </div>
               <ul className="space-y-2 text-sm text-muted-foreground">
                 <li className="flex items-center gap-2">
@@ -503,15 +651,68 @@ const Assinatura = () => {
               </ul>
             </div>
 
+            {/* Coupon. Applies to BOTH renewal paths (card and PIX): the code is
+                validated by the backend, which then charges the lowest of list
+                price, coupon price and the customer's permanent discount. */}
+            {isExpired && (
+              <div className="space-y-2">
+                {appliedCoupon ? (
+                  <div className="flex items-center justify-between gap-2 p-3 rounded-lg border border-green-500/30 bg-green-500/5">
+                    <div className="flex items-center gap-2 text-sm">
+                      <Gift className="h-4 w-4 text-green-400 flex-shrink-0" />
+                      <span>
+                        Cupom <strong>{appliedCoupon}</strong> aplicado
+                      </span>
+                    </div>
+                    <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={removeCoupon}>
+                      Remover
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="flex gap-2">
+                    <Input
+                      value={couponInput}
+                      onChange={(e) => { setCouponInput(e.target.value.toUpperCase()); setCouponError(null); }}
+                      onKeyDown={(e) => { if (e.key === "Enter") applyCoupon(); }}
+                      placeholder="Tem um cupom? Digite aqui"
+                      className="uppercase"
+                      disabled={couponChecking}
+                    />
+                    <Button
+                      variant="outline"
+                      onClick={applyCoupon}
+                      disabled={couponChecking || !couponInput.trim()}
+                    >
+                      {couponChecking ? <Loader2 className="h-4 w-4 animate-spin" /> : "Aplicar"}
+                    </Button>
+                  </div>
+                )}
+                {couponError && (
+                  <p className="text-xs text-amber-500">{couponError}</p>
+                )}
+              </div>
+            )}
+
             {/* Payment Methods */}
             <div className="space-y-3">
               <p className="text-sm font-medium">Escolha como continuar:</p>
 
-              {/* Credit Card with Trial */}
+              {/* Credit Card.
+                  For an EXPIRED user the old flow navigated to /pagamento-pendente, which
+                  only works when a pending_registrations row in status pending_payment
+                  exists. An expired customer has none, so the page always answered
+                  "nenhum pagamento pendente" — a dead end. Expired users now reactivate
+                  in place via create-renewal-subscription. Trial users keep the old flow. */}
               <Button
                 className="w-full h-14 justify-start gap-4 bg-purple-600/20 hover:bg-purple-600/30 text-purple-400 border border-purple-600/30"
                 variant="outline"
                 onClick={async () => {
+                  if (isExpired) {
+                    setCardRenewalOpen((open) => !open);
+                    setPixRenewalOpen(false);
+                    if (!renewalQuote) void fetchRenewalQuote();
+                    return;
+                  }
                   const { data: { session } } = await supabase.auth.getSession();
                   const userEmail = session?.user?.email || "";
 
@@ -528,16 +729,60 @@ const Assinatura = () => {
                 <div className="text-left">
                   <p className="font-medium">{isExpired ? "Reativar com cartão" : "Começar 7 dias grátis"}</p>
                   <p className="text-xs opacity-70">
-                    {isExpired ? "Cobrança recorrente mensal" : "Cartão de crédito · Sem cobrança agora"}
+                    {isExpired
+                      ? `R$ ${renewalPriceLabel} agora · renovação automática mensal`
+                      : "Cartão de crédito · Sem cobrança agora"}
                   </p>
                 </div>
               </Button>
+
+              {isExpired && cardRenewalOpen && !cardRenewalSent && (
+                <div className="p-4 border border-purple-500/30 bg-purple-500/5 rounded-lg space-y-3">
+                  <div className="flex items-start gap-2">
+                    <AlertCircle className="h-4 w-4 text-amber-500 flex-shrink-0 mt-0.5" />
+                    <p className="text-xs text-muted-foreground">
+                      A cobrança de <strong>R$ {renewalPriceLabel}</strong> é feita hoje e se repete todo mês no cartão.
+                      {renewalQuote?.discounted && " Seu desconto foi mantido."}
+                      {" "}Você pode cancelar a qualquer momento nesta mesma tela.
+                    </p>
+                  </div>
+                  <CreditCardInput
+                    onCardChange={setCardData}
+                    onHolderInfoChange={setCardHolderInfo}
+                    disabled={cardSubmitting}
+                  />
+                  <div className="flex gap-2">
+                    <Button
+                      variant="ghost"
+                      className="flex-1"
+                      onClick={() => setCardRenewalOpen(false)}
+                      disabled={cardSubmitting}
+                    >
+                      Cancelar
+                    </Button>
+                    <Button className="flex-1" onClick={submitCardRenewal} disabled={cardSubmitting}>
+                      {cardSubmitting ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <CreditCard className="h-4 w-4 mr-1" />}
+                      Reativar assinatura
+                    </Button>
+                  </div>
+                </div>
+              )}
+
+              {cardRenewalSent && (
+                <div className="p-4 border border-purple-500/30 bg-purple-500/5 rounded-lg space-y-2 text-center">
+                  <Loader2 className="h-5 w-5 animate-spin mx-auto text-purple-400" />
+                  <p className="text-sm font-medium">Processando a cobrança no cartão</p>
+                  <p className="text-[11px] text-muted-foreground">
+                    A tela libera automaticamente quando o pagamento for confirmado. Isso costuma levar alguns segundos.
+                  </p>
+                </div>
+              )}
 
               {/* PIX renewal — visible when user is logged in */}
               <Button
                 className="w-full h-14 justify-start gap-4 bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-400 border border-emerald-600/30"
                 variant="outline"
-                onClick={() => setPixRenewalOpen(true)}
+                onClick={() => { setPixRenewalOpen(true); setCardRenewalOpen(false); }}
               >
                 <div className="h-9 w-9 rounded-lg bg-emerald-600/20 flex items-center justify-center">
                   <QrCode className="h-5 w-5" />
@@ -545,7 +790,7 @@ const Assinatura = () => {
                 <div className="text-left">
                   <p className="font-medium">Pagar com PIX</p>
                   <p className="text-xs opacity-70">
-                    R$ {appSettings?.full ? appSettings.full.toFixed(2).replace(".", ",") : "29,90"} · 30 dias de acesso · sem reembolso
+                    R$ {renewalPriceLabel} · 30 dias de acesso · sem reembolso
                   </p>
                 </div>
               </Button>
@@ -555,7 +800,7 @@ const Assinatura = () => {
                   <div className="flex items-start gap-2">
                     <AlertCircle className="h-4 w-4 text-amber-500 flex-shrink-0 mt-0.5" />
                     <p className="text-xs text-muted-foreground">
-                      Você paga <strong>R$ {appSettings?.full ? appSettings.full.toFixed(2).replace(".", ",") : "29,90"}</strong> agora e libera <strong>30 dias de acesso</strong>. Quando acabar, gere um novo PIX por aqui. <strong>Pagamentos via PIX não são reembolsáveis</strong>.
+                      Você paga <strong>R$ {renewalPriceLabel}</strong> agora e libera <strong>30 dias de acesso</strong>. Quando acabar, gere um novo PIX por aqui. <strong>Pagamentos via PIX não são reembolsáveis</strong>.
                     </p>
                   </div>
                   <div className="space-y-2">
@@ -631,7 +876,7 @@ const Assinatura = () => {
               )}
 
               <p className="text-[10px] text-center text-muted-foreground">
-                Cartão: 7 dias grátis + cobrança automática. PIX: paga R$ {appSettings?.full ? appSettings.full.toFixed(2).replace(".", ",") : "29,90"} e libera 30 dias, sem renovação automática.
+                Cartão: 7 dias grátis + cobrança automática. PIX: paga R$ {renewalPriceLabel} e libera 30 dias, sem renovação automática.
               </p>
             </div>
           </CardContent>

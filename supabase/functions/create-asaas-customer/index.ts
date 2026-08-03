@@ -298,6 +298,32 @@ serve(async (req) => {
     let finalRegistrationId: string;
 
     if (existingReg) {
+      // Guard: never clobber a registration that already advanced past checkout.
+      // Resetting status/payment fields here on a card_registered/registered record (or
+      // one that already has an Asaas subscription) would strand the customer — Asaas keeps
+      // billing while the app loses the link. Return the existing ids untouched instead.
+      if (
+        existingReg.status === 'card_registered' ||
+        existingReg.status === 'registered' ||
+        existingReg.asaas_subscription_id
+      ) {
+        console.log('Skipping destructive reset; registration already advanced:', {
+          registrationId: existingReg.id,
+          status: existingReg.status,
+          hasSubscription: !!existingReg.asaas_subscription_id
+        });
+        return new Response(
+          JSON.stringify({
+            success: true,
+            customerId,
+            registrationId: existingReg.id,
+            alreadyAdvanced: true,
+            message: 'Cadastro já avançado. Faça login ou finalize o pagamento pendente.'
+          }),
+          { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
       // Update existing registration
       const { data: updatedReg, error: updateError } = await supabaseAdmin
         .from('pending_registrations')

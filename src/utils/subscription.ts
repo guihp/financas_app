@@ -150,4 +150,4 @@ export const checkSubscriptionAccess = async (
 };
 
 export const SUBSCRIPTION_BLOCK_MESSAGE =
-  "Sua assinatura está inativa. Renove em https://financas.iafeoficial.com/auth para continuar acessando.";
+  "Sua assinatura está inativa. Renove em https://financas.iafeoficial.com/assinatura para continuar acessando.";

@@ -24,7 +24,7 @@ import {
   PHONE_COUNTRY_NAMES,
   type PhoneCountry
 } from "@/utils/validation";
-import { checkSubscriptionAccess, SUBSCRIPTION_BLOCK_MESSAGE } from "@/utils/subscription";
+import { checkSubscriptionAccess } from "@/utils/subscription";
 import {
   Select,
   SelectContent,
@@ -146,8 +146,11 @@ const Auth = ({ defaultTab = "login" }: AuthProps) => {
       if (access.allowed) {
         navigate("/");
       } else {
-        await supabase.auth.signOut();
-        setMessage(SUBSCRIPTION_BLOCK_MESSAGE);
+        // Keep the session and send the user to /assinatura, the one route
+        // ProtectedRoute allows while blocked. Signing out here used to trap the
+        // customer: the message pointed back to /auth, and /auth signed them out
+        // again — no reachable renewal screen.
+        navigate("/assinatura", { state: { blockedReason: access.reason } });
       }
     };
     checkUser();
@@ -200,8 +203,13 @@ const Auth = ({ defaultTab = "login" }: AuthProps) => {
 
       const access = await checkSubscriptionAccess(data.user.id);
       if (!access.allowed) {
-        await supabase.auth.signOut();
-        setMessage(SUBSCRIPTION_BLOCK_MESSAGE);
+        // Do NOT sign out: the user must be able to reach /assinatura to pay.
+        // ProtectedRoute keeps every other route blocked while access.allowed is false.
+        toast({
+          title: "Assinatura inativa",
+          description: "Renove seu plano para voltar a usar o IAFÉ Finanças.",
+        });
+        navigate("/assinatura", { state: { blockedReason: access.reason } });
         setLoading(false);
         return;
       }

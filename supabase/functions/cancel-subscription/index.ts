@@ -49,12 +49,15 @@ serve(async (req) => {
             );
         }
 
-        // Get user's subscription
+        // Get user's subscription. Use maybeSingle + order/limit so a user with zero
+        // subscriptions returns null (handled below) and one with duplicates does not throw.
         const { data: subscription, error: subError } = await supabaseAdmin
             .from('subscriptions')
             .select('*')
             .eq('user_id', user.id)
-            .single();
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle();
 
         if (subError || !subscription) {
             return new Response(
@@ -73,19 +76,47 @@ serve(async (req) => {
         const now = new Date();
         const isTrial = subscription.is_trial === true;
 
-        // Cancel subscription in Asaas if exists. Do not mark local cancellation
-        // unless Asaas accepted it or reports the subscription no longer exists.
-        if (subscription.asaas_subscription_id && !ASAAS_API_KEY) {
+        // Build the set of Asaas subscription ids to cancel. Prefer the linked id, but if it
+        // is missing (partial-provisioning bug: Asaas billed the card but the id never got
+        // saved locally) fall back to looking the customer's ACTIVE subscriptions up on Asaas.
+        // Without this fallback the recurrence keeps charging the card after "cancel".
+        const asaasSubIds: string[] = [];
+        if (subscription.asaas_subscription_id) {
+            asaasSubIds.push(subscription.asaas_subscription_id);
+        }
+
+        const needsAsaasCancel = !!subscription.asaas_subscription_id || !!subscription.asaas_customer_id;
+        if (needsAsaasCancel && !ASAAS_API_KEY) {
             return new Response(
                 JSON.stringify({ error: 'Configuração do Asaas não encontrada. Cancelamento não realizado.' }),
                 { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
             );
         }
 
-        if (subscription.asaas_subscription_id && ASAAS_API_KEY) {
+        if (!subscription.asaas_subscription_id && subscription.asaas_customer_id && ASAAS_API_KEY) {
+            try {
+                const lookupRes = await fetch(
+                    `${ASAAS_BASE_URL}/subscriptions?customer=${subscription.asaas_customer_id}&status=ACTIVE`,
+                    { method: 'GET', headers: { 'accept': 'application/json', 'access_token': ASAAS_API_KEY } }
+                );
+                if (lookupRes.ok) {
+                    const lookupData = await lookupRes.json();
+                    for (const s of (lookupData?.data ?? [])) {
+                        if (s?.id) asaasSubIds.push(s.id);
+                    }
+                    console.log('Recovered Asaas subscriptions by customer for cancel:', asaasSubIds);
+                }
+            } catch (e) {
+                console.error('Error looking up Asaas subscriptions by customer:', e);
+            }
+        }
+
+        // Cancel subscription(s) in Asaas. Do not mark local cancellation unless Asaas
+        // accepted it or reports the subscription no longer exists.
+        for (const asaasSubId of asaasSubIds) {
             try {
                 const cancelRes = await fetch(
-                    `${ASAAS_BASE_URL}/subscriptions/${subscription.asaas_subscription_id}`,
+                    `${ASAAS_BASE_URL}/subscriptions/${asaasSubId}`,
                     {
                         method: 'DELETE',
                         headers: {
@@ -95,7 +126,7 @@ serve(async (req) => {
                     }
                 );
                 const cancelData = await cancelRes.json();
-                console.log('Asaas subscription cancel response:', cancelRes.status, cancelData);
+                console.log('Asaas subscription cancel response:', asaasSubId, cancelRes.status, cancelData);
 
                 if (!cancelRes.ok && cancelRes.status !== 404) {
                     console.error('Failed to cancel Asaas subscription:', cancelData);

@@ -18,6 +18,72 @@ if (ASAAS_BASE_URL && !ASAAS_BASE_URL.endsWith('/v3') && !ASAAS_BASE_URL.endsWit
   ASAAS_BASE_URL = ASAAS_BASE_URL.replace(/\/$/, '') + '/v3';
 }
 
+type PricedRenewal =
+  | { value: number; couponApplied: string | null; couponDiscount: number }
+  | { error: string; invalidCoupon?: boolean };
+
+/**
+ * Resolves what this customer pays to reactivate, giving them the BEST of:
+ *   - today's list price
+ *   - the last amount they actually paid, when it is lower (a coupon discount is
+ *     permanent, and promotional_code_id is not reliably filled on legacy
+ *     registrations, so payment_history is the source of truth)
+ *   - the price after the coupon they just typed, if any
+ * A stale amount ABOVE the list price is ignored: reactivating must never cost
+ * more than what a new customer pays today.
+ * Duplicated verbatim in create-renewal-subscription so both renewal paths price alike.
+ */
+async function resolveRenewalPrice(
+  supabaseAdmin: any,
+  asaasCustomerId: string,
+  fullPrice: number,
+  couponCode: string
+): Promise<PricedRenewal> {
+  let couponApplied: string | null = null;
+  let couponDiscount = 0;
+
+  if (couponCode) {
+    const { data: promo } = await supabaseAdmin
+      .from('promotional_codes')
+      .select('id, code, discount_percentage, active, status')
+      .eq('code', couponCode)
+      .maybeSingle();
+    // The two boolean flags are set by different admin screens; require both so a
+    // coupon disabled through either one stops working here.
+    if (!promo || promo.active !== true || promo.status !== true) {
+      return { error: 'Cupom inválido ou inativo.', invalidCoupon: true };
+    }
+    couponDiscount = Number(promo.discount_percentage) || 0;
+    couponApplied = promo.code;
+  }
+
+  const candidates = [fullPrice];
+
+  if (couponDiscount > 0) {
+    candidates.push(Math.round(fullPrice * (1 - couponDiscount / 100) * 100) / 100);
+  }
+
+  const { data: lastPaid } = await supabaseAdmin
+    .from('payment_history')
+    .select('amount, paid_at')
+    .eq('asaas_customer_id', asaasCustomerId)
+    .in('status', ['RECEIVED', 'CONFIRMED', 'RECEIVED_IN_CASH'])
+    .gt('amount', 0)
+    .order('paid_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  const lastAmount = Number(lastPaid?.amount || 0);
+  if (lastAmount > 0 && lastAmount < fullPrice) candidates.push(lastAmount);
+
+  const value = Math.min(...candidates);
+  if (!value || value <= 0) {
+    return { error: 'O desconto zera a cobrança. Fale com o suporte para liberar o acesso.' };
+  }
+
+  console.log(`Renewal price for ${asaasCustomerId}: ${value} (full ${fullPrice}, coupon ${couponApplied ?? 'none'}, last paid ${lastAmount})`);
+  return { value, couponApplied, couponDiscount };
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -50,6 +116,7 @@ serve(async (req) => {
     }
 
     const body = await req.json().catch(() => ({}));
+    const couponCode = String(body?.couponCode || '').trim().toUpperCase();
     const cpfCnpj = (body?.cpfCnpj || '').toString().replace(/\D/g, '');
     if (cpfCnpj.length !== 11 && cpfCnpj.length !== 14) {
       return new Response(JSON.stringify({ error: 'Informe um CPF ou CNPJ válido.' }), {
@@ -79,12 +146,20 @@ serve(async (req) => {
       .select('product_full_price')
       .limit(1)
       .single();
-    const value = Number(appSettings?.product_full_price || 0);
-    if (!value || value <= 0) {
+    const fullPrice = Number(appSettings?.product_full_price || 0);
+    if (!fullPrice || fullPrice <= 0) {
       return new Response(JSON.stringify({ error: 'Preço não configurado.' }), {
         status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       });
     }
+
+    const priced = await resolveRenewalPrice(supabaseAdmin, sub.asaas_customer_id, fullPrice, couponCode);
+    if ('error' in priced) {
+      return new Response(JSON.stringify({ error: priced.error, invalidCoupon: priced.invalidCoupon }), {
+        status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
+    }
+    const { value, couponApplied } = priced;
 
     // Ensure customer has CPF on Asaas (PIX requires it). If the PUT fails (e.g.
     // invalid CPF, customer deleted, or duplicate cpfCnpj on another customer),
@@ -170,7 +245,8 @@ serve(async (req) => {
       invoiceUrl: paymentData.invoiceUrl,
       pixCode,
       pixQrCodeBase64,
-      pixExpirationDate
+      pixExpirationDate,
+      couponApplied
     }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
 
   } catch (error) {

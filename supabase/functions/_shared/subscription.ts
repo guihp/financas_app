@@ -1,7 +1,7 @@
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.53.0";
 
 export const SUBSCRIPTION_BLOCK_MESSAGE =
-  "Sua assinatura está inativa. Renove em https://financas.iafeoficial.com/auth para continuar acessando.";
+  "Sua assinatura está inativa. Renove em https://financas.iafeoficial.com/assinatura para continuar acessando.";
 
 export const SUBSCRIPTION_INACTIVE_CODE = "SUBSCRIPTION_INACTIVE";
 
