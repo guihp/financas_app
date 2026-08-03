@@ -79,7 +79,28 @@ serve(async (req) => {
       .select('product_full_price')
       .limit(1)
       .single();
-    const value = Number(appSettings?.product_full_price || 0);
+    const fullPrice = Number(appSettings?.product_full_price || 0);
+
+    // A coupon discount is PERMANENT, so a customer who has been paying a
+    // discounted amount keeps it on PIX renewals too. The last amount actually
+    // paid is the source of truth (promotional_code_id is not reliably filled on
+    // legacy registrations). Only ever honour a price BELOW today's list price.
+    let value = fullPrice;
+    const { data: lastPaid } = await supabaseAdmin
+      .from('payment_history')
+      .select('amount, paid_at')
+      .eq('asaas_customer_id', sub.asaas_customer_id)
+      .in('status', ['RECEIVED', 'CONFIRMED', 'RECEIVED_IN_CASH'])
+      .gt('amount', 0)
+      .order('paid_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    const lastAmount = Number(lastPaid?.amount || 0);
+    if (lastAmount > 0 && lastAmount < fullPrice) {
+      value = lastAmount;
+      console.log(`Honouring permanent discount for customer ${sub.asaas_customer_id}: ${value} (full ${fullPrice})`);
+    }
+
     if (!value || value <= 0) {
       return new Response(JSON.stringify({ error: 'Preço não configurado.' }), {
         status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' }

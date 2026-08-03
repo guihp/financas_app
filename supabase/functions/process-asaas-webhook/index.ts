@@ -200,7 +200,7 @@ serve(async (req) => {
     }
 
     // ============================================
-    // RENEWAL PIX: externalReference="renewal:USER_ID"
+    // RENEWAL (PIX one-off or CREDIT_CARD recurring): externalReference="renewal:USER_ID"
     // Extends subscription period by 30 days, no register-user.
     // ============================================
     const renewalUserId = typeof externalReference === 'string' && externalReference.startsWith('renewal:')
@@ -245,7 +245,9 @@ serve(async (req) => {
           asaas_customer_id: customerId,
           amount: payment?.value || 0,
           status: paymentStatus || 'CONFIRMED',
-          payment_method: 'PIX',
+          // Renewals can be PIX (create-renewal-pix) or CREDIT_CARD
+          // (create-renewal-subscription), so read it from the payment itself.
+          payment_method: payment?.billingType || 'PIX',
           paid_at: nowIso,
           due_date: payment?.dueDate,
           invoice_url: payment?.invoiceUrl
