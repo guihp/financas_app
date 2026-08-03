@@ -85,7 +85,13 @@ const Assinatura = () => {
   // Price this specific customer pays on reactivation. A coupon discount is
   // permanent, so it is NOT always app_settings.product_full_price — only the
   // backend can resolve it, via create-renewal-subscription { quote: true }.
-  const [renewalQuote, setRenewalQuote] = useState<{ value: number; fullPrice: number; discounted: boolean } | null>(null);
+  const [renewalQuote, setRenewalQuote] = useState<{ value: number; fullPrice: number; discounted: boolean; couponApplied: string | null } | null>(null);
+  // Coupon the customer typed on the reactivation screen. `appliedCoupon` is only
+  // set once the backend has validated it, and is what gets sent on checkout.
+  const [couponInput, setCouponInput] = useState("");
+  const [appliedCoupon, setAppliedCoupon] = useState<string | null>(null);
+  const [couponChecking, setCouponChecking] = useState(false);
+  const [couponError, setCouponError] = useState<string | null>(null);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -217,7 +223,7 @@ const Assinatura = () => {
       const res = await fetch(`${supabaseUrl}/functions/v1/create-renewal-pix`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${accessToken}` },
-        body: JSON.stringify({ cpfCnpj: cleanCpf })
+        body: JSON.stringify({ cpfCnpj: cleanCpf, couponCode: appliedCoupon || undefined })
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok || data?.error) {
@@ -263,15 +269,53 @@ const Assinatura = () => {
     return { ok: res.ok, data };
   };
 
-  const fetchRenewalQuote = async () => {
+  const fetchRenewalQuote = async (couponCode?: string) => {
     try {
-      const { ok, data } = await callRenewalFunction({ quote: true });
+      const { ok, data } = await callRenewalFunction({ quote: true, couponCode: couponCode || undefined });
       if (ok && typeof data?.value === "number") {
-        setRenewalQuote({ value: data.value, fullPrice: data.fullPrice, discounted: !!data.discounted });
+        setRenewalQuote({
+          value: data.value,
+          fullPrice: data.fullPrice,
+          discounted: !!data.discounted,
+          couponApplied: data.couponApplied ?? null,
+        });
+        return { ok: true as const, data };
       }
+      return { ok: false as const, data };
     } catch {
       // Quote is cosmetic: on failure the UI falls back to the list price.
+      return { ok: false as const, data: {} as Record<string, unknown> };
     }
+  };
+
+  const applyCoupon = async () => {
+    const code = couponInput.trim().toUpperCase();
+    if (!code) return;
+    setCouponChecking(true);
+    setCouponError(null);
+    const { ok, data } = await fetchRenewalQuote(code);
+    setCouponChecking(false);
+    if (!ok) {
+      // Keep whatever price was already showing; only the coupon failed.
+      setAppliedCoupon(null);
+      setCouponError((data as { error?: string })?.error || "Não foi possível validar o cupom.");
+      return;
+    }
+    setAppliedCoupon(code);
+    const applied = (data as { value?: number; fullPrice?: number }) || {};
+    if (applied.value != null && applied.fullPrice != null && applied.value >= applied.fullPrice) {
+      // Valid code, but it does not beat the price the customer already had.
+      setCouponError("Cupom válido, mas seu preço atual já é melhor. Mantivemos o menor valor.");
+      return;
+    }
+    toast({ title: "Cupom aplicado", description: `Novo valor: R$ ${(applied.value ?? 0).toFixed(2).replace(".", ",")}` });
+  };
+
+  const removeCoupon = async () => {
+    setAppliedCoupon(null);
+    setCouponInput("");
+    setCouponError(null);
+    await fetchRenewalQuote();
   };
 
   const submitCardRenewal = async () => {
@@ -290,7 +334,11 @@ const Assinatura = () => {
     }
     setCardSubmitting(true);
     try {
-      const { ok, data } = await callRenewalFunction({ creditCard: cardData, creditCardHolderInfo: cardHolderInfo });
+      const { ok, data } = await callRenewalFunction({
+        creditCard: cardData,
+        creditCardHolderInfo: cardHolderInfo,
+        couponCode: appliedCoupon || undefined,
+      });
       if (!ok || data?.error) {
         throw new Error(data?.error || "Não foi possível reativar com cartão agora.");
       }
@@ -559,11 +607,17 @@ const Assinatura = () => {
                   )}
                   <span className="text-sm text-muted-foreground">/mês</span>
                 </div>
-                {appSettings?.promoDays && appSettings.promoDays > 0 && (
+                {renewalQuote?.discounted ? (
+                  <Badge className="bg-green-500/20 text-green-400 border-green-500/30 text-[10px]">
+                    {renewalQuote.couponApplied ? `CUPOM ${renewalQuote.couponApplied}` : "SEU DESCONTO"}
+                  </Badge>
+                ) : /* promoDays is a number: `promoDays && ...` renders a literal 0 on the
+                      page when it is 0, so the check must produce a boolean. */
+                  (appSettings?.promoDays ?? 0) > 0 ? (
                   <Badge className="bg-green-500/20 text-green-400 border-green-500/30 text-[10px]">
                     PROMOÇÃO
                   </Badge>
-                )}
+                ) : null}
               </div>
               <ul className="space-y-2 text-sm text-muted-foreground">
                 <li className="flex items-center gap-2">
@@ -596,6 +650,48 @@ const Assinatura = () => {
                 </li>
               </ul>
             </div>
+
+            {/* Coupon. Applies to BOTH renewal paths (card and PIX): the code is
+                validated by the backend, which then charges the lowest of list
+                price, coupon price and the customer's permanent discount. */}
+            {isExpired && (
+              <div className="space-y-2">
+                {appliedCoupon ? (
+                  <div className="flex items-center justify-between gap-2 p-3 rounded-lg border border-green-500/30 bg-green-500/5">
+                    <div className="flex items-center gap-2 text-sm">
+                      <Gift className="h-4 w-4 text-green-400 flex-shrink-0" />
+                      <span>
+                        Cupom <strong>{appliedCoupon}</strong> aplicado
+                      </span>
+                    </div>
+                    <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={removeCoupon}>
+                      Remover
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="flex gap-2">
+                    <Input
+                      value={couponInput}
+                      onChange={(e) => { setCouponInput(e.target.value.toUpperCase()); setCouponError(null); }}
+                      onKeyDown={(e) => { if (e.key === "Enter") applyCoupon(); }}
+                      placeholder="Tem um cupom? Digite aqui"
+                      className="uppercase"
+                      disabled={couponChecking}
+                    />
+                    <Button
+                      variant="outline"
+                      onClick={applyCoupon}
+                      disabled={couponChecking || !couponInput.trim()}
+                    >
+                      {couponChecking ? <Loader2 className="h-4 w-4 animate-spin" /> : "Aplicar"}
+                    </Button>
+                  </div>
+                )}
+                {couponError && (
+                  <p className="text-xs text-amber-500">{couponError}</p>
+                )}
+              </div>
+            )}
 
             {/* Payment Methods */}
             <div className="space-y-3">

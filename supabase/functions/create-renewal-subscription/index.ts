@@ -35,6 +35,72 @@ const json = (body: unknown, status = 200) =>
     status, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
   });
 
+type PricedRenewal =
+  | { value: number; couponApplied: string | null; couponDiscount: number }
+  | { error: string; invalidCoupon?: boolean };
+
+/**
+ * Resolves what this customer pays to reactivate, giving them the BEST of:
+ *   - today's list price
+ *   - the last amount they actually paid, when it is lower (a coupon discount is
+ *     permanent, and promotional_code_id is not reliably filled on legacy
+ *     registrations, so payment_history is the source of truth)
+ *   - the price after the coupon they just typed, if any
+ * A stale amount ABOVE the list price is ignored: reactivating must never cost
+ * more than what a new customer pays today.
+ * Duplicated verbatim in create-renewal-pix so both renewal paths price alike.
+ */
+async function resolveRenewalPrice(
+  supabaseAdmin: any,
+  asaasCustomerId: string,
+  fullPrice: number,
+  couponCode: string
+): Promise<PricedRenewal> {
+  let couponApplied: string | null = null;
+  let couponDiscount = 0;
+
+  if (couponCode) {
+    const { data: promo } = await supabaseAdmin
+      .from('promotional_codes')
+      .select('id, code, discount_percentage, active, status')
+      .eq('code', couponCode)
+      .maybeSingle();
+    // The two boolean flags are set by different admin screens; require both so a
+    // coupon disabled through either one stops working here.
+    if (!promo || promo.active !== true || promo.status !== true) {
+      return { error: 'Cupom inválido ou inativo.', invalidCoupon: true };
+    }
+    couponDiscount = Number(promo.discount_percentage) || 0;
+    couponApplied = promo.code;
+  }
+
+  const candidates = [fullPrice];
+
+  if (couponDiscount > 0) {
+    candidates.push(Math.round(fullPrice * (1 - couponDiscount / 100) * 100) / 100);
+  }
+
+  const { data: lastPaid } = await supabaseAdmin
+    .from('payment_history')
+    .select('amount, paid_at')
+    .eq('asaas_customer_id', asaasCustomerId)
+    .in('status', ['RECEIVED', 'CONFIRMED', 'RECEIVED_IN_CASH'])
+    .gt('amount', 0)
+    .order('paid_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  const lastAmount = Number(lastPaid?.amount || 0);
+  if (lastAmount > 0 && lastAmount < fullPrice) candidates.push(lastAmount);
+
+  const value = Math.min(...candidates);
+  if (!value || value <= 0) {
+    return { error: 'O desconto zera a cobrança. Fale com o suporte para liberar o acesso.' };
+  }
+
+  console.log(`Renewal price for ${asaasCustomerId}: ${value} (full ${fullPrice}, coupon ${couponApplied ?? 'none'}, last paid ${lastAmount})`);
+  return { value, couponApplied, couponDiscount };
+}
+
 const asaasErrorMessage = (data: any, fallback: string): string => {
   const errs = Array.isArray(data?.errors) ? data.errors : (data?.errors ? [data.errors] : []);
   const msgs = errs.map((e: any) => e?.description || e?.message || e?.code).filter(Boolean);
@@ -74,6 +140,7 @@ serve(async (req) => {
     // WITHOUT touching Asaas, so the UI can show the real amount (which may be a
     // permanently discounted one) before the customer types a card.
     const quoteOnly = body?.quote === true;
+    const couponCode = String(body?.couponCode || '').trim().toUpperCase();
 
     const { data: sub, error: subError } = await supabaseAdmin
       .from('subscriptions')
@@ -101,35 +168,14 @@ serve(async (req) => {
       .limit(1)
       .single();
     const fullPrice = Number(appSettings?.product_full_price || 0);
+    if (!fullPrice || fullPrice <= 0) return json({ error: 'Preço não configurado.' }, 500);
 
-    // A coupon discount is PERMANENT: the customer keeps the discounted price on
-    // every renewal, forever. `pending_registrations.promotional_code_id` is not
-    // reliably filled (legacy rows have it null even when a coupon was applied),
-    // so the last amount the customer actually paid is the source of truth.
-    // Falls back to the configured full price when there is no payment history.
-    let value = fullPrice;
-    const { data: lastPaid } = await supabaseAdmin
-      .from('payment_history')
-      .select('amount, paid_at')
-      .eq('asaas_customer_id', sub.asaas_customer_id)
-      .in('status', ['RECEIVED', 'CONFIRMED', 'RECEIVED_IN_CASH'])
-      .gt('amount', 0)
-      .order('paid_at', { ascending: false })
-      .limit(1)
-      .maybeSingle();
-    const lastAmount = Number(lastPaid?.amount || 0);
-    // Only ever honour a price BELOW the full price. A stale higher amount (an
-    // old plan, a one-off charge) must not make the customer pay more than today's
-    // list price.
-    if (lastAmount > 0 && lastAmount < fullPrice) {
-      value = lastAmount;
-      console.log(`Honouring permanent discount for customer ${sub.asaas_customer_id}: ${value} (full ${fullPrice})`);
-    }
-
-    if (!value || value <= 0) return json({ error: 'Preço não configurado.' }, 500);
+    const priced = await resolveRenewalPrice(supabaseAdmin, sub.asaas_customer_id, fullPrice, couponCode);
+    if ('error' in priced) return json({ error: priced.error, invalidCoupon: priced.invalidCoupon }, 400);
+    const { value, couponApplied, couponDiscount } = priced;
 
     if (quoteOnly) {
-      return json({ value, fullPrice, discounted: value < fullPrice });
+      return json({ value, fullPrice, discounted: value < fullPrice, couponApplied, couponDiscount });
     }
 
     if (!creditCard?.number || !creditCard?.holderName || !creditCard?.expiryMonth || !creditCard?.expiryYear || !creditCard?.ccv) {
@@ -269,7 +315,8 @@ serve(async (req) => {
       subscriptionId: subData.id,
       paymentId: firstPaymentId,
       paymentStatus: firstPaymentStatus,
-      value
+      value,
+      couponApplied
     });
   } catch (error) {
     console.error('create-renewal-subscription error:', error);
