@@ -104,6 +104,41 @@ serve(async (req) => {
     // Clean phone number
     const cleanPhone = phoneToUse.replace(/\D/g, '');
 
+    // Bloqueia cadastro novo quando já existe conta com este e-mail ou telefone.
+    // Só no fluxo de cadastro novo: registrationId é retomada de um pending que
+    // ainda não virou conta (sem profile), então não deve ser barrado aqui.
+    if (!registrationId) {
+      const normalizedEmail = emailToUse.toLowerCase().trim();
+
+      const { data: emailProfile } = await supabaseAdmin
+        .from('profiles')
+        .select('user_id')
+        .eq('email', normalizedEmail)
+        .limit(1)
+        .maybeSingle();
+
+      if (emailProfile) {
+        return new Response(
+          JSON.stringify({ error: 'Este e-mail já está cadastrado. Faça login ou use "Recuperar senha".' }),
+          { status: 409, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      const { data: phoneProfile } = await supabaseAdmin
+        .from('profiles')
+        .select('user_id')
+        .eq('phone', cleanPhone)
+        .limit(1)
+        .maybeSingle();
+
+      if (phoneProfile) {
+        return new Response(
+          JSON.stringify({ error: 'Este telefone já está cadastrado. Faça login ou use "Recuperar senha".' }),
+          { status: 409, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+    }
+
     console.log('Searching for existing Asaas customer with email:', emailToUse);
     console.log('Using API URL:', ASAAS_BASE_URL);
 
