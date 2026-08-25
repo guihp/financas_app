@@ -321,248 +321,265 @@ export const AddTransactionFab = ({ open, onOpenChange, onTransactionAdded }: Ad
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto max-sm:inset-x-0 max-sm:bottom-0 max-sm:top-auto max-sm:left-0 max-sm:translate-x-0 max-sm:translate-y-0 max-sm:rounded-t-2xl max-sm:max-h-[92dvh] max-sm:gap-3">
-        <DialogHeader><DialogTitle>Nova Transação</DialogTitle></DialogHeader>
-        <form onSubmit={handleSubmit} className="space-y-4">
-          {/* Tipo — segment control */}
-          <div className="space-y-2">
-            <Label className="text-sm font-medium text-foreground">Tipo</Label>
-            <div className="grid grid-cols-2 gap-1 rounded-lg bg-muted p-1">
-              <button
-                type="button"
-                onClick={() => setType("expense")}
-                className={cn(
-                  "rounded-md py-2 text-sm font-medium transition-colors",
-                  type === "expense"
-                    ? "bg-background text-foreground shadow-sm"
-                    : "text-muted-foreground hover:text-foreground"
-                )}
-              >
-                Despesa
-              </button>
-              <button
-                type="button"
-                onClick={() => setType("income")}
-                className={cn(
-                  "rounded-md py-2 text-sm font-medium transition-colors",
-                  type === "income"
-                    ? "bg-background text-foreground shadow-sm"
-                    : "text-muted-foreground hover:text-foreground"
-                )}
-              >
-                Receita
-              </button>
-            </div>
-          </div>
-
-          {/* Método de Pagamento - only for expenses */}
-          {type === "expense" && (
-            <div>
-              <Label className="text-sm font-medium text-foreground mb-2 block">Método de Pagamento</Label>
-              <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
-                {([
-                  { key: "debit", icon: <Banknote className="h-4 w-4" />, label: "Débito", activeClass: "border-blue-500 bg-blue-500/10 text-blue-400" },
-                  { key: "pix", icon: <Zap className="h-4 w-4" />, label: "PIX", activeClass: "border-green-500 bg-green-500/10 text-green-400" },
-                  { key: "credit", icon: <CreditCard className="h-4 w-4" />, label: "Crédito", activeClass: "border-purple-500 bg-purple-500/10 text-purple-400" },
-                  { key: "boleto", icon: <FileText className="h-4 w-4" />, label: "Boleto", activeClass: "border-amber-500 bg-amber-500/10 text-amber-400" },
-                  { key: "transfer", icon: <ArrowLeftRight className="h-4 w-4" />, label: "Transf.", activeClass: "border-cyan-500 bg-cyan-500/10 text-cyan-400" },
-                ] as const).map(item => (
+      <DialogContent
+        className={cn(
+          "flex max-h-[90vh] min-w-0 flex-col gap-0 overflow-hidden p-0 sm:max-w-md",
+          // Mobile bottom sheet: side margins, no left-50%/translate fight with base dialog
+          "max-sm:left-3 max-sm:right-3 max-sm:top-auto max-sm:bottom-0",
+          "max-sm:w-auto max-sm:max-w-none max-sm:translate-x-0 max-sm:translate-y-0",
+          "max-sm:rounded-t-2xl max-sm:max-h-[90dvh]"
+        )}
+      >
+        <DialogHeader className="shrink-0 px-6 pb-2 pt-6 pr-12">
+          <DialogTitle>Nova Transação</DialogTitle>
+        </DialogHeader>
+        <form
+          onSubmit={handleSubmit}
+          className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
+        >
+          <div className="min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden px-6">
+            <div className="min-w-0 space-y-4 pb-2">
+              {/* Tipo — segment control */}
+              <div className="min-w-0 space-y-2">
+                <Label className="text-sm font-medium text-foreground">Tipo</Label>
+                <div className="grid grid-cols-2 gap-1 rounded-lg bg-muted p-1">
                   <button
-                    key={item.key}
                     type="button"
-                    onClick={() => { setPaymentMethod(item.key); setIsInstallment(false); if (item.key === 'transfer') setCategory('transferencia'); clearFieldError("bank"); clearFieldError("card"); }}
-                    className={`flex flex-col items-center gap-1 p-2 rounded-xl border-2 transition-all ${paymentMethod === item.key
-                      ? item.activeClass
-                      : "border-border bg-muted/30 text-muted-foreground hover:border-border/80"
-                      }`}
+                    onClick={() => setType("expense")}
+                    className={cn(
+                      "rounded-md py-2 text-sm font-medium transition-colors",
+                      type === "expense"
+                        ? "bg-background text-foreground shadow-sm"
+                        : "text-muted-foreground hover:text-foreground"
+                    )}
                   >
-                    {item.icon}
-                    <span className="text-[10px] font-medium">{item.label}</span>
+                    Despesa
                   </button>
-                ))}
+                  <button
+                    type="button"
+                    onClick={() => setType("income")}
+                    className={cn(
+                      "rounded-md py-2 text-sm font-medium transition-colors",
+                      type === "income"
+                        ? "bg-background text-foreground shadow-sm"
+                        : "text-muted-foreground hover:text-foreground"
+                    )}
+                  >
+                    Receita
+                  </button>
+                </div>
               </div>
-            </div>
-          )}
 
-          {/* Bank Account Selection - for debit, pix, boleto, transfer, income */}
-          {needsBank && (
-            <div className="p-3 rounded-lg bg-blue-500/5 border border-blue-500/20">
-              <Label className="text-sm font-medium text-foreground flex items-center gap-1.5">
-                <Building2 className="h-3.5 w-3.5" />
-                {isTransfer ? "Banco de origem" : type === "income" ? "Banco de recebimento" : "Banco"}
-              </Label>
-              {bankAccounts.length === 0 ? (
-                <p className="text-xs text-muted-foreground mt-1">Nenhum banco cadastrado. Vá em Bancos e Cartões para cadastrar.</p>
-              ) : (
-                <Select value={selectedBankId} onValueChange={(v) => { setSelectedBankId(v); clearFieldError("bank"); }}>
-                  <SelectTrigger className={cn("mt-1", fieldErrors.bank && "border-destructive")}>
-                    <SelectValue placeholder="Selecione o banco" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {bankAccounts.map(bank => (
-                      <SelectItem key={bank.id} value={bank.id}>
-                        <div className="flex items-center gap-2">
-                          <div className="w-3 h-3 rounded-full" style={{ backgroundColor: bank.color }} />
-                          {bank.name}
-                        </div>
-                      </SelectItem>
+              {/* Método de Pagamento - only for expenses */}
+              {type === "expense" && (
+                <div className="min-w-0">
+                  <Label className="text-sm font-medium text-foreground mb-2 block">Método de Pagamento</Label>
+                  <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
+                    {([
+                      { key: "debit", icon: <Banknote className="h-4 w-4" />, label: "Débito", activeClass: "border-blue-500 bg-blue-500/10 text-blue-400" },
+                      { key: "pix", icon: <Zap className="h-4 w-4" />, label: "PIX", activeClass: "border-green-500 bg-green-500/10 text-green-400" },
+                      { key: "credit", icon: <CreditCard className="h-4 w-4" />, label: "Crédito", activeClass: "border-purple-500 bg-purple-500/10 text-purple-400" },
+                      { key: "boleto", icon: <FileText className="h-4 w-4" />, label: "Boleto", activeClass: "border-amber-500 bg-amber-500/10 text-amber-400" },
+                      { key: "transfer", icon: <ArrowLeftRight className="h-4 w-4" />, label: "Transf.", activeClass: "border-cyan-500 bg-cyan-500/10 text-cyan-400" },
+                    ] as const).map(item => (
+                      <button
+                        key={item.key}
+                        type="button"
+                        onClick={() => { setPaymentMethod(item.key); setIsInstallment(false); if (item.key === 'transfer') setCategory('transferencia'); clearFieldError("bank"); clearFieldError("card"); }}
+                        className={`flex min-w-0 flex-col items-center gap-1 p-2 rounded-xl border-2 transition-all ${paymentMethod === item.key
+                          ? item.activeClass
+                          : "border-border bg-muted/30 text-muted-foreground hover:border-border/80"
+                          }`}
+                      >
+                        {item.icon}
+                        <span className="text-[10px] font-medium">{item.label}</span>
+                      </button>
                     ))}
-                  </SelectContent>
-                </Select>
-              )}
-              {fieldErrors.bank && <p className="mt-1 text-xs text-destructive">{fieldErrors.bank}</p>}
-            </div>
-          )}
-
-          {/* Credit Card Selection - for credit method only */}
-          {needsCreditCard && (
-            <div className="space-y-3 p-3 rounded-lg bg-purple-500/5 border border-purple-500/20">
-              <div>
-                <Label className="text-sm font-medium text-foreground flex items-center gap-1.5">
-                  <CreditCard className="h-3.5 w-3.5" />
-                  Cartão
-                </Label>
-                {creditCards.length === 0 ? (
-                  <p className="text-xs text-muted-foreground mt-1">Nenhum cartão cadastrado. Vá em Bancos e Cartões para cadastrar.</p>
-                ) : (
-                  <Select value={selectedCardId} onValueChange={(v) => { setSelectedCardId(v); clearFieldError("card"); }}>
-                    <SelectTrigger className={cn("mt-1", fieldErrors.card && "border-destructive")}>
-                      <SelectValue placeholder="Selecione o cartão" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {creditCards.map(card => (
-                        <SelectItem key={card.id} value={card.id}>
-                          <div className="flex items-center gap-2">
-                            <div className="w-3 h-3 rounded-full" style={{ backgroundColor: card.color }} />
-                            {card.name}
-                          </div>
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                )}
-                {fieldErrors.card && <p className="mt-1 text-xs text-destructive">{fieldErrors.card}</p>}
-              </div>
-              <div className="flex items-center justify-between">
-                <Label className="text-sm text-foreground">Parcelado?</Label>
-                <Switch checked={isInstallment} onCheckedChange={setIsInstallment} />
-              </div>
-              {isInstallment && (
-                <div>
-                  <Label className="text-sm font-medium text-foreground">Quantas parcelas?</Label>
-                  <Select value={installmentCount} onValueChange={setInstallmentCount}>
-                    <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      {Array.from({ length: 23 }, (_, i) => i + 2).map(n => (
-                        <SelectItem key={n} value={String(n)}>{n}x</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  </div>
                 </div>
               )}
-            </div>
-          )}
 
-          {/* Data e Valor (Lado a Lado) */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <Label htmlFor="date-fab" className="text-sm font-medium text-foreground mb-1.5 block">Data</Label>
-              <Input
-                id="date-fab"
-                type="date"
-                value={transactionDate}
-                onChange={(e) => setTransactionDate(e.target.value)}
-                className="text-foreground w-full h-10"
-              />
-            </div>
-
-            <div>
-              <Label htmlFor="amount-fab" className="text-sm font-medium text-foreground mb-1.5 block">Valor (R$)</Label>
-              <div className="relative">
-                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-foreground/70 font-medium">R$</span>
-                <Input
-                  id="amount-fab"
-                  type="text"
-                  inputMode="numeric"
-                  placeholder="0,00"
-                  value={amount}
-                  onChange={handleAmountChange}
-                  className={cn(
-                    "pl-10 text-foreground text-right font-semibold text-lg h-10",
-                    fieldErrors.amount && "border-destructive"
+              {/* Bank Account Selection - for debit, pix, boleto, transfer, income */}
+              {needsBank && (
+                <div className="min-w-0 p-3 rounded-lg bg-blue-500/5 border border-blue-500/20">
+                  <Label className="text-sm font-medium text-foreground flex items-center gap-1.5">
+                    <Building2 className="h-3.5 w-3.5 shrink-0" />
+                    {isTransfer ? "Banco de origem" : type === "income" ? "Banco de recebimento" : "Banco"}
+                  </Label>
+                  {bankAccounts.length === 0 ? (
+                    <p className="text-xs text-muted-foreground mt-1">Nenhum banco cadastrado. Vá em Bancos e Cartões para cadastrar.</p>
+                  ) : (
+                    <Select value={selectedBankId} onValueChange={(v) => { setSelectedBankId(v); clearFieldError("bank"); }}>
+                      <SelectTrigger className={cn("mt-1", fieldErrors.bank && "border-destructive")}>
+                        <SelectValue placeholder="Selecione o banco" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {bankAccounts.map(bank => (
+                          <SelectItem key={bank.id} value={bank.id}>
+                            <div className="flex items-center gap-2">
+                              <div className="w-3 h-3 rounded-full" style={{ backgroundColor: bank.color }} />
+                              {bank.name}
+                            </div>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   )}
+                  {fieldErrors.bank && <p className="mt-1 text-xs text-destructive">{fieldErrors.bank}</p>}
+                </div>
+              )}
+
+              {/* Credit Card Selection - for credit method only */}
+              {needsCreditCard && (
+                <div className="min-w-0 space-y-3 p-3 rounded-lg bg-purple-500/5 border border-purple-500/20">
+                  <div>
+                    <Label className="text-sm font-medium text-foreground flex items-center gap-1.5">
+                      <CreditCard className="h-3.5 w-3.5 shrink-0" />
+                      Cartão
+                    </Label>
+                    {creditCards.length === 0 ? (
+                      <p className="text-xs text-muted-foreground mt-1">Nenhum cartão cadastrado. Vá em Bancos e Cartões para cadastrar.</p>
+                    ) : (
+                      <Select value={selectedCardId} onValueChange={(v) => { setSelectedCardId(v); clearFieldError("card"); }}>
+                        <SelectTrigger className={cn("mt-1", fieldErrors.card && "border-destructive")}>
+                          <SelectValue placeholder="Selecione o cartão" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {creditCards.map(card => (
+                            <SelectItem key={card.id} value={card.id}>
+                              <div className="flex items-center gap-2">
+                                <div className="w-3 h-3 rounded-full" style={{ backgroundColor: card.color }} />
+                                {card.name}
+                              </div>
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    )}
+                    {fieldErrors.card && <p className="mt-1 text-xs text-destructive">{fieldErrors.card}</p>}
+                  </div>
+                  <div className="flex items-center justify-between gap-2">
+                    <Label className="text-sm text-foreground">Parcelado?</Label>
+                    <Switch checked={isInstallment} onCheckedChange={setIsInstallment} />
+                  </div>
+                  {isInstallment && (
+                    <div className="min-w-0">
+                      <Label className="text-sm font-medium text-foreground">Quantas parcelas?</Label>
+                      <Select value={installmentCount} onValueChange={setInstallmentCount}>
+                        <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          {Array.from({ length: 23 }, (_, i) => i + 2).map(n => (
+                            <SelectItem key={n} value={String(n)}>{n}x</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Data e Valor (Lado a Lado) */}
+              <div className="grid min-w-0 grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="min-w-0">
+                  <Label htmlFor="date-fab" className="text-sm font-medium text-foreground mb-1.5 block">Data</Label>
+                  <Input
+                    id="date-fab"
+                    type="date"
+                    value={transactionDate}
+                    onChange={(e) => setTransactionDate(e.target.value)}
+                    className="text-foreground w-full h-10 min-w-0"
+                  />
+                </div>
+
+                <div className="min-w-0">
+                  <Label htmlFor="amount-fab" className="text-sm font-medium text-foreground mb-1.5 block">Valor (R$)</Label>
+                  <div className="relative min-w-0">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-foreground/70 font-medium">R$</span>
+                    <Input
+                      id="amount-fab"
+                      type="text"
+                      inputMode="numeric"
+                      placeholder="0,00"
+                      value={amount}
+                      onChange={handleAmountChange}
+                      className={cn(
+                        "pl-10 text-foreground text-right font-semibold text-lg h-10 min-w-0",
+                        fieldErrors.amount && "border-destructive"
+                      )}
+                    />
+                  </div>
+                  {fieldErrors.amount && <p className="mt-1 text-xs text-destructive">{fieldErrors.amount}</p>}
+                </div>
+              </div>
+
+              {needsCreditCard && isInstallment && amount && (
+                <p className="text-xs text-muted-foreground mt-1">
+                  {parseInt(installmentCount) || 2}x de R$ {formatCurrency(
+                    String(Math.round((parseFloat(amount.replace(/\./g, '').replace(',', '.')) / (parseInt(installmentCount) || 2)) * 100))
+                  )}
+                </p>
+              )}
+
+              {/* Descrição */}
+              <div className="min-w-0">
+                <Label htmlFor="description-fab" className="text-sm font-medium text-foreground">Descrição</Label>
+                <Input
+                  id="description-fab"
+                  type="text"
+                  placeholder="Descreva a transação"
+                  value={description}
+                  onChange={(e) => { setDescription(e.target.value); clearFieldError("description"); }}
+                  className={cn("mt-1 text-foreground min-w-0", fieldErrors.description && "border-destructive")}
                 />
+                {fieldErrors.description && <p className="mt-1 text-xs text-destructive">{fieldErrors.description}</p>}
               </div>
-              {fieldErrors.amount && <p className="mt-1 text-xs text-destructive">{fieldErrors.amount}</p>}
-            </div>
-          </div>
 
-          {needsCreditCard && isInstallment && amount && (
-            <p className="text-xs text-muted-foreground mt-1">
-              {parseInt(installmentCount) || 2}x de R$ {formatCurrency(
-                String(Math.round((parseFloat(amount.replace(/\./g, '').replace(',', '.')) / (parseInt(installmentCount) || 2)) * 100))
-              )}
-            </p>
-          )}
+              {/* Transação Fixa / Recorrente (Não aplicável a parcelamento de cartão) */}
+              {(!needsCreditCard || !isInstallment) && (
+                <div className={`min-w-0 p-3 rounded-lg border transition-colors ${type === 'income' ? 'bg-green-500/5 border-green-500/20' : 'bg-red-500/5 border-red-500/20'}`}>
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="min-w-0">
+                      <Label className="text-sm font-medium text-foreground block">{type === 'income' ? 'Receita Fixa/Mensal' : 'Despesa Fixa/Mensal'}</Label>
+                      <p className="text-[10px] text-muted-foreground mt-0.5 max-w-[200px]">Lançar {type === 'income' ? 'essa receita' : 'essa despesa'} com o valor integral para os meses seguintes.</p>
+                    </div>
+                    <Switch checked={isFixed} onCheckedChange={setIsFixed} />
+                  </div>
 
-          {/* Descrição */}
-          <div>
-            <Label htmlFor="description-fab" className="text-sm font-medium text-foreground">Descrição</Label>
-            <Input
-              id="description-fab"
-              type="text"
-              placeholder="Descreva a transação"
-              value={description}
-              onChange={(e) => { setDescription(e.target.value); clearFieldError("description"); }}
-              className={cn("mt-1 text-foreground", fieldErrors.description && "border-destructive")}
-            />
-            {fieldErrors.description && <p className="mt-1 text-xs text-destructive">{fieldErrors.description}</p>}
-          </div>
-
-          {/* Transação Fixa / Recorrente (Não aplicável a parcelamento de cartão) */}
-          {(!needsCreditCard || !isInstallment) && (
-            <div className={`p-3 rounded-lg border transition-colors ${type === 'income' ? 'bg-green-500/5 border-green-500/20' : 'bg-red-500/5 border-red-500/20'}`}>
-              <div className="flex items-center justify-between">
-                <div>
-                  <Label className="text-sm font-medium text-foreground block">{type === 'income' ? 'Receita Fixa/Mensal' : 'Despesa Fixa/Mensal'}</Label>
-                  <p className="text-[10px] text-muted-foreground mt-0.5 max-w-[200px]">Lançar {type === 'income' ? 'essa receita' : 'essa despesa'} com o valor integral para os meses seguintes.</p>
+                  {isFixed && (
+                    <div className="mt-3 min-w-0 pt-3 border-t border-border/50">
+                      <Label className="text-sm font-medium text-foreground">Quantos meses futuros deseja lançar?</Label>
+                      <Select value={fixedMonths} onValueChange={setFixedMonths}>
+                        <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+                        <SelectContent className="max-h-[200px]">
+                          {Array.from({ length: 59 }, (_, i) => i + 2).map(n => (
+                            <SelectItem key={n} value={String(n)}>{n} meses</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
                 </div>
-                <Switch checked={isFixed} onCheckedChange={setIsFixed} />
-              </div>
+              )}
 
-              {isFixed && (
-                <div className="mt-3 pt-3 border-t border-border/50">
-                  <Label className="text-sm font-medium text-foreground">Quantos meses futuros deseja lançar?</Label>
-                  <Select value={fixedMonths} onValueChange={setFixedMonths}>
-                    <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
-                    <SelectContent className="max-h-[200px]">
-                      {Array.from({ length: 59 }, (_, i) => i + 2).map(n => (
-                        <SelectItem key={n} value={String(n)}>{n} meses</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+              {/* Categoria */}
+              {!isTransfer && (
+                <div className={cn("min-w-0", fieldErrors.category && "[&_button]:border-destructive")}>
+                  <Label htmlFor="category-fab" className="text-sm font-medium text-foreground mb-1.5 block">Categoria</Label>
+                  <CategorySelect
+                    value={category}
+                    onValueChange={(v) => { setCategory(v); clearFieldError("category"); }}
+                    type={type}
+                    categories={categories}
+                    excludeFixedCategoryValues={hiddenFixedSubcats}
+                  />
+                  {fieldErrors.category && <p className="mt-1 text-xs text-destructive">{fieldErrors.category}</p>}
                 </div>
               )}
             </div>
-          )}
+          </div>
 
-          {/* Categoria */}
-          {!isTransfer && (
-            <div className={cn(fieldErrors.category && "[&_button]:border-destructive")}>
-              <Label htmlFor="category-fab" className="text-sm font-medium text-foreground mb-1.5 block">Categoria</Label>
-              <CategorySelect
-                value={category}
-                onValueChange={(v) => { setCategory(v); clearFieldError("category"); }}
-                type={type}
-                categories={categories}
-                excludeFixedCategoryValues={hiddenFixedSubcats}
-              />
-              {fieldErrors.category && <p className="mt-1 text-xs text-destructive">{fieldErrors.category}</p>}
-            </div>
-          )}
-
-          {/* Sticky actions on mobile */}
-          <div className="sticky bottom-0 z-10 flex gap-3 border-t bg-background pt-3 pb-1 max-sm:-mx-6 max-sm:px-6">
+          {/* Footer outside scroll — stable on mobile */}
+          <div className="shrink-0 flex gap-3 border-t bg-background px-6 pt-3 pb-6">
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)} className="flex-1" disabled={loading}>Cancelar</Button>
             <Button type="submit" className="flex-1 bg-primary hover:bg-primary/90" disabled={loading}>{loading ? "Adicionando..." : "Adicionar"}</Button>
           </div>
