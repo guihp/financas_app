@@ -42,8 +42,27 @@ function prefColumnForType(type: string): string | null {
 function authorizeService(req: Request): boolean {
   const auth = req.headers.get("Authorization") ?? "";
   const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
-  if (!serviceKey) return false;
-  return auth === `Bearer ${serviceKey}`;
+  if (serviceKey && auth === `Bearer ${serviceKey}`) return true;
+
+  // Accept any project service_role JWT (vault/cron may hold a rotated sibling key)
+  const token = auth.replace(/^Bearer\s+/i, "").trim();
+  if (!token || token.split(".").length < 2) return false;
+  try {
+    const payloadPart = token.split(".")[1]
+      .replace(/-/g, "+")
+      .replace(/_/g, "/");
+    const padded = payloadPart + "=".repeat((4 - (payloadPart.length % 4)) % 4);
+    const payload = JSON.parse(atob(padded)) as { role?: string; ref?: string };
+    const projectRef = (Deno.env.get("SUPABASE_URL") || "")
+      .replace(/^https?:\/\//, "")
+      .split(".")[0];
+    return (
+      payload.role === "service_role" &&
+      (!projectRef || !payload.ref || payload.ref === projectRef)
+    );
+  } catch {
+    return false;
+  }
 }
 
 serve(async (req) => {
