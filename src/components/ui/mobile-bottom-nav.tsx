@@ -23,10 +23,13 @@ import {
   Bot,
   ShoppingCart,
   ShieldAlert,
+  Bell,
+  Download,
 } from "lucide-react";
 import { useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { AddTransactionFab } from "@/components/AddTransactionFab";
+import { PwaInstallDialog } from "@/components/PwaInstallDialog";
 import { supabase } from "@/integrations/supabase/client";
 import { Dock, DockIcon } from "@/components/ui/dock";
 import { Button } from "@/components/ui/button";
@@ -51,6 +54,7 @@ export const MobileBottomNav = ({
   const location = useLocation();
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [showMoreMenu, setShowMoreMenu] = useState(false);
+  const [showInstallDialog, setShowInstallDialog] = useState(false);
   const { theme, setTheme } = useTheme();
 
   const navItems = [
@@ -68,7 +72,9 @@ export const MobileBottomNav = ({
     { path: "/lista-compras", label: "Lista de Compras", icon: ShoppingCart, color: "text-pink-400", bg: "bg-pink-500/15" },
     { path: "/orcamentos", label: "Orçamento", icon: ShieldAlert, color: "text-rose-400", bg: "bg-rose-500/15" },
     { path: "/sharing", label: "Compartilhar", icon: Users, color: "text-cyan-400", bg: "bg-cyan-500/15" },
+    { path: "/notificacoes", label: "Notificações", icon: Bell, color: "text-violet-400", bg: "bg-violet-500/15" },
     { path: "/assinatura", label: "Assinatura", icon: Crown, color: "text-purple-400", bg: "bg-purple-500/15" },
+    { action: "install", label: "Instalar app", icon: Download, color: "text-sky-400", bg: "bg-sky-500/15" },
     { action: "ai", label: "Falar com IA", icon: Bot, color: "text-indigo-400", bg: "bg-indigo-500/15" },
     { action: "support", label: "Suporte", icon: MessageCircle, color: "text-green-500", bg: "bg-green-500/15" },
     { path: "/alterar-senha", label: "Alterar Senha", icon: Key, color: "text-slate-400", bg: "bg-slate-500/15" },
@@ -98,6 +104,10 @@ export const MobileBottomNav = ({
 
   const handleNavigation = (item: any) => {
     setShowMoreMenu(false);
+    if (item.action === "install") {
+      setShowInstallDialog(true);
+      return;
+    }
     if (item.action === "support") {
       window.open("https://wa.me/5598984999475", "_blank");
       return;
@@ -318,6 +328,11 @@ export const MobileBottomNav = ({
           onTransactionAdded={handleTransactionAdded}
         />
       )}
+
+      <PwaInstallDialog
+        open={showInstallDialog}
+        onOpenChange={setShowInstallDialog}
+      />
     </>
   );
 };

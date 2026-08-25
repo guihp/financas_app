@@ -17,9 +17,10 @@ No painel do Coolify, vá em **"Environment Variables"** e configure as seguinte
 ```
 VITE_SUPABASE_URL=https://dlbiwguzbiosaoyrcvay.supabase.co
 VITE_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRsYml3Z3V6Ymlvc2FveXJjdmF5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njc5NTgxNzIsImV4cCI6MjA4MzUzNDE3Mn0.g31h4C8ugNXinlYVGXL-GrP1TQxUOX-u-eqxhI_Rkjk
+VITE_VAPID_PUBLIC_KEY=BB7zsB5EvQ8TqI7SDXFMw1iL--WcPJ3dz27DwbreNmq2c-NEa7BlMVvucP0vjKUUPwXxkN5uTWdaZ_4A9uI1eMo
 ```
 
-**Nota**: O Dockerfile está configurado para aceitar essas variáveis como `ARG` durante o build, então elas serão automaticamente passadas pelo Coolify.
+**Nota**: O Dockerfile está configurado para aceitar essas variáveis como `ARG` durante o build, então elas serão automaticamente passadas pelo Coolify. Ver também `ENV.md` (VAPID / Edge Secrets).
 
 ### Variáveis do Supabase (Edge Functions)
 

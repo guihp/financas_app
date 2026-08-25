@@ -6,6 +6,64 @@ Estas variáveis devem ser configuradas no Coolify ou no ambiente de produção:
 
 - `VITE_SUPABASE_URL` - URL do projeto Supabase (ex: https://seu-projeto.supabase.co)
 - `VITE_SUPABASE_ANON_KEY` - Chave anon/public do Supabase
+- `VITE_VAPID_PUBLIC_KEY` - Chave pública VAPID (Web Push). Deve ser **idêntica** ao secret `VAPID_PUBLIC_KEY` das Edge Functions.
+
+### Gerar par VAPID (uma vez)
+
+```bash
+npx web-push generate-vapid-keys --json
+```
+
+### Secrets no Supabase (Project Settings → Edge Functions → Secrets)
+
+| Secret | Obrigatório | Descrição |
+|--------|-------------|-----------|
+| `VAPID_PUBLIC_KEY` | sim | Chave pública VAPID |
+| `VAPID_PRIVATE_KEY` | sim | Chave privada VAPID (**nunca** no frontend / git) |
+| `VAPID_SUBJECT` | sim | Contato `mailto:seu@email.com` (ex.: `mailto:noreply@iafe.finance`) |
+
+Chave pública gerada para este rollout (use a mesma em frontend + Supabase):
+
+```
+VITE_VAPID_PUBLIC_KEY=BB7zsB5EvQ8TqI7SDXFMw1iL--WcPJ3dz27DwbreNmq2c-NEa7BlMVvucP0vjKUUPwXxkN5uTWdaZ_4A9uI1eMo
+VAPID_PUBLIC_KEY=BB7zsB5EvQ8TqI7SDXFMw1iL--WcPJ3dz27DwbreNmq2c-NEa7BlMVvucP0vjKUUPwXxkN5uTWdaZ_4A9uI1eMo
+```
+
+A `VAPID_PRIVATE_KEY` correspondente deve ser configurada **somente** nos secrets do Supabase (nunca no frontend). Valor gerado neste rollout: use o informado no resumo do deploy / regenere o par se necessário.
+
+**MCP / CLI:** secrets de Edge Functions **não** podem ser gravados via MCP `user-finance`. Configure manualmente em:
+[Project Settings → Edge Functions → Secrets](https://supabase.com/dashboard/project/dlbiwguzbiosaoyrcvay/settings/functions)
+
+```
+VAPID_PUBLIC_KEY=<mesma chave pública acima>
+VAPID_PRIVATE_KEY=<chave privada do par — só no painel>
+VAPID_SUBJECT=mailto:noreply@iafe.finance
+```
+
+Local: copie `.env.example` → `.env.local` e garanta `VITE_VAPID_PUBLIC_KEY` antes do `npm run build` / `npm run dev`.
+
+### Vault (triggers / cron → Edge Functions)
+
+Triggers de transações/listas e o cron `engagement-notifications` chamam as Edge Functions via `pg_net` usando:
+
+- `app_supabase_url`
+- `app_service_role_key` — precisa ser o JWT `service_role` real (não o placeholder)
+
+```sql
+SELECT vault.update_secret(
+  (SELECT id FROM vault.secrets WHERE name = 'app_service_role_key'),
+  '<SERVICE_ROLE_JWT>'
+);
+```
+
+Verificação rápida: se `vault.decrypted_secrets` para `app_service_role_key` já for um JWT longo (`eyJ…`), o placeholder foi substituído — ainda assim confirme que coincide com **Project Settings → API → service_role** atual.
+
+### Edge Functions de notificação
+
+- `dispatch-notification` — prefs → insert in-app → Web Push; prune 404/410; **não** substitui WhatsApp
+- `manage-push-subscription` — POST subscribe / DELETE unsubscribe (JWT do usuário)
+- `engagement-notifications` — cron `0 12 * * *` UTC (~09:00 America/Sao_Paulo)
+- `appointment-notifications` — WhatsApp/n8n **e** PWA/in-app (PWA mesmo sem telefone)
 
 ## Supabase Edge Functions
 
@@ -16,6 +74,7 @@ As Edge Functions do Supabase usam variáveis de ambiente configuradas automatic
 - `WEBHOOK_BASE_URL` - **IMPORTANTE**: URL base do webhook (sem o caminho do endpoint)
 - `ASAAS_API_KEY` - **IMPORTANTE**: Chave da API do Asaas (sandbox ou produção)
 - `ASAAS_BASE_URL` - URL base da API do Asaas (padrão: https://api-sandbox.asaas.com/v3)
+- `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` / `VAPID_SUBJECT` - Web Push (ver seção acima)
 
 ### Exemplo de WEBHOOK_BASE_URL:
 ```
@@ -211,3 +270,6 @@ No painel do Supabase, vá em Project Settings > Edge Functions > Secrets e adic
 - `WEBHOOK_BASE_URL` = https://n8n-sgo8ksokg404ocg8sgc4sooc.vemprajogo.com
 - `ASAAS_API_KEY` = $aact_hmlg_... (sua chave da API)
 - `ASAAS_BASE_URL` = https://api-sandbox.asaas.com/v3
+- `VAPID_PUBLIC_KEY` = (mesma de `VITE_VAPID_PUBLIC_KEY`)
+- `VAPID_PRIVATE_KEY` = (somente no painel; ver seção Web Push acima)
+- `VAPID_SUBJECT` = mailto:noreply@iafe.finance

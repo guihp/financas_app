@@ -2,34 +2,52 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers":
+    "authorization, x-client-info, apikey, content-type",
+};
+
+const APPOINTMENT_TYPE_MAP: Record<string, string> = {
+  one_hour_fifteen_before: "1_hour_15_minutes_before",
+  one_hour_before: "1_hour_before",
+  fifteen_minutes_before: "15_minutes_before",
+  now: "now",
+};
+
+const PWA_TYPE_MAP: Record<string, string> = {
+  "1_hour_15_minutes_before": "appointment_1_hour_15_minutes_before",
+  "1_hour_before": "appointment_1_hour_before",
+  "15_minutes_before": "appointment_15_minutes_before",
+  now: "appointment_now",
+};
+
+const TITLE_MAP: Record<string, string> = {
+  "1_hour_15_minutes_before": "Lembrete em 1h15",
+  "1_hour_before": "Lembrete em 1 hora",
+  "15_minutes_before": "Lembrete em 15 minutos",
+  now: "É agora!",
 };
 
 serve(async (req) => {
-  // Handle CORS preflight requests
-  if (req.method === 'OPTIONS') {
+  if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-    
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    console.log('Running appointment notifications check...');
+    console.log("Running appointment notifications check...");
 
-    // Get current datetime in Brazil timezone (UTC-3)
     const now = new Date();
-    const brazilOffset = -3 * 60 * 60 * 1000; // -3 hours in milliseconds
+    const brazilOffset = -3 * 60 * 60 * 1000;
     const brazilNow = new Date(now.getTime() + brazilOffset);
-    
-    console.log('Current Brazil time:', brazilNow.toISOString());
 
-    // Fetch all pending appointments
+    console.log("Current Brazil time:", brazilNow.toISOString());
+
     const { data: appointments, error: appointmentsError } = await supabase
-      .from('appointments')
+      .from("appointments")
       .select(`
         id,
         title,
@@ -38,10 +56,10 @@ serve(async (req) => {
         time,
         user_id
       `)
-      .eq('status', 'pending');
+      .eq("status", "pending");
 
     if (appointmentsError) {
-      console.error('Error fetching appointments:', appointmentsError);
+      console.error("Error fetching appointments:", appointmentsError);
       throw appointmentsError;
     }
 
@@ -49,183 +67,281 @@ serve(async (req) => {
 
     if (!appointments || appointments.length === 0) {
       return new Response(
-        JSON.stringify({ message: 'No pending appointments found' }),
-        { 
+        JSON.stringify({ message: "No pending appointments found" }),
+        {
           status: 200,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-        }
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        },
       );
     }
 
-    const notificationsToSend = [];
+    let processedWindows = 0;
 
     for (const appointment of appointments) {
-      // Get user profile for phone number
       const { data: profile, error: profileError } = await supabase
-        .from('profiles')
-        .select('phone, full_name')
-        .eq('user_id', appointment.user_id)
-        .single();
+        .from("profiles")
+        .select("phone, full_name")
+        .eq("user_id", appointment.user_id)
+        .maybeSingle();
 
-      if (profileError || !profile?.phone) {
-        console.log(`No phone found for appointment ${appointment.id}`);
-        continue;
+      if (profileError) {
+        console.error(
+          `Profile error for appointment ${appointment.id}:`,
+          profileError,
+        );
       }
 
-      // Create appointment datetime
-      const appointmentDate = new Date(`${appointment.date}T${appointment.time || '00:00:00'}`);
-      
-      // Calculate notification times (considering Brazil timezone)
-      const oneHourFifteenBefore = new Date(appointmentDate.getTime() - (75 * 60 * 1000)); // 1h15min = 75 minutes
-      const oneHourBefore = new Date(appointmentDate.getTime() - (60 * 60 * 1000));
-      const fifteenMinsBefore = new Date(appointmentDate.getTime() - (15 * 60 * 1000));
+      // Missing phone must NOT block PWA/in-app (WhatsApp still requires phone)
+      const profileSafe = profile ?? { phone: null, full_name: null };
+
+      const appointmentDate = new Date(
+        `${appointment.date}T${appointment.time || "00:00:00"}`,
+      );
+
+      const oneHourFifteenBefore = new Date(
+        appointmentDate.getTime() - 75 * 60 * 1000,
+      );
+      const oneHourBefore = new Date(
+        appointmentDate.getTime() - 60 * 60 * 1000,
+      );
+      const fifteenMinsBefore = new Date(
+        appointmentDate.getTime() - 15 * 60 * 1000,
+      );
       const appointmentTime = appointmentDate;
 
-      console.log(`Appointment ${appointment.id} scheduled for:`, appointmentDate.toISOString());
-      console.log('1h15min before:', oneHourFifteenBefore.toISOString());
-      console.log('1h before:', oneHourBefore.toISOString());
-      console.log('15min before:', fifteenMinsBefore.toISOString());
-      console.log('Appointment time:', appointmentTime.toISOString());
-
-      // Check which notifications need to be sent (within 5-minute window)
       const fiveMinutes = 5 * 60 * 1000;
       const currentTime = brazilNow.getTime();
 
-      // Check for 1 hour 15 minutes before notification
-      if (Math.abs(currentTime - oneHourFifteenBefore.getTime()) <= fiveMinutes) {
-        await checkAndSendNotification(supabase, appointment, profile, 'one_hour_fifteen_before', appointmentDate);
+      if (
+        Math.abs(currentTime - oneHourFifteenBefore.getTime()) <= fiveMinutes
+      ) {
+        await checkAndSendNotification(
+          supabase,
+          supabaseUrl,
+          supabaseServiceKey,
+          appointment,
+          profileSafe,
+          "one_hour_fifteen_before",
+          appointmentDate,
+        );
+        processedWindows += 1;
       }
 
-      // Check for 1 hour before notification
       if (Math.abs(currentTime - oneHourBefore.getTime()) <= fiveMinutes) {
-        await checkAndSendNotification(supabase, appointment, profile, 'one_hour_before', appointmentDate);
+        await checkAndSendNotification(
+          supabase,
+          supabaseUrl,
+          supabaseServiceKey,
+          appointment,
+          profileSafe,
+          "one_hour_before",
+          appointmentDate,
+        );
+        processedWindows += 1;
       }
 
-      // Check for 15 minutes before notification
       if (Math.abs(currentTime - fifteenMinsBefore.getTime()) <= fiveMinutes) {
-        await checkAndSendNotification(supabase, appointment, profile, 'fifteen_minutes_before', appointmentDate);
+        await checkAndSendNotification(
+          supabase,
+          supabaseUrl,
+          supabaseServiceKey,
+          appointment,
+          profileSafe,
+          "fifteen_minutes_before",
+          appointmentDate,
+        );
+        processedWindows += 1;
       }
 
-      // Check for "now" notification
       if (Math.abs(currentTime - appointmentTime.getTime()) <= fiveMinutes) {
-        await checkAndSendNotification(supabase, appointment, profile, 'now', appointmentDate);
+        await checkAndSendNotification(
+          supabase,
+          supabaseUrl,
+          supabaseServiceKey,
+          appointment,
+          profileSafe,
+          "now",
+          appointmentDate,
+        );
+        processedWindows += 1;
       }
     }
 
     return new Response(
-      JSON.stringify({ 
-        message: 'Appointment notifications processed successfully',
-        processed_appointments: appointments.length
+      JSON.stringify({
+        message: "Appointment notifications processed successfully",
+        processed_appointments: appointments.length,
+        processed_windows: processedWindows,
       }),
-      { 
+      {
         status: 200,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-      }
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      },
     );
-
   } catch (error) {
-    console.error('Error in appointment notifications:', error);
+    console.error("Error in appointment notifications:", error);
     return new Response(
-      JSON.stringify({ error: error.message }),
-      { 
+      JSON.stringify({
+        error: error instanceof Error ? error.message : String(error),
+      }),
+      {
         status: 500,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-      }
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      },
     );
   }
 });
 
 async function checkAndSendNotification(
+  // deno-lint-ignore no-explicit-any
   supabase: any,
+  supabaseUrl: string,
+  serviceKey: string,
+  // deno-lint-ignore no-explicit-any
   appointment: any,
+  // deno-lint-ignore no-explicit-any
   profile: any,
   notificationType: string,
-  appointmentDate: Date
+  appointmentDate: Date,
 ) {
-  // Map notification types to database values
-  const dbNotificationType = notificationType === 'one_hour_fifteen_before' ? '1_hour_15_minutes_before' :
-                             notificationType === 'one_hour_before' ? '1_hour_before' : 
-                             notificationType === 'fifteen_minutes_before' ? '15_minutes_before' : 'now';
+  const dbNotificationType = APPOINTMENT_TYPE_MAP[notificationType] ?? "now";
+  const pwaType = PWA_TYPE_MAP[dbNotificationType];
+  const title = TITLE_MAP[dbNotificationType] ?? "Lembrete de agenda";
 
-  // Check if notification already sent
   const { data: existingNotification } = await supabase
-    .from('appointment_notifications_sent')
-    .select('id')
-    .eq('appointment_id', appointment.id)
-    .eq('notification_type', dbNotificationType)
-    .single();
+    .from("appointment_notifications_sent")
+    .select("id")
+    .eq("appointment_id", appointment.id)
+    .eq("notification_type", dbNotificationType)
+    .maybeSingle();
 
   if (existingNotification) {
-    console.log(`Notification ${dbNotificationType} already sent for appointment ${appointment.id}`);
+    console.log(
+      `Notification ${dbNotificationType} already sent for appointment ${appointment.id}`,
+    );
     return;
   }
 
-  // Prepare webhook payload
-  const webhookPayload = {
-    notification_type: dbNotificationType,
-    appointment: {
-      id: appointment.id,
-      title: appointment.title,
-      description: appointment.description,
-      date: appointment.date,
-      time: appointment.time,
-      user_phone: profile.phone,
-      user_name: profile.full_name
-    },
-    scheduled_datetime: appointmentDate.toISOString(),
-    notification_time: new Date().toISOString()
-  };
+  const timeLabel = appointment.time
+    ? ` às ${String(appointment.time).slice(0, 5)}`
+    : "";
+  const body =
+    `${appointment.title}${timeLabel} — ${
+      profile.full_name ? profile.full_name.split(" ")[0] + ", " : ""
+    }não esqueça!`;
 
-  console.log(`Sending ${dbNotificationType} notification for appointment ${appointment.id}`);
-  console.log('Webhook payload:', JSON.stringify(webhookPayload, null, 2));
-
-  // Get webhook base URL from environment variable
-  const webhookBaseUrl = Deno.env.get('WEBHOOK_BASE_URL') || '';
-  const webhookUrl = webhookBaseUrl ? `${webhookBaseUrl}/webhook/registra_ai_lembrete` : null;
-  
-  if (!webhookUrl) {
-    console.warn('WEBHOOK_BASE_URL not configured, skipping webhook call');
-    return;
-  }
-
+  // 1) Always try PWA / in-app (does not require phone)
+  let pwaResult = "skipped";
   try {
-    // Send webhook
-    const webhookResponse = await fetch(webhookUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
+    const dispatchRes = await fetch(
+      `${supabaseUrl}/functions/v1/dispatch-notification`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${serviceKey}`,
+        },
+        body: JSON.stringify({
+          user_id: appointment.user_id,
+          type: pwaType,
+          title,
+          body,
+          data: {
+            entity_id: `${appointment.id}:${dbNotificationType}`,
+            appointment_id: appointment.id,
+            deep_link: "/agenda",
+            notification_type: dbNotificationType,
+          },
+          force: true,
+        }),
       },
-      body: JSON.stringify(webhookPayload)
+    );
+    pwaResult = `${dispatchRes.status}:${await dispatchRes.text()}`;
+    console.log("PWA dispatch result:", pwaResult);
+  } catch (pwaError) {
+    console.error("PWA dispatch error:", pwaError);
+    pwaResult = `Error: ${
+      pwaError instanceof Error ? pwaError.message : String(pwaError)
+    }`;
+  }
+
+  // 2) WhatsApp / n8n only when phone exists (unchanged contract)
+  let webhookResponseText = "skipped_no_phone";
+  const phone = profile?.phone;
+
+  if (phone) {
+    const webhookPayload = {
+      notification_type: dbNotificationType,
+      appointment: {
+        id: appointment.id,
+        title: appointment.title,
+        description: appointment.description,
+        date: appointment.date,
+        time: appointment.time,
+        user_phone: phone,
+        user_name: profile.full_name,
+      },
+      scheduled_datetime: appointmentDate.toISOString(),
+      notification_time: new Date().toISOString(),
+    };
+
+    console.log(
+      `Sending ${dbNotificationType} WhatsApp for appointment ${appointment.id}`,
+    );
+
+    const webhookBaseUrl = Deno.env.get("WEBHOOK_BASE_URL") || "";
+    const webhookUrl = webhookBaseUrl
+      ? `${webhookBaseUrl}/webhook/registra_ai_lembrete`
+      : null;
+
+    if (!webhookUrl) {
+      console.warn("WEBHOOK_BASE_URL not configured, skipping webhook call");
+      webhookResponseText = "skipped_no_webhook_url";
+    } else {
+      try {
+        const webhookResponse = await fetch(webhookUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(webhookPayload),
+        });
+        webhookResponseText = await webhookResponse.text();
+        console.log(
+          "Webhook response:",
+          webhookResponse.status,
+          webhookResponseText,
+        );
+      } catch (webhookError) {
+        console.error("Error sending webhook:", webhookError);
+        webhookResponseText = `Error: ${
+          webhookError instanceof Error
+            ? webhookError.message
+            : String(webhookError)
+        }`;
+      }
+    }
+  } else {
+    console.log(
+      `No phone for appointment ${appointment.id}; WhatsApp skipped, PWA attempted`,
+    );
+  }
+
+  // Record once so we do not re-fire this window (even if only PWA ran)
+  const { error: insertError } = await supabase
+    .from("appointment_notifications_sent")
+    .insert({
+      appointment_id: appointment.id,
+      notification_type: dbNotificationType,
+      webhook_response: JSON.stringify({
+        whatsapp: webhookResponseText,
+        pwa: pwaResult,
+      }),
     });
 
-    const responseText = await webhookResponse.text();
-    console.log('Webhook response:', webhookResponse.status, responseText);
-
-    // Record notification as sent
-    const { error: insertError } = await supabase
-      .from('appointment_notifications_sent')
-      .insert({
-        appointment_id: appointment.id,
-        notification_type: dbNotificationType,
-        webhook_response: responseText
-      });
-
-    if (insertError) {
-      console.error('Error recording notification:', insertError);
-    } else {
-      console.log(`Notification ${dbNotificationType} sent and recorded for appointment ${appointment.id}`);
-    }
-
-  } catch (webhookError) {
-    console.error('Error sending webhook:', webhookError);
-    
-    // Still record the attempt
-    await supabase
-      .from('appointment_notifications_sent')
-      .insert({
-        appointment_id: appointment.id,
-        notification_type: dbNotificationType,
-        webhook_response: `Error: ${webhookError.message}`
-      });
+  if (insertError) {
+    console.error("Error recording notification:", insertError);
+  } else {
+    console.log(
+      `Notification ${dbNotificationType} recorded for appointment ${appointment.id}`,
+    );
   }
 }

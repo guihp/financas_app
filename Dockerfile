@@ -19,10 +19,12 @@ COPY . .
 # Accept build arguments for Vite environment variables
 ARG VITE_SUPABASE_URL
 ARG VITE_SUPABASE_ANON_KEY
+ARG VITE_VAPID_PUBLIC_KEY
 
 # Set environment variables for build
 ENV VITE_SUPABASE_URL=$VITE_SUPABASE_URL
 ENV VITE_SUPABASE_ANON_KEY=$VITE_SUPABASE_ANON_KEY
+ENV VITE_VAPID_PUBLIC_KEY=$VITE_VAPID_PUBLIC_KEY
 
 # Build the application
 RUN npm run build && ls -la dist/ && cat dist/index.html | head -5

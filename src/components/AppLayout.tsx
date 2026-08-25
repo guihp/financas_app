@@ -26,7 +26,13 @@ import {
   FileText,
   ShoppingCart,
   ShieldAlert,
+  Bell,
+  Download,
 } from "lucide-react";
+import { NotificationBell } from "@/components/NotificationBell";
+import { PwaInstallBanner } from "@/components/PwaInstallBanner";
+import { PwaInstallDialog } from "@/components/PwaInstallDialog";
+import { useLastSeenHeartbeat } from "@/hooks/useLastSeenHeartbeat";
 
 interface SubscriptionCheck {
   hasAccess: boolean;
@@ -44,10 +50,13 @@ export const AppLayout = () => {
     isExpired: false,
     daysExpiredAgo: 0,
   });
+  const [showInstallDialog, setShowInstallDialog] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
   const { theme, setTheme } = useTheme();
   const GRACE_PERIOD_HOURS = 12; // 12 hours after trial expires before blocking
+
+  useLastSeenHeartbeat(user?.id);
 
   const checkSubscription = async (userId: string) => {
     try {
@@ -283,6 +292,7 @@ export const AppLayout = () => {
     { path: "/orcamentos", icon: ShieldAlert, label: "Orçamento" },
     { path: "/sharing", icon: Users, label: "Compartilhar" },
     { path: "/lista-compras", icon: ShoppingCart, label: "Lista de Compras" },
+    { path: "/notificacoes", icon: Bell, label: "Notificações" },
     { path: "/assinatura", icon: CreditCard, label: "Assinatura" },
     { path: "/alterar-senha", icon: Key, label: "Alterar Senha" },
   ];
@@ -344,8 +354,9 @@ export const AppLayout = () => {
       <div className="flex flex-col lg:flex-row">
         {/* Desktop Sidebar - visible only on lg (1024px+) */}
         <div className="hidden lg:flex w-64 flex-shrink-0 flex-col bg-sidebar border-r border-sidebar-border p-6 min-h-screen sticky top-0 max-h-screen overflow-y-auto">
-          <div className="mb-8">
+          <div className="mb-8 flex items-start justify-between gap-2">
             <Logo size="lg" />
+            <NotificationBell userId={user.id} className="text-sidebar-foreground" />
           </div>
 
           <nav className="space-y-2 flex-1">
@@ -366,6 +377,15 @@ export const AppLayout = () => {
           </nav>
 
           <div className="mt-auto pt-4 border-t border-sidebar-border space-y-3">
+            <Button
+              variant="ghost"
+              className="w-full justify-start gap-3 text-sidebar-foreground hover:bg-sidebar-accent/50"
+              onClick={() => setShowInstallDialog(true)}
+            >
+              <Download className="h-5 w-5" />
+              Instalar app
+            </Button>
+
             {/* Dark Mode Toggle */}
             <Button
               variant="ghost"
@@ -411,6 +431,11 @@ export const AppLayout = () => {
 
         {/* Main Content */}
         <div className="flex-1 min-w-0 overflow-hidden p-4 lg:p-6 mobile-content lg:pb-6 mobile-scroll">
+          {/* Mobile top bar with notifications */}
+          <div className="mb-4 flex items-center justify-between gap-3 lg:hidden">
+            <Logo size="sm" />
+            <NotificationBell userId={user.id} />
+          </div>
           <Outlet context={{ user, isSuperAdmin, isAdminRole }} />
         </div>
 
@@ -418,6 +443,12 @@ export const AppLayout = () => {
         <div className="lg:hidden">
           <MobileBottomNav userEmail={user.email} isSuperAdmin={isSuperAdmin} />
         </div>
+
+        <PwaInstallBanner />
+        <PwaInstallDialog
+          open={showInstallDialog}
+          onOpenChange={setShowInstallDialog}
+        />
 
         {/* Desktop Floating Action Buttons (Support & AI) - visible only on lg (1024px+) */}
         <div className="hidden lg:flex fixed bottom-6 right-6 flex-col gap-3 z-50">

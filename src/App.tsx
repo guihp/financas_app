@@ -24,6 +24,7 @@ import ListaComprasPage from "./pages/ListaComprasPage";
 import ApiDocsPage from "./pages/ApiDocsPage";
 import ResetPassword from "./pages/ResetPassword";
 import OrcamentosPage from "./pages/OrcamentosPage";
+import NotificationsPage from "./pages/NotificationsPage";
 
 // Components
 import { ProtectedRoute } from "./components/ProtectedRoute";
@@ -66,6 +67,7 @@ const App = () => (
             <Route path="/faturas" element={<FaturasPage />} />
             <Route path="/lista-compras" element={<ListaComprasPage />} />
             <Route path="/alterar-senha" element={<AlterarSenhaPage />} />
+            <Route path="/notificacoes" element={<NotificationsPage />} />
             <Route path="/assinatura" element={<Assinatura />} />
             <Route path="/admin/supremo/iafe/financas" element={<AdminSupremoFinancas />} />
           </Route>
