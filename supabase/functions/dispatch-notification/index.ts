@@ -200,61 +200,73 @@ serve(async (req) => {
     let pushPruned = 0;
     let pushFailed = 0;
 
+    let pushSkipReason: string | null = null;
+
     if (pushEnabled) {
-      const vapidPublic = Deno.env.get("VAPID_PUBLIC_KEY");
-      const vapidPrivate = Deno.env.get("VAPID_PRIVATE_KEY");
-      const vapidSubject = Deno.env.get("VAPID_SUBJECT") ||
-        "mailto:noreply@iafe.finance";
+      const vapidPublic = (Deno.env.get("VAPID_PUBLIC_KEY") || "").trim();
+      const vapidPrivate = (Deno.env.get("VAPID_PRIVATE_KEY") || "").trim();
+      const vapidSubject = (Deno.env.get("VAPID_SUBJECT") ||
+        "mailto:noreply@iafe.finance").trim();
 
       if (!vapidPublic || !vapidPrivate) {
         console.warn("VAPID keys not configured; skipping web push");
+        pushSkipReason = "vapid_missing";
       } else {
-        webpush.setVapidDetails(vapidSubject, vapidPublic, vapidPrivate);
-
-        const { data: subs, error: subsError } = await supabase
-          .from("push_subscriptions")
-          .select("id, endpoint, p256dh, auth")
-          .eq("user_id", user_id);
-
-        if (subsError) {
-          console.error("subs error", subsError);
-          throw subsError;
+        try {
+          webpush.setVapidDetails(vapidSubject, vapidPublic, vapidPrivate);
+        } catch (vapidErr) {
+          console.error("VAPID setup error", vapidErr);
+          pushSkipReason = vapidErr instanceof Error
+            ? vapidErr.message
+            : "vapid_invalid";
         }
 
-        const pushPayload = JSON.stringify({
-          title,
-          body,
-          data: {
-            ...data,
-            type,
-            notification_id: notificationId,
-          },
-        });
+        if (!pushSkipReason) {
+          const { data: subs, error: subsError } = await supabase
+            .from("push_subscriptions")
+            .select("id, endpoint, p256dh, auth")
+            .eq("user_id", user_id);
 
-        for (const sub of subs || []) {
-          try {
-            await webpush.sendNotification(
-              {
-                endpoint: sub.endpoint,
-                keys: { p256dh: sub.p256dh, auth: sub.auth },
+          if (subsError) {
+            console.error("subs error", subsError);
+            pushSkipReason = subsError.message;
+          } else {
+            const pushPayload = JSON.stringify({
+              title,
+              body,
+              data: {
+                ...data,
+                type,
+                notification_id: notificationId,
               },
-              pushPayload,
-              { TTL: 60 * 60 },
-            );
-            pushSent += 1;
-          } catch (err: unknown) {
-            const statusCode =
-              (err as { statusCode?: number })?.statusCode ??
-              (err as { status?: number })?.status;
-            console.error("web-push error", statusCode, err);
-            if (statusCode === 404 || statusCode === 410) {
-              await supabase
-                .from("push_subscriptions")
-                .delete()
-                .eq("id", sub.id);
-              pushPruned += 1;
-            } else {
-              pushFailed += 1;
+            });
+
+            for (const sub of subs || []) {
+              try {
+                await webpush.sendNotification(
+                  {
+                    endpoint: sub.endpoint,
+                    keys: { p256dh: sub.p256dh, auth: sub.auth },
+                  },
+                  pushPayload,
+                  { TTL: 60 * 60 },
+                );
+                pushSent += 1;
+              } catch (err: unknown) {
+                const statusCode =
+                  (err as { statusCode?: number })?.statusCode ??
+                  (err as { status?: number })?.status;
+                console.error("web-push error", statusCode, err);
+                if (statusCode === 404 || statusCode === 410) {
+                  await supabase
+                    .from("push_subscriptions")
+                    .delete()
+                    .eq("id", sub.id);
+                  pushPruned += 1;
+                } else {
+                  pushFailed += 1;
+                }
+              }
             }
           }
         }
@@ -268,6 +280,7 @@ serve(async (req) => {
         push_sent: pushSent,
         push_pruned: pushPruned,
         push_failed: pushFailed,
+        push_skip_reason: pushSkipReason,
         in_app: inAppEnabled,
         push: pushEnabled,
       }),

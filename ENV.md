@@ -25,11 +25,13 @@ npx web-push generate-vapid-keys --json
 Chave pública gerada para este rollout (use a mesma em frontend + Supabase):
 
 ```
-VITE_VAPID_PUBLIC_KEY=BB7zsB5EvQ8TqI7SDXFMw1iL--WcPJ3dz27DwbreNmq2c-NEa7BlMVvucP0vjKUUPwXxkN5uTWdaZ_4A9uI1eMo
-VAPID_PUBLIC_KEY=BB7zsB5EvQ8TqI7SDXFMw1iL--WcPJ3dz27DwbreNmq2c-NEa7BlMVvucP0vjKUUPwXxkN5uTWdaZ_4A9uI1eMo
+VITE_VAPID_PUBLIC_KEY=BMfTKE5PpHcKpJjlzfTOZSz3i5dVlG0fhM3xnfp2SR-fUaPDtMwU9AmBPniTqKJKD6qRydtM05YCc9nKGav_ECs
+VAPID_PUBLIC_KEY=BMfTKE5PpHcKpJjlzfTOZSz3i5dVlG0fhM3xnfp2SR-fUaPDtMwU9AmBPniTqKJKD6qRydtM05YCc9nKGav_ECs
 ```
 
-A `VAPID_PRIVATE_KEY` correspondente deve ser configurada **somente** nos secrets do Supabase (nunca no frontend). Valor gerado neste rollout: use o informado no resumo do deploy / regenere o par se necessário.
+A `VAPID_PRIVATE_KEY` correspondente deve ser configurada **somente** nos secrets do Supabase (nunca no frontend). Gere com `npx web-push generate-vapid-keys --json` se precisar de um par novo — o par atual do fix de push está documentado na mensagem de deploy / chat (não versionar a privada no git).
+
+**Importante:** se a privada no painel estiver inválida, o dispatch retorna erro `Vapid private key should be 32 bytes long when decoded` e o push do celular não chega (o in-app pode continuar funcionando).
 
 **MCP / CLI:** secrets de Edge Functions **não** podem ser gravados via MCP `user-finance`. Configure manualmente em:
 [Project Settings → Edge Functions → Secrets](https://supabase.com/dashboard/project/dlbiwguzbiosaoyrcvay/settings/functions)
