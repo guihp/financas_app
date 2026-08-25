@@ -4,16 +4,17 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { isValidAmount, sanitizeDescription, sanitizeCategoryName } from "@/utils/validation";
 import { normalizeCategorySlug } from "@/utils/category";
 import { CreditCard, Banknote, Zap, FileText, Building2, ArrowLeftRight } from "lucide-react";
-import { FIXED_CATEGORIES, CATEGORY_GROUPS, getCategoryLabel, getCategoriesByType, getCategoryGroupsByType } from "@/constants/financialData";
+import { FIXED_CATEGORIES, getCategoryLabel, getCategoriesByType, getCategoryGroupsByType } from "@/constants/financialData";
 import { CategorySelect } from "./CategorySelect";
 import { friendlyError } from "@/utils/friendlyError";
+import { cn } from "@/lib/utils";
+
 interface AddTransactionFabProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -34,6 +35,7 @@ export const AddTransactionFab = ({ open, onOpenChange, onTransactionAdded }: Ad
   });
   const [categories, setCategories] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const { toast } = useToast();
 
   // Payment method & bank/card selection
@@ -55,11 +57,22 @@ export const AddTransactionFab = ({ open, onOpenChange, onTransactionAdded }: Ad
     }
   }, [open]);
 
+  const clearFieldError = (field: string) => {
+    setFieldErrors((prev) => {
+      if (!prev[field]) return prev;
+      const next = { ...prev };
+      delete next[field];
+      return next;
+    });
+  };
+
   useEffect(() => {
     if (open) {
       loadCategories();
       loadCreditCards();
       loadBankAccounts();
+    } else {
+      setFieldErrors({});
     }
   }, [open]);
 
@@ -119,6 +132,7 @@ export const AddTransactionFab = ({ open, onOpenChange, onTransactionAdded }: Ad
 
   const handleAmountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setAmount(formatCurrency(e.target.value));
+    clearFieldError("amount");
   };
 
   // Merge fixed categories with user custom categories
@@ -144,34 +158,47 @@ export const AddTransactionFab = ({ open, onOpenChange, onTransactionAdded }: Ad
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!amount || !description || !category) {
-      toast({ title: "Erro", description: "Preencha todos os campos obrigatórios", variant: "destructive" });
-      return;
-    }
+    const errors: Record<string, string> = {};
 
-    if (needsBank && !selectedBankId) {
-      toast({ title: "Erro", description: "Selecione o banco", variant: "destructive" });
-      return;
-    }
-
-    if (needsCreditCard && !selectedCardId) {
-      toast({ title: "Erro", description: "Selecione o cartão de crédito", variant: "destructive" });
-      return;
-    }
-
-    const amountValidation = isValidAmount(amount);
-    if (!amountValidation.valid) {
-      toast({ title: "Erro", description: amountValidation.message, variant: "destructive" });
-      return;
+    if (!amount) {
+      errors.amount = "Informe o valor";
+    } else {
+      const amountValidation = isValidAmount(amount);
+      if (!amountValidation.valid) {
+        errors.amount = amountValidation.message || "Valor inválido";
+      }
     }
 
     const sanitizedDescription = sanitizeDescription(description);
-    const sanitizedCategory = normalizeCategorySlug(sanitizeCategoryName(category));
+    if (!description.trim()) {
+      errors.description = "Informe a descrição";
+    } else if (!sanitizedDescription || sanitizedDescription.length < 3) {
+      errors.description = "Descrição deve ter pelo menos 3 caracteres";
+    }
 
-    if (!sanitizedDescription || sanitizedDescription.length < 3) {
-      toast({ title: "Erro", description: "Descrição deve ter pelo menos 3 caracteres", variant: "destructive" });
+    if (!isTransfer && !category) {
+      errors.category = "Escolha a categoria";
+    }
+
+    if (needsBank && !selectedBankId) {
+      errors.bank = "Selecione o banco/cartão";
+    }
+
+    if (needsCreditCard && !selectedCardId) {
+      errors.card = "Selecione o banco/cartão";
+    }
+
+    if (Object.keys(errors).length > 0) {
+      setFieldErrors(errors);
+      const firstError = Object.values(errors)[0];
+      toast({ title: "Erro", description: firstError, variant: "destructive" });
       return;
     }
+
+    setFieldErrors({});
+
+    const amountValidation = isValidAmount(amount);
+    const sanitizedCategory = normalizeCategorySlug(sanitizeCategoryName(category));
 
     setLoading(true);
 
@@ -281,6 +308,7 @@ export const AddTransactionFab = ({ open, onOpenChange, onTransactionAdded }: Ad
       setPaymentMethod("debit"); setSelectedCardId(""); setSelectedBankId("");
       setIsInstallment(false); setInstallmentCount("2");
       setIsFixed(false); setFixedMonths("12");
+      setFieldErrors({});
       onOpenChange(false);
       onTransactionAdded?.();
     } catch (error: any) {
@@ -293,22 +321,38 @@ export const AddTransactionFab = ({ open, onOpenChange, onTransactionAdded }: Ad
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto max-sm:left-6 max-sm:right-6 max-sm:top-6 max-sm:bottom-6 max-sm:translate-x-0 max-sm:translate-y-0 max-sm:max-h-none max-sm:pb-12 max-sm:w-[calc(100vw-3rem)] max-sm:max-w-[calc(100vw-3rem)]">
+      <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto max-sm:inset-x-0 max-sm:bottom-0 max-sm:top-auto max-sm:left-0 max-sm:translate-x-0 max-sm:translate-y-0 max-sm:rounded-t-2xl max-sm:max-h-[92dvh] max-sm:gap-3">
         <DialogHeader><DialogTitle>Nova Transação</DialogTitle></DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
-          {/* Tipo */}
-          <div>
+          {/* Tipo — segment control */}
+          <div className="space-y-2">
             <Label className="text-sm font-medium text-foreground">Tipo</Label>
-            <RadioGroup value={type} onValueChange={(v) => setType(v as "income" | "expense")} className="flex gap-6 mt-2">
-              <div className="flex items-center space-x-2">
-                <RadioGroupItem value="expense" id="expense-fab" />
-                <Label htmlFor="expense-fab" className="text-foreground">Despesa</Label>
-              </div>
-              <div className="flex items-center space-x-2">
-                <RadioGroupItem value="income" id="income-fab" />
-                <Label htmlFor="income-fab" className="text-foreground">Receita</Label>
-              </div>
-            </RadioGroup>
+            <div className="grid grid-cols-2 gap-1 rounded-lg bg-muted p-1">
+              <button
+                type="button"
+                onClick={() => setType("expense")}
+                className={cn(
+                  "rounded-md py-2 text-sm font-medium transition-colors",
+                  type === "expense"
+                    ? "bg-background text-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground"
+                )}
+              >
+                Despesa
+              </button>
+              <button
+                type="button"
+                onClick={() => setType("income")}
+                className={cn(
+                  "rounded-md py-2 text-sm font-medium transition-colors",
+                  type === "income"
+                    ? "bg-background text-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground"
+                )}
+              >
+                Receita
+              </button>
+            </div>
           </div>
 
           {/* Método de Pagamento - only for expenses */}
@@ -326,7 +370,7 @@ export const AddTransactionFab = ({ open, onOpenChange, onTransactionAdded }: Ad
                   <button
                     key={item.key}
                     type="button"
-                    onClick={() => { setPaymentMethod(item.key); setIsInstallment(false); if (item.key === 'transfer') setCategory('transferencia'); }}
+                    onClick={() => { setPaymentMethod(item.key); setIsInstallment(false); if (item.key === 'transfer') setCategory('transferencia'); clearFieldError("bank"); clearFieldError("card"); }}
                     className={`flex flex-col items-center gap-1 p-2 rounded-xl border-2 transition-all ${paymentMethod === item.key
                       ? item.activeClass
                       : "border-border bg-muted/30 text-muted-foreground hover:border-border/80"
@@ -350,8 +394,10 @@ export const AddTransactionFab = ({ open, onOpenChange, onTransactionAdded }: Ad
               {bankAccounts.length === 0 ? (
                 <p className="text-xs text-muted-foreground mt-1">Nenhum banco cadastrado. Vá em Bancos e Cartões para cadastrar.</p>
               ) : (
-                <Select value={selectedBankId} onValueChange={setSelectedBankId}>
-                  <SelectTrigger className="mt-1"><SelectValue placeholder="Selecione o banco" /></SelectTrigger>
+                <Select value={selectedBankId} onValueChange={(v) => { setSelectedBankId(v); clearFieldError("bank"); }}>
+                  <SelectTrigger className={cn("mt-1", fieldErrors.bank && "border-destructive")}>
+                    <SelectValue placeholder="Selecione o banco" />
+                  </SelectTrigger>
                   <SelectContent>
                     {bankAccounts.map(bank => (
                       <SelectItem key={bank.id} value={bank.id}>
@@ -364,6 +410,7 @@ export const AddTransactionFab = ({ open, onOpenChange, onTransactionAdded }: Ad
                   </SelectContent>
                 </Select>
               )}
+              {fieldErrors.bank && <p className="mt-1 text-xs text-destructive">{fieldErrors.bank}</p>}
             </div>
           )}
 
@@ -378,8 +425,10 @@ export const AddTransactionFab = ({ open, onOpenChange, onTransactionAdded }: Ad
                 {creditCards.length === 0 ? (
                   <p className="text-xs text-muted-foreground mt-1">Nenhum cartão cadastrado. Vá em Bancos e Cartões para cadastrar.</p>
                 ) : (
-                  <Select value={selectedCardId} onValueChange={setSelectedCardId}>
-                    <SelectTrigger className="mt-1"><SelectValue placeholder="Selecione o cartão" /></SelectTrigger>
+                  <Select value={selectedCardId} onValueChange={(v) => { setSelectedCardId(v); clearFieldError("card"); }}>
+                    <SelectTrigger className={cn("mt-1", fieldErrors.card && "border-destructive")}>
+                      <SelectValue placeholder="Selecione o cartão" />
+                    </SelectTrigger>
                     <SelectContent>
                       {creditCards.map(card => (
                         <SelectItem key={card.id} value={card.id}>
@@ -392,6 +441,7 @@ export const AddTransactionFab = ({ open, onOpenChange, onTransactionAdded }: Ad
                     </SelectContent>
                   </Select>
                 )}
+                {fieldErrors.card && <p className="mt-1 text-xs text-destructive">{fieldErrors.card}</p>}
               </div>
               <div className="flex items-center justify-between">
                 <Label className="text-sm text-foreground">Parcelado?</Label>
@@ -437,9 +487,13 @@ export const AddTransactionFab = ({ open, onOpenChange, onTransactionAdded }: Ad
                   placeholder="0,00"
                   value={amount}
                   onChange={handleAmountChange}
-                  className="pl-10 text-foreground text-right font-semibold text-lg h-10"
+                  className={cn(
+                    "pl-10 text-foreground text-right font-semibold text-lg h-10",
+                    fieldErrors.amount && "border-destructive"
+                  )}
                 />
               </div>
+              {fieldErrors.amount && <p className="mt-1 text-xs text-destructive">{fieldErrors.amount}</p>}
             </div>
           </div>
 
@@ -454,7 +508,15 @@ export const AddTransactionFab = ({ open, onOpenChange, onTransactionAdded }: Ad
           {/* Descrição */}
           <div>
             <Label htmlFor="description-fab" className="text-sm font-medium text-foreground">Descrição</Label>
-            <Input id="description-fab" type="text" placeholder="Descreva a transação" value={description} onChange={(e) => setDescription(e.target.value)} className="mt-1 text-foreground" />
+            <Input
+              id="description-fab"
+              type="text"
+              placeholder="Descreva a transação"
+              value={description}
+              onChange={(e) => { setDescription(e.target.value); clearFieldError("description"); }}
+              className={cn("mt-1 text-foreground", fieldErrors.description && "border-destructive")}
+            />
+            {fieldErrors.description && <p className="mt-1 text-xs text-destructive">{fieldErrors.description}</p>}
           </div>
 
           {/* Transação Fixa / Recorrente (Não aplicável a parcelamento de cartão) */}
@@ -486,20 +548,21 @@ export const AddTransactionFab = ({ open, onOpenChange, onTransactionAdded }: Ad
 
           {/* Categoria */}
           {!isTransfer && (
-            <div>
+            <div className={cn(fieldErrors.category && "[&_button]:border-destructive")}>
               <Label htmlFor="category-fab" className="text-sm font-medium text-foreground mb-1.5 block">Categoria</Label>
               <CategorySelect
                 value={category}
-                onValueChange={setCategory}
+                onValueChange={(v) => { setCategory(v); clearFieldError("category"); }}
                 type={type}
                 categories={categories}
                 excludeFixedCategoryValues={hiddenFixedSubcats}
               />
+              {fieldErrors.category && <p className="mt-1 text-xs text-destructive">{fieldErrors.category}</p>}
             </div>
           )}
 
-          {/* Buttons */}
-          <div className="flex gap-3 pt-4">
+          {/* Sticky actions on mobile */}
+          <div className="sticky bottom-0 z-10 flex gap-3 border-t bg-background pt-3 pb-1 max-sm:-mx-6 max-sm:px-6">
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)} className="flex-1" disabled={loading}>Cancelar</Button>
             <Button type="submit" className="flex-1 bg-primary hover:bg-primary/90" disabled={loading}>{loading ? "Adicionando..." : "Adicionar"}</Button>
           </div>

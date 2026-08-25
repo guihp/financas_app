@@ -29,7 +29,7 @@ export default defineConfig(({ mode }) => ({
         short_name: "IAFÉ",
         description: "Controle financeiro inteligente da IAFÉ Finanças",
         theme_color: "#6b21a8",
-        background_color: "#6b21a8",
+        background_color: "#ffffff",
         display: "standalone",
         orientation: "portrait-primary",
         start_url: "/",

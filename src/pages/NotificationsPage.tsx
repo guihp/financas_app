@@ -109,23 +109,23 @@ const NotificationsPage = () => {
 
   const values = prefs || { user_id: user.id, ...DEFAULT_NOTIFICATION_PREFS };
 
-  const permissionLabel =
-    permission === "granted"
-      ? "Permitido"
-      : permission === "denied"
-        ? "Bloqueado no navegador"
-        : "Ainda não solicitado";
+  const activateDisabled =
+    loading ||
+    !isSupported ||
+    !vapidConfigured ||
+    isSubscribed ||
+    permission === "denied";
 
   const handleToggle = async (key: PreferenceToggleKey, checked: boolean) => {
     if (key === "push_enabled") {
       if (checked) {
         const ok = await subscribe();
-        if (ok) toast.success("Push ativado");
+        if (ok) toast.success("Notificações ativadas");
         else toast.error(error || "Não foi possível ativar o push");
         return;
       }
       const ok = await unsubscribe();
-      if (ok) toast.success("Push desativado");
+      if (ok) toast.success("Notificações desativadas");
       else toast.error(error || "Não foi possível desativar o push");
       return;
     }
@@ -139,7 +139,7 @@ const NotificationsPage = () => {
   };
 
   return (
-    <div className="mx-auto max-w-2xl space-y-6">
+    <div className="mx-auto max-w-2xl space-y-6 pb-32 lg:pb-6">
       <div>
         <h1 className="text-2xl font-bold text-foreground">Notificações</h1>
         <p className="text-sm text-muted-foreground">
@@ -157,63 +157,27 @@ const NotificationsPage = () => {
             )}
             Push no dispositivo
           </CardTitle>
-          <CardDescription>
-            Status do navegador e inscrição Web Push (VAPID).
-          </CardDescription>
         </CardHeader>
-        <CardContent className="space-y-4">
-          <dl className="grid gap-2 text-sm">
-            <div className="flex justify-between gap-4">
-              <dt className="text-muted-foreground">Suporte do navegador</dt>
-              <dd className="font-medium">
-                {isSupported ? "Sim" : "Não suportado"}
-              </dd>
-            </div>
-            <div className="flex justify-between gap-4">
-              <dt className="text-muted-foreground">Permissão</dt>
-              <dd className="font-medium">{permissionLabel}</dd>
-            </div>
-            <div className="flex justify-between gap-4">
-              <dt className="text-muted-foreground">Inscrito</dt>
-              <dd className="font-medium">{isSubscribed ? "Sim" : "Não"}</dd>
-            </div>
-            <div className="flex justify-between gap-4">
-              <dt className="text-muted-foreground">Chave VAPID</dt>
-              <dd className="font-medium">
-                {vapidConfigured ? "Configurada" : "Ausente"}
-              </dd>
-            </div>
-          </dl>
-
-          {!vapidConfigured && (
-            <p className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">
-              Defina <code className="font-mono">VITE_VAPID_PUBLIC_KEY</code> no
-              ambiente de build para ativar push.
-            </p>
-          )}
-
-          {error && (
-            <p className="text-sm text-destructive">{error}</p>
-          )}
-
+        <CardContent>
           <div className="flex flex-wrap gap-2">
             <Button
-              disabled={loading || !isSupported || !vapidConfigured}
+              variant={isSubscribed ? "secondary" : "default"}
+              disabled={activateDisabled}
               onClick={async () => {
                 const ok = await subscribe();
-                if (ok) toast.success("Push ativado");
+                if (ok) toast.success("Notificações ativadas");
                 else toast.error(error || "Falha ao ativar");
               }}
             >
               {loading && <Loader2 className="h-4 w-4 animate-spin" />}
-              Ativar push
+              Ativar Notificações
             </Button>
             <Button
               variant="outline"
-              disabled={loading || !isSubscribed}
+              disabled={!isSubscribed || loading}
               onClick={async () => {
                 const ok = await unsubscribe();
-                if (ok) toast.success("Push desativado");
+                if (ok) toast.success("Notificações desativadas");
                 else toast.error(error || "Falha ao desativar");
               }}
             >
