@@ -26,7 +26,7 @@ import {
   Bell,
   Download,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { AddTransactionFab } from "@/components/AddTransactionFab";
 import { PwaInstallDialog } from "@/components/PwaInstallDialog";
@@ -50,30 +50,6 @@ export const MobileBottomNav = ({
   userEmail,
   isSuperAdmin = false,
 }: MobileBottomNavProps) => {
-  // #region agent log
-  useEffect(() => {
-    const logDock = (reason: string) => {
-      const el = document.querySelector('[data-debug-dock="1"]') as HTMLElement | null;
-      if (!el) return;
-      const r = el.getBoundingClientRect();
-      const cs = window.getComputedStyle(el);
-      fetch('http://127.0.0.1:7555/ingest/a8f36c2f-592a-4e64-97c2-85dc6e6c5989',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'e03f61'},body:JSON.stringify({sessionId:'e03f61',runId:'pre-fix',hypothesisId:'M1',location:'mobile-bottom-nav.tsx:scroll',message:'dock position',data:{reason,top:r.top,bottom:r.bottom,height:r.height,vh:window.innerHeight,vvh:window.visualViewport?.height??null,position:cs.position,transform:cs.transform,parentTransform:el.parentElement?(window.getComputedStyle(el.parentElement).transform):null},timestamp:Date.now()})}).catch(()=>{});
-    };
-    const onScroll = () => logDock('scroll');
-    const onVv = () => logDock('visualViewport');
-    logDock('mount');
-    window.addEventListener('scroll', onScroll, { passive: true });
-    document.addEventListener('scroll', onScroll, { passive: true, capture: true });
-    window.visualViewport?.addEventListener('resize', onVv);
-    window.visualViewport?.addEventListener('scroll', onVv);
-    return () => {
-      window.removeEventListener('scroll', onScroll);
-      document.removeEventListener('scroll', onScroll, true);
-      window.visualViewport?.removeEventListener('resize', onVv);
-      window.visualViewport?.removeEventListener('scroll', onVv);
-    };
-  }, []);
-  // #endregion
   const navigate = useNavigate();
   const location = useLocation();
   const [showAddDialog, setShowAddDialog] = useState(false);
@@ -263,7 +239,6 @@ export const MobileBottomNav = ({
       <AnimatePresence>
         {!showMoreMenu && (
           <motion.div
-            data-debug-dock="1"
             initial={{ y: 100, opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}
             exit={{ y: 100, opacity: 0 }}

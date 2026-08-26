@@ -5,13 +5,49 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger as AlertDialogTriggerBtn } from "@/components/ui/alert-dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { friendlyError } from "@/utils/friendlyError";
 import { User } from "@supabase/supabase-js";
+
+/** Resolve phone to an existing registraAi_dados.id, or null (avoids FK 409). */
+async function resolveWhatsAppPhoneId(
+  rawPhone: string | null | undefined
+): Promise<string | null> {
+  if (!rawPhone) return null;
+
+  const digits = rawPhone.replace(/\D/g, "");
+  if (!digits) return null;
+
+  const withCountry = digits.startsWith("55") ? digits : `55${digits}`;
+  const candidates = new Set<string>([
+    `${withCountry}@s.whatsapp.net`,
+    `${digits}@s.whatsapp.net`,
+  ]);
+
+  // BR mobile: 55 + DDD + 9 + 8 digits ↔ without the 9
+  const withNine = withCountry.match(/^55(\d{2})9(\d{8})$/);
+  if (withNine) {
+    candidates.add(`55${withNine[1]}${withNine[2]}@s.whatsapp.net`);
+  }
+  const withoutNine = withCountry.match(/^55(\d{2})(\d{8})$/);
+  if (withoutNine) {
+    candidates.add(`55${withoutNine[1]}9${withoutNine[2]}@s.whatsapp.net`);
+  }
+
+  const list = [...candidates];
+  const { data } = await supabase
+    .from("registraAi_dados")
+    .select("id")
+    .in("id", list)
+    .limit(1);
+
+  return data?.[0]?.id ?? null;
+}
 
 interface Appointment {
   id: string;
@@ -121,15 +157,9 @@ export const Appointments = ({ user }: AppointmentsProps) => {
         .eq('user_id', user.id)
         .single();
 
-      // Formatar o phone no padrão WhatsApp: 55{phone}@s.whatsapp.net
-      let formattedPhone = null;
-      if (profileData?.phone) {
-        // Remove caracteres não numéricos do phone
-        const cleanPhone = profileData.phone.replace(/\D/g, '');
-        // Adiciona 55 se não começar com 55
-        const phoneWithCountry = cleanPhone.startsWith('55') ? cleanPhone : `55${cleanPhone}`;
-        formattedPhone = `${phoneWithCountry}@s.whatsapp.net`;
-      }
+      // FK appointments.phone → registraAi_dados(id). Só grava se o id existir
+      // (ex.: perfil 98988758339 vira 5598988758339@..., mas o cadastro pode ser 559888758339@...).
+      const formattedPhone = await resolveWhatsAppPhoneId(profileData?.phone);
 
       const { error } = await supabase.from("appointments").insert({
         title: newAppointment.title,
@@ -137,7 +167,7 @@ export const Appointments = ({ user }: AppointmentsProps) => {
         date: newAppointment.date,
         time: newAppointment.time || null,
         user_id: user.id,
-        phone: formattedPhone, // Adicionar phone formatado
+        phone: formattedPhone,
       });
 
       if (error) throw error;
@@ -154,7 +184,7 @@ export const Appointments = ({ user }: AppointmentsProps) => {
       console.error("Error creating appointment:", error);
       toast({
         title: "Erro",
-        description: "Não foi possível criar o agendamento.",
+        description: friendlyError(error, "Não foi possível criar o agendamento."),
         variant: "destructive",
       });
     }
@@ -270,6 +300,9 @@ export const Appointments = ({ user }: AppointmentsProps) => {
             <DialogContent>
               <DialogHeader>
                 <DialogTitle>Criar Novo Agendamento</DialogTitle>
+                <DialogDescription>
+                  Defina título, data e horário do lembrete.
+                </DialogDescription>
               </DialogHeader>
               <div className="space-y-4">
                 {validationError && (

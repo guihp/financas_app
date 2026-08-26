@@ -164,17 +164,11 @@ export function usePushNotifications(userId: string | undefined) {
 
     if (!VAPID_PUBLIC_KEY) {
       setError("VITE_VAPID_PUBLIC_KEY não configurada");
-      // #region agent log
-      fetch('http://127.0.0.1:7555/ingest/a8f36c2f-592a-4e64-97c2-85dc6e6c5989',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'e03f61'},body:JSON.stringify({sessionId:'e03f61',runId:'pre-fix',hypothesisId:'N1',location:'usePushNotifications.ts:subscribe',message:'vapid missing',data:{vapidConfigured:false},timestamp:Date.now()})}).catch(()=>{});
-      // #endregion
       return false;
     }
 
     if (!("serviceWorker" in navigator) || !("PushManager" in window)) {
       setError("Push não é suportado neste navegador");
-      // #region agent log
-      fetch('http://127.0.0.1:7555/ingest/a8f36c2f-592a-4e64-97c2-85dc6e6c5989',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'e03f61'},body:JSON.stringify({sessionId:'e03f61',runId:'pre-fix',hypothesisId:'N2',location:'usePushNotifications.ts:subscribe',message:'push unsupported',data:{},timestamp:Date.now()})}).catch(()=>{});
-      // #endregion
       return false;
     }
 
@@ -184,16 +178,10 @@ export function usePushNotifications(userId: string | undefined) {
       setPermission(perm);
       if (perm !== "granted") {
         setError("Permissão de notificação negada");
-        // #region agent log
-        fetch('http://127.0.0.1:7555/ingest/a8f36c2f-592a-4e64-97c2-85dc6e6c5989',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'e03f61'},body:JSON.stringify({sessionId:'e03f61',runId:'pre-fix',hypothesisId:'N3',location:'usePushNotifications.ts:subscribe',message:'permission denied',data:{perm},timestamp:Date.now()})}).catch(()=>{});
-        // #endregion
         return false;
       }
 
       const reg = await navigator.serviceWorker.ready;
-      // #region agent log
-      fetch('http://127.0.0.1:7555/ingest/a8f36c2f-592a-4e64-97c2-85dc6e6c5989',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'e03f61'},body:JSON.stringify({sessionId:'e03f61',runId:'pre-fix',hypothesisId:'N4',location:'usePushNotifications.ts:subscribe',message:'sw ready',data:{scope:reg.scope,active:Boolean(reg.active)},timestamp:Date.now()})}).catch(()=>{});
-      // #endregion
       let sub = await reg.pushManager.getSubscription();
 
       if (!sub) {
@@ -210,10 +198,6 @@ export function usePushNotifications(userId: string | undefined) {
         auth: json.keys?.auth,
         user_agent: navigator.userAgent,
       });
-
-      // #region agent log
-      fetch('http://127.0.0.1:7555/ingest/a8f36c2f-592a-4e64-97c2-85dc6e6c5989',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'e03f61'},body:JSON.stringify({sessionId:'e03f61',runId:'pre-fix',hypothesisId:'N5',location:'usePushNotifications.ts:subscribe',message:'manage-push result',data:{ok:result.ok,error:result.error||null,endpointHost:(json.endpoint||'').split('/')[2]||null,hasKeys:Boolean(json.keys?.p256dh&&json.keys?.auth)},timestamp:Date.now()})}).catch(()=>{});
-      // #endregion
 
       if (!result.ok) {
         setError(result.error || "Falha ao salvar inscrição");
