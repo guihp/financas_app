@@ -138,10 +138,13 @@ const AdminSupremoFinancas = () => {
             totalUsersCount = countTotal || 0;
 
             let partialRegCount = 0;
-            const { count: countPartial } = await supabase
-                .from("otp_codes")
-                .select('*', { count: 'exact', head: true })
-                .eq("verified", false);
+            const { count: countPartial, error: partialCountError } = await supabase
+                .from("partial_leads")
+                .select('*', { count: 'exact', head: true });
+            if (partialCountError) {
+                console.error("Erro ao contar partial_leads:", partialCountError);
+                toast.error("Não foi possível carregar cadastros parciais.");
+            }
             partialRegCount = countPartial || 0;
 
             let payingUsersCount = 0;

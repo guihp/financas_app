@@ -231,15 +231,22 @@ const Auth = ({ defaultTab = "login" }: AuthProps) => {
     if (email && email.includes("@")) {
       try {
         const cleanPhone = phone ? getCleanPhoneForBackend(phone, phoneCountry) : null;
-        await supabase.from("partial_leads").upsert({
+        const { error } = await supabase.from("partial_leads").upsert({
           email: email.trim().toLowerCase(),
           full_name: fullName.trim() || null,
           phone: cleanPhone || null,
           updated_at: new Date().toISOString()
         }, { onConflict: 'email' });
+        if (error) {
+          console.error("Failed to capture partial lead:", {
+            code: error.code,
+            message: error.message,
+            details: error.details,
+          });
+        }
       } catch (err) {
-        // Silent fail for partial leads
-        console.warn("Failed to capture partial lead:", err);
+        // Silent for visitor UX; log for debugging
+        console.error("Failed to capture partial lead (unexpected):", err);
       }
     }
   };

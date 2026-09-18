@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { format } from "date-fns";
+import { format, subDays } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Copy, UserX, Clock, CreditCard, Gift, CheckCircle2, AlertCircle, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { toast } from "sonner";
 import { AdminFunnelSummary } from "@/components/admin/AdminFunnelSummary";
 import {
     AdminPaymentMethodBadge,
@@ -40,17 +41,32 @@ export const AdminLeadsList = () => {
     const fetchKanbanData = async () => {
         setLoading(true);
         try {
-            const { data: profiles } = await supabase.from('profiles').select('*').order('created_at', { ascending: false });
+            const [
+                { data: profiles, error: profilesError },
+                { data: partialLeads, error: partialError },
+                { data: pendingRegs, error: pendingError },
+                { data: subscriptions, error: subsError },
+                { data: desistentes, error: desistentesError },
+            ] = await Promise.all([
+                supabase.from('profiles').select('*').order('created_at', { ascending: false }),
+                supabase.from('partial_leads').select('*').order('updated_at', { ascending: false }),
+                supabase.from('pending_registrations').select('*').order('created_at', { ascending: false }),
+                supabase.from('subscriptions').select('*').order('created_at', { ascending: false }),
+                supabase.from('desistentes').select('*').order('canceled_at', { ascending: false }),
+            ]);
+
+            if (profilesError || partialError || pendingError || subsError || desistentesError) {
+                console.error("Erro ao buscar dados do funil:", {
+                    profilesError,
+                    partialError,
+                    pendingError,
+                    subsError,
+                    desistentesError,
+                });
+                toast.error("Não foi possível carregar o funil de conversão.");
+            }
+
             const profileEmails = new Set(profiles?.map(p => p.email?.toLowerCase()));
-
-            const { data: partialLeads } = await supabase.from('partial_leads').select('*').order('updated_at', { ascending: false });
-
-            const { data: pendingRegs } = await supabase.from('pending_registrations').select('*').order('created_at', { ascending: false });
-
-            const { data: subscriptions, error: subsError } = await supabase.from('subscriptions').select('*').order('created_at', { ascending: false });
-            if (subsError) console.error("Error fetching subscriptions:", subsError);
-
-            const { data: desistentes } = await supabase.from('desistentes').select('*').order('canceled_at', { ascending: false });
 
             const paymentMethodByEmail = buildPaymentMethodByEmail(pendingRegs || []);
 
@@ -61,18 +77,21 @@ export const AdminLeadsList = () => {
             const pendingRegPhones = new Set(pendingRegs?.filter(pr => pr.phone).map(pr => pr.phone));
             const profilePhones = new Set(profiles?.filter(p => p.phone).map(p => p.phone));
 
+            // Col1: só leads ainda sem profile e sem pending (pending vai para Abandonos)
             const c1: KanbanCard[] = [];
             partialLeads?.forEach(pl => {
-                const hasEmail = profileEmails.has(pl.email?.toLowerCase()) || pendingRegEmails.has(pl.email?.toLowerCase());
-                const hasPhone = pl.phone && (profilePhones.has(pl.phone) || pendingRegPhones.has(pl.phone));
+                const emailKey = pl.email?.toLowerCase();
+                const hasProfile = profileEmails.has(emailKey) || (pl.phone && profilePhones.has(pl.phone));
+                const hasPending = pendingRegEmails.has(emailKey) || (pl.phone && pendingRegPhones.has(pl.phone));
 
-                if (!hasEmail && !hasPhone) {
+                if (!hasProfile && !hasPending) {
                     c1.push({
                         id: pl.id,
                         name: pl.full_name || "Sem Nome",
                         email: pl.email,
                         phone: pl.phone || "",
-                        date: pl.updated_at
+                        date: pl.updated_at || pl.created_at,
+                        tag: 'Formulário incompleto',
                     });
                 }
             });
@@ -97,22 +116,38 @@ export const AdminLeadsList = () => {
 
             const canceledUserIds = new Set(desistentes?.map(d => d.user_id));
             const c2: KanbanCard[] = [];
+            const pendingEmailsInCol2 = new Set<string>();
 
-            pendingRegs?.forEach(pr => {
-                if (pr.status !== 'paid' && !profileEmails.has(pr.email?.toLowerCase())) {
-                    c2.push({
-                        id: pr.id,
-                        name: pr.full_name || "Sem Nome",
-                        email: pr.email,
-                        phone: pr.phone || "",
-                        date: pr.created_at,
-                        tag: pr.payment_method === 'CREDIT_CARD' ? 'Cartão Rejeitado' : 'Pix Pendente',
-                    });
-                }
+            // Abandonos: pending não pago — inclusive se já existir profile (pagamento pendente)
+            // Um card por e-mail (mais recente), para não poluir o Kanban
+            const unpaidPending = [...(pendingRegs || [])]
+                .filter((pr) => pr.status !== 'paid')
+                .sort((a, b) => new Date(b.updated_at || b.created_at).getTime() - new Date(a.updated_at || a.created_at).getTime());
+
+            unpaidPending.forEach(pr => {
+                const emailKey = pr.email?.toLowerCase();
+                if (emailKey && pendingEmailsInCol2.has(emailKey)) return;
+
+                const alreadyHasProfile = emailKey ? profileEmails.has(emailKey) : false;
+                const methodTag = pr.payment_method === 'CREDIT_CARD' ? 'Cartão Rejeitado' : 'Pix Pendente';
+
+                c2.push({
+                    id: pr.id,
+                    name: pr.full_name || "Sem Nome",
+                    email: pr.email,
+                    phone: pr.phone || "",
+                    date: pr.updated_at || pr.created_at,
+                    tag: alreadyHasProfile ? `Pagamento pendente (já tem conta)` : methodTag,
+                });
+                if (emailKey) pendingEmailsInCol2.add(emailKey);
             });
 
             profiles?.forEach(p => {
                 if (!activeSubUserIds.has(p.user_id) && !canceledUserIds.has(p.user_id)) {
+                    const emailKey = p.email?.toLowerCase();
+                    // Evita duplicar quem já está em Abandonos via pending_registrations
+                    if (emailKey && pendingEmailsInCol2.has(emailKey)) return;
+
                     const hasInactive = subscriptions?.some(s => s.user_id === p.user_id);
                     if (!hasInactive) {
                         c2.push({
@@ -204,6 +239,7 @@ export const AdminLeadsList = () => {
 
         } catch (error) {
             console.error("Erro ao buscar leads do funil:", error);
+            toast.error("Não foi possível carregar o funil de conversão.");
         } finally {
             setLoading(false);
         }
@@ -211,12 +247,17 @@ export const AdminLeadsList = () => {
 
     const funnelStats = useMemo(() => {
         const inFunnel = col1.length + col2.length;
+        const weekAgo = subDays(new Date(), 7).getTime();
+        const recentUpdates = [...col1, ...col2].filter(
+            (c) => new Date(c.date).getTime() >= weekAgo
+        ).length;
         return {
             leads: inFunnel + col3.length + col4.length,
             trial: col3.length,
             paying: col4.length,
             pixPaying: col4.filter((c) => c.paymentMethod === "PIX").length,
             cardPaying: col4.filter((c) => c.paymentMethod === "CREDIT_CARD").length,
+            recentUpdates,
         };
     }, [col1, col2, col3, col4]);
 
@@ -340,6 +381,12 @@ export const AdminLeadsList = () => {
                     <p className="text-sm text-muted-foreground mt-1 max-w-2xl">
                         Acompanhe cada etapa do checkout, identifique abandonos e veja como cada assinante pagou (PIX ou cartão).
                     </p>
+                    {funnelStats.recentUpdates > 0 && (
+                        <p className="text-xs text-orange-600 dark:text-orange-400 mt-2 font-medium">
+                            {funnelStats.recentUpdates} lead{funnelStats.recentUpdates === 1 ? "" : "s"} atualizado
+                            {funnelStats.recentUpdates === 1 ? "" : "s"} nos últimos 7 dias (Formulário Incompleto + Abandonos)
+                        </p>
+                    )}
                 </div>
                 <Button variant="outline" size="sm" onClick={fetchKanbanData} className="shrink-0 gap-2">
                     <RefreshCw className="h-4 w-4" />
