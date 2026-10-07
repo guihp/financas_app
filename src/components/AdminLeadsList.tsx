@@ -120,8 +120,10 @@ export const AdminLeadsList = () => {
 
             // Abandonos: pending não pago — inclusive se já existir profile (pagamento pendente)
             // Um card por e-mail (mais recente), para não poluir o Kanban
+            // 'registered' / 'card_registered' já viraram conta (assinante ou trial):
+            // não são abandono.
             const unpaidPending = [...(pendingRegs || [])]
-                .filter((pr) => pr.status !== 'paid')
+                .filter((pr) => !['paid', 'registered', 'card_registered'].includes(pr.status))
                 .sort((a, b) => new Date(b.updated_at || b.created_at).getTime() - new Date(a.updated_at || a.created_at).getTime());
 
             unpaidPending.forEach(pr => {

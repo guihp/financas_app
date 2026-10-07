@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { requireRole } from '../_shared/admin-auth.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -21,6 +22,14 @@ serve(async (req) => {
       return new Response(
         JSON.stringify({ error: 'Method not allowed' }),
         { status: 405, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
+    const auth = await requireRole(req, supabase, ['admin', 'super_admin'])
+    if (!auth.ok) {
+      return new Response(
+        JSON.stringify({ error: auth.error }),
+        { status: auth.status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
 

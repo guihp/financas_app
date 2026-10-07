@@ -31,3 +31,55 @@ entrypoint = "./functions/update-old-subscriptions/index.ts"
 enabled = true
 verify_jwt = false
 entrypoint = "./functions/process-asaas-webhook/index.ts"
+
+# Funcoes administrativas: exigem JWT de usuario + papel em user_roles
+# (checado em _shared/admin-auth.ts).
+[functions.debug-list-users]
+verify_jwt = true
+
+[functions.toggle-user-status]
+verify_jwt = true
+
+[functions.delete-user]
+verify_jwt = true
+
+[functions.confirm-user-email]
+verify_jwt = true
+
+[functions.auto-assign-super-admin]
+verify_jwt = true
+
+[functions.admin-update-user-role]
+verify_jwt = true
+
+# Funcoes chamadas pelo pg_cron/n8n/outras edge functions com a service key.
+# verify_jwt fica false porque a SUPABASE_SERVICE_ROLE_KEY do runtime pode nao
+# ser um JWT; a autenticacao e feita em _shared/service-auth.ts.
+[functions.dispatch-notification]
+verify_jwt = false
+
+[functions.engagement-notifications]
+verify_jwt = false
+
+[functions.appointment-notifications]
+verify_jwt = false
+
+[functions.send-payment-email]
+verify_jwt = false
+
+# Chamadas pelo frontend antes do login (validacao propria no handler).
+[functions.register-user]
+verify_jwt = false
+
+[functions.generate-otp]
+verify_jwt = false
+
+[functions.verify-otp]
+verify_jwt = false
+
+# Validam o JWT do usuario dentro do handler.
+[functions.invite-user]
+verify_jwt = false
+
+[functions.respond-invitation]
+verify_jwt = false

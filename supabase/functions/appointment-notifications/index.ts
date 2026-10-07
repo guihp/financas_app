@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { isServiceRequest, unauthorizedResponse } from "../_shared/service-auth.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -31,6 +32,11 @@ const TITLE_MAP: Record<string, string> = {
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
+  }
+
+  // Somente o pg_cron (service_role) pode disparar.
+  if (!(await isServiceRequest(req))) {
+    return unauthorizedResponse(corsHeaders);
   }
 
   try {

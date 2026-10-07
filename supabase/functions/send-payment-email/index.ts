@@ -1,4 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { isServiceRequest, unauthorizedResponse } from "../_shared/service-auth.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -687,6 +688,11 @@ const getInvitationAcceptedEmailContent = (data: {
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
+  }
+
+  // Somente outras edge functions (service_role) podem disparar e-mails.
+  if (!(await isServiceRequest(req))) {
+    return unauthorizedResponse(corsHeaders);
   }
 
   try {

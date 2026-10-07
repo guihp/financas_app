@@ -4,6 +4,7 @@ import { jsPDF } from "npm:jspdf";
 import autoTable from "npm:jspdf-autotable";
 import { logoBase64 } from "./logo.ts";
 import { isUserSubscriptionInactive, SUBSCRIPTION_BLOCK_MESSAGE, SUBSCRIPTION_INACTIVE_CODE } from "../_shared/subscription.ts";
+import { isServiceOrSuperAdmin, unauthorizedResponse } from "../_shared/service-auth.ts";
 
 const corsHeaders = {
     'Access-Control-Allow-Origin': '*',
@@ -38,6 +39,11 @@ async function getUserIdByPhone(supabase: any, phone: string): Promise<string | 
 
 serve(async (req) => {
     if (req.method === 'OPTIONS') return new Response(null, { headers: corsHeaders });
+
+    // Somente n8n/cron (service_role) ou super_admin logado podem chamar.
+    if (!(await isServiceOrSuperAdmin(req))) {
+      return unauthorizedResponse(corsHeaders);
+    }
 
     try {
         const supabase = createClient(

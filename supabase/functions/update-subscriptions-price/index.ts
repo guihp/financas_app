@@ -77,7 +77,7 @@ serve(async (req) => {
         // cancellations keep their current charge flow.
         const { data: subscriptions, error: subError } = await supabaseAdmin
             .from('subscriptions')
-            .select('asaas_subscription_id, user_id')
+            .select('asaas_subscription_id, user_id, promotional_code_id')
             .not('asaas_subscription_id', 'is', null)
             .eq('status', 'active')
             .eq('is_trial', false)
@@ -91,17 +91,28 @@ serve(async (req) => {
             );
         }
 
-        // Collect all unique subscription IDs
-        const allSubIds = new Set<string>();
+        // Cupom e desconto permanente: quem assinou com cupom recebe o novo preco
+        // com o mesmo percentual de desconto, em vez de voltar ao preco cheio.
+        const { data: promoCodes } = await supabaseAdmin
+            .from('promotional_codes')
+            .select('id, discount_percentage');
+        const discountById = new Map((promoCodes || []).map((p: any) => [p.id, Number(p.discount_percentage) || 0]));
+        const priceFor = (promoId: string | null) => {
+            const discount = promoId ? (discountById.get(promoId) ?? 0) : 0;
+            return Math.round(newPrice * (1 - discount / 100) * 100) / 100;
+        };
+
+        // Subscription ID -> preco alvo
+        const allSubIds = new Map<string, number>();
         (subscriptions || []).forEach((s: any) => {
-            if (s.asaas_subscription_id) allSubIds.add(s.asaas_subscription_id);
+            if (s.asaas_subscription_id) allSubIds.set(s.asaas_subscription_id, priceFor(s.promotional_code_id));
         });
 
         console.log(`Found ${allSubIds.size} subscription(s) to update`);
 
         const results: { id: string; status: string; error?: string }[] = [];
 
-        for (const subId of allSubIds) {
+        for (const [subId, targetPrice] of allSubIds) {
             try {
                 // First, get the current subscription from Asaas to check its value
                 const getRes = await fetch(`${ASAAS_BASE_URL}/subscriptions/${subId}`, {
@@ -121,7 +132,7 @@ serve(async (req) => {
                 }
 
                 // Skip if already at the correct price
-                if (Number(subData.value) === newPrice) {
+                if (Number(subData.value) === targetPrice) {
                     results.push({ id: subId, status: 'already_correct' });
                     continue;
                 }
@@ -137,7 +148,7 @@ serve(async (req) => {
                         'access_token': ASAAS_API_KEY
                     },
                     body: JSON.stringify({
-                        value: newPrice,
+                        value: targetPrice,
                         updatePendingPayments: true
                     })
                 });
@@ -146,7 +157,7 @@ serve(async (req) => {
 
                 if (updateRes.ok && !updateData.errors) {
                     results.push({ id: subId, status: 'updated' });
-                    console.log(`Updated subscription ${subId} from R$${subData.value} to R$${newPrice}`);
+                    console.log(`Updated subscription ${subId} from R$${subData.value} to R$${targetPrice}`);
                 } else {
                     const errMsg = updateData.errors?.[0]?.description || 'Erro desconhecido';
                     results.push({ id: subId, status: 'error', error: errMsg });

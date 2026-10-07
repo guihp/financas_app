@@ -107,31 +107,18 @@ const PagamentoPendente = () => {
     setValidatingPromo(true);
     setPromoMessage(null);
     try {
-      const { data, error } = await supabase
-        .from('promotional_codes')
-        .select('*')
-        .eq('code', promoCode.trim().toUpperCase())
-        .single();
-      
+      // Valida só o código digitado (a tabela de cupons não é pública).
+      const { data: rows, error } = await supabase.rpc('validate_promo_code', {
+        p_code: promoCode.trim().toUpperCase(),
+      });
+      const data = Array.isArray(rows) ? rows[0] : rows;
+
       if (error || !data) {
-        setPromoMessage({ type: 'error', text: "Código inválido ou não encontrado." });
+        setPromoMessage({ type: 'error', text: "Código inválido, expirado ou inativo." });
         setAppliedPromo(null);
         return;
       }
-      
-      const now = new Date();
-      if (!data.status || (data.expires_at && new Date(data.expires_at) < now)) {
-        setPromoMessage({ type: 'error', text: "Código expirado ou inativo." });
-        setAppliedPromo(null);
-        return;
-      }
-      
-      if (data.usage_limit && data.usage_count >= data.usage_limit) {
-        setPromoMessage({ type: 'error', text: "Limite de uso atingido para este código." });
-        setAppliedPromo(null);
-        return;
-      }
-      
+
       setAppliedPromo({
         id: data.id,
         discountPercent: data.discount_percentage,

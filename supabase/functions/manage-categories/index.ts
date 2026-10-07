@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.53.0";
 import { isUserSubscriptionInactive, SUBSCRIPTION_BLOCK_MESSAGE, SUBSCRIPTION_INACTIVE_CODE } from "../_shared/subscription.ts";
+import { isServiceOrSuperAdmin, unauthorizedResponse } from "../_shared/service-auth.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -43,6 +44,11 @@ async function getUserIdByPhone(supabase: any, phone: string): Promise<string | 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
+  }
+
+  // Somente n8n/cron (service_role) ou super_admin logado podem chamar.
+  if (!(await isServiceOrSuperAdmin(req))) {
+    return unauthorizedResponse(corsHeaders);
   }
 
   try {

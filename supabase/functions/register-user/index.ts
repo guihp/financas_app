@@ -2,6 +2,7 @@ import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { scheduleWelcomeMessageN8n } from './n8n-welcome-webhook.ts';
+import { isServiceRequest, unauthorizedResponse } from '../_shared/service-auth.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -15,6 +16,13 @@ serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
+  }
+
+  // Cria contas: chamada apenas por outras edge functions (webhook Asaas,
+  // create-asaas-payment, check-payment-status) com a service key. Fechava o
+  // caminho legado de trial gratis via OTP, que nao e usado pelo app.
+  if (!(await isServiceRequest(req))) {
+    return unauthorizedResponse(corsHeaders);
   }
 
   try {
@@ -371,6 +379,12 @@ serve(async (req) => {
       console.error('Failed to create subscription:', subError);
     } else {
       console.log('Subscription created for user:', authData.user.id);
+      if (subscriptionData.promotional_code_id) {
+        const { error: promoErr } = await supabaseAdmin.rpc('increment_promo_usage', {
+          p_promo_id: subscriptionData.promotional_code_id,
+        });
+        if (promoErr) console.error('Failed to increment promo usage:', promoErr);
+      }
     }
 
     // ============================================
@@ -381,6 +395,7 @@ serve(async (req) => {
         .from('pending_registrations')
         .update({
           status: 'registered',
+          password_hash: null, // senha so era necessaria para criar a conta
           updated_at: new Date().toISOString()
         })
         .eq('id', registrationId);
@@ -411,7 +426,7 @@ serve(async (req) => {
         const emailPromise = fetch(`${supabaseUrl}/functions/v1/send-payment-email`, {
           method: 'POST',
           headers: {
-            'Authorization': `Bearer ${supabaseAnonKey}`,
+            'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''}`,
             'Content-Type': 'application/json'
           },
           body: JSON.stringify({

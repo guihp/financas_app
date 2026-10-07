@@ -8,8 +8,12 @@ const corsHeaders = {
 }
 
 // Generate random 6-digit OTP code
+const MAX_CODES_PER_HOUR = 5;
+
 function generateOTP(): string {
-  return Math.floor(100000 + Math.random() * 900000).toString();
+  const buf = new Uint32Array(1);
+  crypto.getRandomValues(buf);
+  return (100000 + (buf[0] % 900000)).toString();
 }
 
 serve(async (req) => {
@@ -44,12 +48,32 @@ serve(async (req) => {
     // Clean phone number (remove formatting)
     const cleanPhone = phone.replace(/\D/g, '');
 
-    // Delete any existing unverified OTP codes for this phone
+    // Limita quantos codigos podem ser gerados por telefone por hora
+    const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+    const { count: recentCodes } = await supabaseAdmin
+      .from('otp_codes')
+      .select('id', { count: 'exact', head: true })
+      .eq('phone', cleanPhone)
+      .gt('created_at', oneHourAgo);
+
+    if ((recentCodes ?? 0) >= MAX_CODES_PER_HOUR) {
+      return new Response(
+        JSON.stringify({ error: 'Muitas solicitações. Aguarde alguns minutos e tente novamente.' }),
+        {
+          status: 429,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        }
+      );
+    }
+
+    // Expira codigos anteriores nao verificados (mantem as linhas para o
+    // controle de tentativas por hora no verify-otp)
     await supabaseAdmin
       .from('otp_codes')
-      .delete()
+      .update({ expires_at: new Date().toISOString() })
       .eq('phone', cleanPhone)
-      .eq('verified', false);
+      .eq('verified', false)
+      .gt('expires_at', new Date().toISOString());
 
     // Insert new OTP code
     const { data: otpData, error: otpError } = await supabaseAdmin

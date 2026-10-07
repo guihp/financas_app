@@ -41,16 +41,22 @@ serve(async (req) => {
     // 24h e o novo em ASAAS_WEBHOOK_TOKEN.
     const expectedToken = Deno.env.get('ASAAS_WEBHOOK_TOKEN') ?? '';
     const expectedTokenPrev = Deno.env.get('ASAAS_WEBHOOK_TOKEN_PREV') ?? '';
-    if (expectedToken || expectedTokenPrev) {
-      const receivedToken = req.headers.get('asaas-access-token') ?? req.headers.get('Asaas-Access-Token') ?? '';
-      const accepted = [expectedToken, expectedTokenPrev].filter(Boolean);
-      if (!accepted.includes(receivedToken)) {
-        console.warn('Invalid asaas-access-token header. Rejecting.');
-        return new Response(JSON.stringify({ error: 'invalid signature' }), {
-          status: 401,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-        });
-      }
+    // Falha fechada: sem token configurado, nenhum webhook e aceito.
+    if (!expectedToken && !expectedTokenPrev) {
+      console.error('ASAAS_WEBHOOK_TOKEN nao configurado. Rejeitando webhook.');
+      return new Response(JSON.stringify({ error: 'webhook token not configured' }), {
+        status: 500,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
+    }
+    const receivedToken = req.headers.get('asaas-access-token') ?? req.headers.get('Asaas-Access-Token') ?? '';
+    const accepted = [expectedToken, expectedTokenPrev].filter(Boolean);
+    if (!accepted.includes(receivedToken)) {
+      console.warn('Invalid asaas-access-token header. Rejecting.');
+      return new Response(JSON.stringify({ error: 'invalid signature' }), {
+        status: 401,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
     }
 
     const rawBody = await req.json();
@@ -99,18 +105,21 @@ serve(async (req) => {
     let registration: Record<string, unknown> | null = null;
     let regError: { message: string } | null = null;
 
-    if (externalReference) {
+    const isUuid = (v: unknown) => typeof v === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);
+    const isRenewalRef = typeof externalReference === 'string' && externalReference.startsWith('renewal:');
+
+    if (isUuid(externalReference)) {
       const res = await supabaseAdmin.from('pending_registrations').select('*').eq('id', externalReference).single();
       registration = res.data;
       regError = res.error;
-    } else if (paymentId) {
+    } else if (paymentId && !isRenewalRef) {
       const res = await supabaseAdmin.from('pending_registrations').select('*').eq('asaas_payment_id', paymentId).single();
       registration = res.data;
       regError = res.error;
     }
 
     // Fallback: externalReference ausente - buscar no Asaas ou por customerId
-    if ((regError || !registration) && paymentId && ASAAS_API_KEY) {
+    if ((regError || !registration) && paymentId && ASAAS_API_KEY && !isRenewalRef) {
       // 1. Buscar pagamento no Asaas para obter externalReference
       try {
         const payRes = await fetch(`${ASAAS_BASE_URL}/payments/${paymentId}`, {
@@ -118,7 +127,7 @@ serve(async (req) => {
         });
         const payData = await payRes.json();
         const extRef = payData?.externalReference ?? payData?.external_reference;
-        if (extRef) {
+        if (isUuid(extRef)) {
           const res = await supabaseAdmin.from('pending_registrations').select('*').eq('id', extRef).single();
           if (res.data) {
             registration = res.data;
@@ -159,7 +168,14 @@ serve(async (req) => {
     const paidStatuses = ['CONFIRMED', 'RECEIVED', 'RECEIVED_IN_CASH'];
     const isPaidStatus = paidStatuses.includes(paymentStatus);
 
-    const updateSubscriptionByAsaasReference = async (updates: Record<string, unknown>) => {
+    // allowCustomerFallback=false: so casa pelo id da assinatura Asaas. Eventos
+    // de uma assinatura antiga (apagada na renovacao por cartao) ou de cobrancas
+    // avulsas vencidas nao podem cancelar/marcar como vencida a assinatura atual
+    // do mesmo cliente.
+    const updateSubscriptionByAsaasReference = async (
+      updates: Record<string, unknown>,
+      allowCustomerFallback = true
+    ) => {
       const nowIso = new Date().toISOString();
       const payload = { ...updates, updated_at: nowIso };
 
@@ -177,7 +193,7 @@ serve(async (req) => {
       }
 
       const fallbackCustomerId = customerId || registration?.asaas_customer_id;
-      if (fallbackCustomerId) {
+      if (allowCustomerFallback && fallbackCustomerId) {
         const { data: subByCustomer } = await supabaseAdmin
           .from('subscriptions')
           .select('id')
@@ -192,6 +208,46 @@ serve(async (req) => {
       return false;
     };
 
+    // Registra o pagamento e estende a assinatura uma unica vez por cobranca
+    // (idempotente: PAYMENT_CONFIRMED + PAYMENT_RECEIVED da mesma cobranca
+    // e reentregas nao somam dias extras). Ver record_subscription_payment.
+    const applyPaymentToSubscription = async (subscriptionId: string) => {
+      const paidDate = String(
+        payment?.confirmedDate || payment?.paymentDate || payment?.clientPaymentDate || new Date().toISOString()
+      ).split('T')[0];
+      const { data: newEnd, error } = await supabaseAdmin.rpc('record_subscription_payment', {
+        p_subscription_id: subscriptionId,
+        p_asaas_payment_id: paymentId,
+        p_status: paymentStatus || 'CONFIRMED',
+        p_amount: payment?.value || 0,
+        p_payment_method: payment?.billingType || registration?.payment_method || null,
+        p_asaas_customer_id: customerId || registration?.asaas_customer_id || null,
+        p_paid_date: paidDate,
+        p_due_date: payment?.dueDate || null,
+        p_invoice_url: payment?.invoiceUrl || null,
+      });
+      if (error) throw new Error(`record_subscription_payment failed: ${error.message}`);
+      console.log(newEnd
+        ? `Payment ${paymentId} applied to sub ${subscriptionId}, new period_end ${newEnd}`
+        : `Payment ${paymentId} already applied to sub ${subscriptionId}, period unchanged`);
+      return newEnd as string | null;
+    };
+
+    const findSubscriptionId = async (): Promise<string | null> => {
+      if (asaasSubscriptionId) {
+        const { data } = await supabaseAdmin
+          .from('subscriptions').select('id').eq('asaas_subscription_id', asaasSubscriptionId).maybeSingle();
+        if (data?.id) return data.id;
+      }
+      const cust = customerId || registration?.asaas_customer_id;
+      if (cust) {
+        const { data } = await supabaseAdmin
+          .from('subscriptions').select('id').eq('asaas_customer_id', cust).maybeSingle();
+        if (data?.id) return data.id;
+      }
+      return null;
+    };
+
     if (regError || !registration) {
       console.log('Registration not found:', { paymentId, externalReference, customerId, error: regError });
       console.log('Proceeding anyway to update existing subscription if applicable.');
@@ -201,61 +257,22 @@ serve(async (req) => {
 
     // ============================================
     // RENEWAL (PIX one-off or CREDIT_CARD recurring): externalReference="renewal:USER_ID"
-    // Extends subscription period by 30 days, no register-user.
+    // Extends subscription period by 1 month (once per payment), no register-user.
     // ============================================
     const renewalUserId = typeof externalReference === 'string' && externalReference.startsWith('renewal:')
       ? externalReference.slice('renewal:'.length)
       : null;
     if (renewalUserId && (isPaidEvent || isPaidStatus)) {
-      const nowIso = new Date().toISOString();
-      const today = new Date();
-      const periodEnd = new Date(today);
-      periodEnd.setDate(periodEnd.getDate() + 30);
-
       const { data: targetSub } = await supabaseAdmin
         .from('subscriptions')
-        .select('id, current_period_end, status')
+        .select('id')
         .eq('user_id', renewalUserId)
         .maybeSingle();
 
-      if (targetSub?.id) {
-        // If subscription still has remaining days, stack the new 30d on top.
-        let baseDate = today;
-        if (targetSub.current_period_end) {
-          const existing = new Date(targetSub.current_period_end);
-          if (existing > today) baseDate = existing;
-        }
-        const newEnd = new Date(baseDate);
-        newEnd.setDate(newEnd.getDate() + 30);
-
-        await supabaseAdmin.from('subscriptions').update({
-          status: 'active',
-          is_trial: false,
-          cancel_at_period_end: false,
-          cancelled_at: null,
-          current_period_start: today.toISOString().split('T')[0],
-          current_period_end: newEnd.toISOString().split('T')[0],
-          updated_at: nowIso
-        }).eq('id', targetSub.id);
-
-        await insertPaymentHistoryIdempotent(supabaseAdmin, {
-          user_id: renewalUserId,
-          subscription_id: targetSub.id,
-          asaas_payment_id: paymentId,
-          asaas_customer_id: customerId,
-          amount: payment?.value || 0,
-          status: paymentStatus || 'CONFIRMED',
-          // Renewals can be PIX (create-renewal-pix) or CREDIT_CARD
-          // (create-renewal-subscription), so read it from the payment itself.
-          payment_method: payment?.billingType || 'PIX',
-          paid_at: nowIso,
-          due_date: payment?.dueDate,
-          invoice_url: payment?.invoiceUrl
-        });
-
-        console.log('Renewal applied for user', renewalUserId, 'new period_end:', newEnd.toISOString().split('T')[0]);
+      if (targetSub?.id && paymentId) {
+        await applyPaymentToSubscription(targetSub.id);
       } else {
-        console.warn('Renewal PIX received but subscription not found for user:', renewalUserId);
+        console.warn('Renewal payment received but subscription not found for user:', renewalUserId);
       }
 
       return new Response(
@@ -267,48 +284,17 @@ serve(async (req) => {
     if (registration && (isPaidEvent || isPaidStatus)) {
       const isFirstTimeActivation = registration.status !== 'registered';
 
-      // Short-circuit: if the registration was already cancelled or already
-      // turned into an account, this is a late/duplicate payment delivery for an
-      // already-resolved flow. We must NOT try to recreate the user, but if the
-      // customer has a local subscription that is currently inactive, we should
-      // reactivate it for +30 days so the client who paid late gets access back.
-      // Caso real (22/06): Helry e Geremias pagaram boletos antigos depois da
-      // sub local virar cancelled e ficaram sem acesso porque o handler antigo
-      // apenas registrava o pagamento e retornava 200.
+      // Cadastro ja convertido (registered) ou cancelado: e uma cobranca
+      // recorrente (mensalidade do cartao) ou um pagamento atrasado. Nao recria
+      // o usuario; registra o pagamento e estende a assinatura local uma vez por
+      // cobranca, esteja ela ativa (renovacao em dia) ou nao (reativacao).
       if (registration.status === 'cancelled' || registration.status === 'registered') {
-        const lookupCust = customerId || registration?.asaas_customer_id;
-        let reactivated = false;
-        if (lookupCust) {
-          const { data: localSub } = await supabaseAdmin
-            .from('subscriptions')
-            .select('id, status, current_period_end')
-            .eq('asaas_customer_id', lookupCust)
-            .maybeSingle();
-          if (localSub && localSub.status !== 'active') {
-            const todayDate = new Date();
-            let baseDate = todayDate;
-            if (localSub.current_period_end) {
-              const existing = new Date(localSub.current_period_end);
-              if (existing > todayDate) baseDate = existing;
-            }
-            const newEnd = new Date(baseDate);
-            newEnd.setDate(newEnd.getDate() + 30);
-            const nowIso = new Date().toISOString();
-            await supabaseAdmin.from('subscriptions').update({
-              status: 'active',
-              is_trial: false,
-              cancel_at_period_end: false,
-              cancelled_at: null,
-              current_period_start: todayDate.toISOString().split('T')[0],
-              current_period_end: newEnd.toISOString().split('T')[0],
-              updated_at: nowIso
-            }).eq('id', localSub.id);
-            reactivated = true;
-            console.log(`Late payment reactivated sub ${localSub.id} until ${newEnd.toISOString().split('T')[0]}`);
-          }
-        }
-
-        const { error: histErr } =  await insertPaymentHistoryIdempotent(supabaseAdmin, {
+        const subId = await findSubscriptionId();
+        let newEnd: string | null = null;
+        if (subId && paymentId) {
+          newEnd = await applyPaymentToSubscription(subId);
+        } else {
+          const { error: histErr } = await insertPaymentHistoryIdempotent(supabaseAdmin, {
             asaas_payment_id: paymentId,
             asaas_customer_id: customerId || registration?.asaas_customer_id,
             amount: payment?.value || 0,
@@ -318,16 +304,15 @@ serve(async (req) => {
             due_date: payment?.dueDate,
             invoice_url: payment?.invoiceUrl || registration?.invoice_url
           });
-        if (histErr) console.warn('Failed to insert payment_history for late payment:', histErr);
-        console.log(`Late payment for ${registration.status} registration ${registration.id} — reactivated=${reactivated}`);
+          if (histErr) console.error('Failed to insert payment_history:', histErr);
+          console.warn(`Paid ${registration.status} registration ${registration.id} has no local subscription`);
+        }
         return new Response(
           JSON.stringify({
             success: true,
-            message: reactivated
-              ? 'Late payment processed and subscription reactivated for +30 days'
-              : `Late payment recorded (registration is ${registration.status}, no local sub to reactivate)`,
+            message: newEnd ? `Payment applied, period_end ${newEnd}` : 'Payment recorded',
             registrationId: registration.id,
-            reactivated
+            current_period_end: newEnd
           }),
           { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
@@ -647,6 +632,20 @@ serve(async (req) => {
       );
     }
 
+    // Pagamento confirmado sem cadastro pendente correspondente (ex.: cobranca
+    // recorrente de assinatura antiga): aplica na assinatura local, se houver.
+    if (!registration && !renewalUserId && (isPaidEvent || isPaidStatus) && paymentId) {
+      const subId = await findSubscriptionId();
+      if (subId) {
+        const newEnd = await applyPaymentToSubscription(subId);
+        return new Response(
+          JSON.stringify({ success: true, message: 'Payment applied to existing subscription', current_period_end: newEnd }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+      console.warn('Paid webhook without registration or local subscription:', { paymentId, customerId, asaasSubscriptionId });
+    }
+
     // PAYMENT_CREATED: no price mutation here.
     // - For new subscribers, create-asaas-payment already PUTs the subscription
     //   to baseSubscriptionPrice with updatePendingPayments:false right after
@@ -673,7 +672,7 @@ serve(async (req) => {
     if (eventType === 'PAYMENT_OVERDUE') {
       await updateSubscriptionByAsaasReference({
         status: 'overdue'
-      });
+      }, false);
     }
 
     if (registration && (eventType === 'PAYMENT_DELETED' || eventType === 'PAYMENT_REFUNDED')) {
@@ -708,15 +707,15 @@ serve(async (req) => {
       console.log(`Payment ${eventType.toLowerCase()} logged: ${paymentId} (sub local nao alterada)`);
     }
 
+    // Assinatura encerrada na Asaas (cancelamento pelo usuario, pelo cron ou
+    // pelo painel): o cliente mantem acesso ate o fim do periodo ja pago, como
+    // o cancel-subscription promete. Nao mexe em current_period_end.
     if (eventType === 'SUBSCRIPTION_DELETED' || eventType === 'SUBSCRIPTION_CANCELLED' || eventType === 'SUBSCRIPTION_INACTIVATED') {
-      const nowIso = new Date().toISOString();
-      const today = nowIso.split('T')[0];
       await updateSubscriptionByAsaasReference({
         status: 'cancelled',
         cancel_at_period_end: true,
-        cancelled_at: nowIso,
-        current_period_end: today
-      });
+        cancelled_at: new Date().toISOString()
+      }, false);
     }
 
     // Chargeback: cliente solicitou estorno via cartao/banco. O Asaas vai
@@ -730,7 +729,8 @@ serve(async (req) => {
     ];
     if (chargebackEvents.includes(eventType || '')) {
       const nowIso = new Date().toISOString();
-      const today = nowIso.split('T')[0];
+      // Ontem: corta o acesso imediatamente (periodo vigente vai ate o fim do dia).
+      const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().split('T')[0];
       console.warn(`Chargeback recebido para payment=${paymentId} customer=${customerId} sub=${asaasSubscriptionId} event=${eventType}`);
       // Log no payment_history como CHARGEBACK
       if (paymentId) {
@@ -750,7 +750,7 @@ serve(async (req) => {
         status: 'cancelled',
         cancel_at_period_end: true,
         cancelled_at: nowIso,
-        current_period_end: today
+        current_period_end: yesterday
       });
     }
 

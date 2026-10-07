@@ -6,6 +6,7 @@
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { requireRole } from '../_shared/admin-auth.ts'
 
 const ASAAS_API_KEY = Deno.env.get('ASAAS_API_KEY') ?? '';
 let ASAAS_BASE_URL = Deno.env.get('ASAAS_BASE_URL') ?? 'https://api-sandbox.asaas.com/v3';
@@ -22,6 +23,15 @@ serve(async (req) => {
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
+
+    // Reajusta o preco de todas as assinaturas na Asaas: apenas super_admin.
+    const auth = await requireRole(req, supabaseAdmin, ['super_admin']);
+    if (!auth.ok) {
+      return new Response(JSON.stringify({ error: auth.error }), {
+        status: auth.status,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
 
     const { data: appSettings, error: settingsError } = await supabaseAdmin
       .from('app_settings')
@@ -40,7 +50,7 @@ serve(async (req) => {
 
     const { data: subscriptions } = await supabaseAdmin
       .from('subscriptions')
-      .select('asaas_subscription_id')
+      .select('asaas_subscription_id, promotional_code_id')
       .not('asaas_subscription_id', 'is', null)
       .eq('status', 'active')
       .eq('is_trial', false)
@@ -100,9 +110,18 @@ serve(async (req) => {
       return paymentResults;
     };
 
+    // Cupom e desconto permanente: mantem o percentual sobre o novo preco.
+    const { data: promoCodes } = await supabaseAdmin
+      .from('promotional_codes')
+      .select('id, discount_percentage');
+    const discountById = new Map((promoCodes || []).map((p: any) => [p.id, Number(p.discount_percentage) || 0]));
+    const basePrice = targetValue;
+
     for (const sub of subscriptions || []) {
       const subId = sub.asaas_subscription_id;
       if (!subId) continue;
+      const discount = sub.promotional_code_id ? (discountById.get(sub.promotional_code_id) ?? 0) : 0;
+      const targetValue = Math.round(basePrice * (1 - discount / 100) * 100) / 100;
 
       try {
         // Fetch from Asaas

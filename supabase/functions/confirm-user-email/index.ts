@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.53.0";
+import { findUserByEmail, requireRole } from "../_shared/admin-auth.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -37,8 +38,16 @@ Deno.serve(async (req) => {
       }
     );
 
+    const auth = await requireRole(req, supabaseAdmin, ['super_admin']);
+    if (!auth.ok) {
+      return new Response(
+        JSON.stringify({ error: auth.error }),
+        { status: auth.status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
     // Find the user by email
-    const { data: users, error: findError } = await supabaseAdmin.auth.admin.listUsers();
+    const { user, error: findError } = await findUserByEmail(supabaseAdmin, email);
     
     if (findError) {
       return new Response(
@@ -49,8 +58,6 @@ Deno.serve(async (req) => {
         }
       );
     }
-
-    const user = users.users.find(u => u.email === email);
     
     if (!user) {
       return new Response(

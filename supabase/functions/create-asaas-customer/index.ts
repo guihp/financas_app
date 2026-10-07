@@ -29,8 +29,9 @@ serve(async (req) => {
 
     const { email, full_name, phone, cpfCnpj, password, terms_accepted, registrationId, promo_code } = body;
 
-    // Validate password early
-    if (!password) {
+    // Senha obrigatoria no cadastro novo. No reparo por registrationId (cadastro
+    // sem cliente Asaas, chamado pelo PagamentoPendente) a senha ja esta salva.
+    if (!password && !registrationId) {
       return new Response(
         JSON.stringify({ error: 'Senha é obrigatória para criar o cadastro.' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -248,7 +249,8 @@ serve(async (req) => {
       const { data: promoData, error: promoError } = await supabaseAdmin
         .from('promotional_codes')
         .select('*')
-        .ilike('code', promo_code.trim())
+        // Comparacao exata: ilike aceitava curingas (ex.: "J%") e revelava cupons.
+        .eq('code', String(promo_code).trim().toUpperCase())
         .eq('active', true)
         .single();
 
@@ -271,7 +273,7 @@ serve(async (req) => {
     // Note: In production, use a proper encryption method
     // Simple hash for temporary password storage (will be replaced on actual registration)
     // Note: In production, use a proper encryption method
-    const passwordHash = btoa(password);
+    const passwordHash = password ? btoa(password) : null;
     const termsAcceptedAt = termsAcceptedToUse === true ? new Date().toISOString() : null;
 
     // Se registrationId foi passado, atualizar apenas esse registro. Senão, buscar por email.
@@ -289,6 +291,7 @@ serve(async (req) => {
         .select('*')
         .eq('email', emailToUse.toLowerCase().trim())
         .in('status', ['pending_payment', 'paid'])
+        .gt('expires_at', new Date().toISOString())
         .order('created_at', { ascending: false })
         .limit(1)
         .single();
@@ -324,16 +327,30 @@ serve(async (req) => {
         );
       }
 
+      // Um cadastro em andamento so pode ser retomado com a mesma senha. Sem isso,
+      // qualquer pessoa que soubesse o e-mail trocava a senha/telefone do cadastro
+      // de outra pessoa antes do pagamento e ficava com a conta criada.
+      if (!registrationId && existingReg.password_hash && existingReg.password_hash !== passwordHash) {
+        return new Response(
+          JSON.stringify({
+            error: 'Já existe um cadastro em andamento para este e-mail. Use a mesma senha do cadastro anterior ou finalize o pagamento em "Pagamento pendente".'
+          }),
+          { status: 409, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
       // Update existing registration
       const { data: updatedReg, error: updateError } = await supabaseAdmin
         .from('pending_registrations')
         .update({
           phone: cleanPhone,
           full_name: fullNameToUse,
-          password_hash: passwordHash,
+          // Sem senha no body (reparo por registrationId): mantem a ja salva.
+          ...(passwordHash ? { password_hash: passwordHash } : {}),
           asaas_customer_id: customerId,
           plan_id: planData.id,
-          promotional_code_id: appliedPromoId,
+          // Nao apaga um cupom ja vinculado quando a chamada nao informa cupom.
+          ...(appliedPromoId ? { promotional_code_id: appliedPromoId } : {}),
           status: 'pending_payment',
           asaas_payment_id: null,
           payment_method: null,
@@ -426,7 +443,7 @@ serve(async (req) => {
   } catch (error: any) {
     console.error('Error in create-asaas-customer function:', error);
     return new Response(
-      JSON.stringify({ error: 'Erro interno. Tente novamente.', details: error.message, stack: error.stack }),
+      JSON.stringify({ error: 'Erro interno. Tente novamente.' }),
       {
         status: 500,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }

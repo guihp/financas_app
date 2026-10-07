@@ -13,13 +13,9 @@ serve(async (req) => {
   }
 
   try {
-    const body = await req.json();
-    console.log('Received request body:', body);
-    
-    const { phone, code } = body;
+    const { phone, code } = await req.json();
 
     if (!phone || !code) {
-      console.error('Missing required fields:', { phone: !!phone, code: !!code });
       return new Response(
         JSON.stringify({ error: 'Phone and code are required' }),
         { 
@@ -35,99 +31,38 @@ serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
 
-    // Clean phone number - remove all non-digits
-    const cleanPhone = phone.replace(/\D/g, '');
-    // Convert code to string for consistent comparison
+    const cleanPhone = String(phone).replace(/\D/g, '');
     const cleanCode = String(code).trim();
 
-    console.log('Cleaned phone:', cleanPhone, 'Cleaned code:', cleanCode);
-
-    // First, check if there are any OTP codes for this phone
-    const { data: allOtpCodes, error: checkError } = await supabaseAdmin
-      .from('otp_codes')
-      .select('*')
-      .eq('phone', cleanPhone)
-      .order('created_at', { ascending: false });
-
-    console.log('All OTP codes for phone:', allOtpCodes?.length || 0, checkError ? checkError.message : 'OK');
-
-    // Find valid OTP code - try with string comparison first
-    let { data: otpData, error: otpError } = await supabaseAdmin
-      .from('otp_codes')
-      .select('*')
-      .eq('phone', cleanPhone)
-      .eq('verified', false)
-      .gt('expires_at', new Date().toISOString())
-      .order('created_at', { ascending: false })
-      .limit(10); // Get multiple to check manually
-
-    if (otpError) {
-      console.error('Error querying OTP codes:', otpError);
-      return new Response(
-        JSON.stringify({ error: 'Erro ao buscar código OTP: ' + otpError.message }),
-        { 
-          status: 500, 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-        }
-      );
-    }
-
-    if (!otpData || otpData.length === 0) {
-      console.error('No valid OTP codes found for phone:', cleanPhone);
-      return new Response(
-        JSON.stringify({ error: 'Código inválido ou expirado. Por favor, solicite um novo código.' }),
-        { 
-          status: 400, 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-        }
-      );
-    }
-
-    // Find matching code - normalize both to strings and compare
-    const matchingOtp = otpData.find(otp => {
-      // Normalize both codes to strings and trim
-      const otpCodeNormalized = String(otp.code || '').trim();
-      const inputCodeNormalized = cleanCode.trim();
-      
-      // Direct string comparison
-      const match = otpCodeNormalized === inputCodeNormalized;
-      
-      if (match) {
-        console.log('Found matching OTP:', { 
-          otpId: otp.id, 
-          storedCode: otpCodeNormalized, 
-          receivedCode: inputCodeNormalized 
-        });
-      }
-      
-      return match;
+    // Verificacao atomica no banco (lock por telefone + limite de tentativas)
+    const { data: result, error: verifyError } = await supabaseAdmin.rpc('verify_otp_code', {
+      p_phone: cleanPhone,
+      p_code: cleanCode,
     });
 
-    if (!matchingOtp) {
-      console.error('Code mismatch. Received:', cleanCode, 'Available codes:', otpData.map(o => o.code));
+    if (verifyError) {
+      console.error('Error verifying OTP:', verifyError);
       return new Response(
-        JSON.stringify({ error: 'Código inválido. Verifique o código recebido no WhatsApp.' }),
+        JSON.stringify({ error: 'Erro ao verificar código.' }),
         { 
-          status: 400, 
+          status: 500, 
           headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
         }
       );
     }
 
-    console.log('Found matching OTP:', matchingOtp.id);
-
-    // Mark OTP as verified
-    const { error: updateError } = await supabaseAdmin
-      .from('otp_codes')
-      .update({ verified: true })
-      .eq('id', matchingOtp.id);
-
-    if (updateError) {
-      console.error('Error updating OTP:', updateError);
+    if (result !== 'ok') {
+      const errors: Record<string, { status: number; message: string }> = {
+        locked: { status: 429, message: 'Muitas tentativas incorretas. Aguarde e solicite um novo código.' },
+        expired: { status: 400, message: 'Código inválido ou expirado. Por favor, solicite um novo código.' },
+        invalid: { status: 400, message: 'Código inválido. Verifique o código recebido no WhatsApp.' },
+      };
+      const { status, message } = errors[result] ?? errors.invalid;
+      console.warn('OTP verification failed:', result);
       return new Response(
-        JSON.stringify({ error: 'Erro ao verificar código: ' + updateError.message }),
+        JSON.stringify({ error: message }),
         { 
-          status: 500, 
+          status, 
           headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
         }
       );

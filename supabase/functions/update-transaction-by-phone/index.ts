@@ -1,6 +1,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { normalizeCategorySlug } from '../_shared/categories.ts'
 import { isUserSubscriptionInactive, SUBSCRIPTION_BLOCK_MESSAGE, SUBSCRIPTION_INACTIVE_CODE } from "../_shared/subscription.ts";
+import { isServiceOrSuperAdmin, unauthorizedResponse } from "../_shared/service-auth.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -31,6 +32,11 @@ Deno.serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
+  }
+
+  // Somente n8n/cron (service_role) ou super_admin logado podem chamar.
+  if (!(await isServiceOrSuperAdmin(req))) {
+    return unauthorizedResponse(corsHeaders);
   }
 
   try {

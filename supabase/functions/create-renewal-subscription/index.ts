@@ -265,14 +265,27 @@ serve(async (req) => {
 
     // Store the new subscription id immediately. Status stays untouched: only the
     // webhook (PAYMENT_RECEIVED/CONFIRMED with renewal: reference) may flip it to active.
+    // Grava o cupom na assinatura: o desconto e permanente e o reajuste de
+    // preco (update-subscriptions-price) usa promotional_code_id para mante-lo.
+    let promoId: string | null = null;
+    if (couponApplied) {
+      const { data: promo } = await supabaseAdmin
+        .from('promotional_codes').select('id').eq('code', couponApplied).maybeSingle();
+      promoId = promo?.id ?? null;
+    }
     const { error: persistError } = await supabaseAdmin
       .from('subscriptions')
       .update({
         asaas_subscription_id: subData.id,
         cancel_at_period_end: false,
+        ...(promoId ? { promotional_code_id: promoId } : {}),
         updated_at: new Date().toISOString()
       })
       .eq('id', sub.id);
+    if (promoId) {
+      const { error: promoErr } = await supabaseAdmin.rpc('increment_promo_usage', { p_promo_id: promoId });
+      if (promoErr) console.error('Failed to increment promo usage:', promoErr);
+    }
     if (persistError) {
       console.error('CRITICAL: renewal subscription created on Asaas but not persisted', {
         userId: user.id, subscriptionId: subData.id, error: persistError.message

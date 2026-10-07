@@ -231,12 +231,11 @@ const Auth = ({ defaultTab = "login" }: AuthProps) => {
     if (email && email.includes("@")) {
       try {
         const cleanPhone = phone ? getCleanPhoneForBackend(phone, phoneCountry) : null;
-        const { error } = await supabase.from("partial_leads").upsert({
-          email: email.trim().toLowerCase(),
-          full_name: fullName.trim() || null,
-          phone: cleanPhone || null,
-          updated_at: new Date().toISOString()
-        }, { onConflict: 'email' });
+        const { error } = await supabase.rpc("capture_partial_lead", {
+          p_email: email.trim().toLowerCase(),
+          p_full_name: fullName.trim() || null,
+          p_phone: cleanPhone || null,
+        });
         if (error) {
           console.error("Failed to capture partial lead:", {
             code: error.code,
@@ -307,14 +306,11 @@ const Auth = ({ defaultTab = "login" }: AuthProps) => {
       });
 
       if (customerError) {
+        // FunctionsHttpError: a mensagem real fica no corpo da resposta (context).
         let errorMessage = "Erro ao iniciar cadastro.";
-        if (customerError.message) errorMessage = customerError.message;
-        else if (customerError.context?.body) {
-          try {
-            const body = typeof customerError.context.body === 'string'
-              ? JSON.parse(customerError.context.body) : customerError.context.body;
-            if (body?.error) errorMessage = body.error;
-          } catch (_) { }
+        if (customerError.context && typeof customerError.context.json === 'function') {
+          const body = await customerError.context.json().catch(() => null);
+          if (body?.error) errorMessage = body.error;
         }
         throw new Error(errorMessage);
       }

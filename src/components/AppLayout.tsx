@@ -189,6 +189,14 @@ export const AppLayout = () => {
         return { hasAccess: true, isExpired: false, daysExpiredAgo: 0 };
       }
 
+      // Cancelled but paid period still running: keep access until period end
+      if (data.status === "cancelled" && !data.is_trial && data.current_period_end) {
+        const todayMidnight = new Date(now.toISOString().split("T")[0]);
+        if (new Date(data.current_period_end) >= todayMidnight) {
+          return { hasAccess: true, isExpired: false, daysExpiredAgo: 0 };
+        }
+      }
+
       // Expired / cancelled
       if (data.status === "expired" || data.status === "cancelled") {
         const endDate = data.current_period_end

@@ -104,7 +104,9 @@ serve(async (req) => {
 
       // Fallback: quando asaas_payment_id for null mas temos asaas_customer_id, buscar pagamentos do cliente no Asaas
       if (!asaasPaymentId && registration.asaas_customer_id) {
-        const customerId = body.customerId ?? registration.asaas_customer_id;
+        // Sempre o cliente do cadastro (o do body permitia apontar para o
+        // pagamento de outra pessoa e ganhar uma conta paga).
+        const customerId = registration.asaas_customer_id;
         const listRes = await fetch(
           `${ASAAS_BASE_URL}/payments?customer=${customerId}&limit=20`,
           {
@@ -121,7 +123,11 @@ serve(async (req) => {
           listData = {};
         }
         const paidStatuses = ['CONFIRMED', 'RECEIVED', 'RECEIVED_IN_CASH'];
-        const paidPayment = (listData?.data ?? []).find((p: { status: string }) => paidStatuses.includes(p.status));
+        // So vale o pagamento deste cadastro: o cliente Asaas pode ser reaproveitado
+        // (busca por e-mail) e ter pagamentos antigos de outra assinatura.
+        const paidPayment = (listData?.data ?? []).find((p: { status: string; externalReference?: string }) =>
+          paidStatuses.includes(p.status) && p.externalReference === registrationId
+        );
         if (paidPayment) {
           asaasPaymentId = paidPayment.id;
           console.log('Found paid payment by customer fallback:', paidPayment.id);
@@ -189,10 +195,15 @@ serve(async (req) => {
     // Check if payment is confirmed/received
     const paidStatuses = ['CONFIRMED', 'RECEIVED', 'RECEIVED_IN_CASH'];
     const isPaid = paidStatuses.includes(paymentData.status);
+    // O pagamento precisa ser deste cadastro para liberar a conta.
+    const belongsToRegistration = !registrationId || paymentData.externalReference === registrationId;
+    if (registrationId && !belongsToRegistration) {
+      console.warn('check-payment-status: payment does not belong to registration', { registrationId, paymentId: paymentData.id });
+    }
 
     // If paid, update pending registration and create user account
     let registerUserError: string | null = null;
-    if (isPaid && registrationId) {
+    if (isPaid && registrationId && belongsToRegistration) {
       const { error: updateError } = await supabaseAdmin
         .from('pending_registrations')
         .update({
@@ -247,7 +258,7 @@ serve(async (req) => {
         success: true,
         paymentId: paymentData.id,
         status: paymentData.status,
-        isPaid: isPaid,
+        isPaid: isPaid && belongsToRegistration,
         value: paymentData.value,
         netValue: paymentData.netValue,
         paymentDate: paymentData.paymentDate,

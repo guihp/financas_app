@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { requireRole } from '../_shared/admin-auth.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -26,47 +27,12 @@ serve(async (req) => {
       )
     }
 
-    // Check Authorization header
-    const authHeader = req.headers.get('Authorization')
-    if (!authHeader) {
+    // Apenas super_admin pode alterar papeis (admin nao pode se promover)
+    const auth = await requireRole(req, supabase, ['super_admin'])
+    if (!auth.ok) {
       return new Response(
-        JSON.stringify({ error: 'Missing authorization header' }),
-        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      )
-    }
-
-    // Verify the user making the request
-    const token = authHeader.replace('Bearer ', '')
-    const { data: { user }, error: authError } = await supabase.auth.getUser(token)
-
-    if (authError || !user) {
-      return new Response(
-        JSON.stringify({ error: 'Invalid authorization token' }),
-        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      )
-    }
-
-    // Check if the user is a super admin or admin
-    const { data: userRole, error: roleError } = await supabase
-      .from('user_roles')
-      .select('role')
-      .eq('user_id', user.id)
-      .maybeSingle()
-
-    console.log('Current user role:', userRole)
-
-    if (roleError) {
-      console.error('Error checking user role:', roleError)
-      return new Response(
-        JSON.stringify({ error: 'Error checking permissions' }),
-        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      )
-    }
-
-    if (!userRole || (userRole.role !== 'super_admin' && userRole.role !== 'admin')) {
-      return new Response(
-        JSON.stringify({ error: 'Access denied - Admin or Super admin required' }),
-        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        JSON.stringify({ error: auth.error }),
+        { status: auth.status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
 
@@ -77,6 +43,13 @@ serve(async (req) => {
       return new Response(
         JSON.stringify({ error: 'Missing user_id or new_role' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
+    if (user_id === auth.user.id) {
+      return new Response(
+        JSON.stringify({ error: 'Cannot change your own role' }),
+        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
 

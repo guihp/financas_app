@@ -1,6 +1,7 @@
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { isServiceRequest } from '../_shared/service-auth.ts'
 
 const ASAAS_API_KEY = Deno.env.get('ASAAS_API_KEY') ?? '';
 let ASAAS_BASE_URL = Deno.env.get('ASAAS_BASE_URL') ?? 'https://api-sandbox.asaas.com/v3';
@@ -11,6 +12,14 @@ if (ASAAS_BASE_URL && !ASAAS_BASE_URL.endsWith('/v3') && !ASAAS_BASE_URL.endsWit
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null);
+  }
+
+  // Cancela assinaturas na Asaas: somente o pg_cron (service_role).
+  if (!(await isServiceRequest(req))) {
+    return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+      status: 401,
+      headers: { 'content-type': 'application/json' }
+    });
   }
 
   try {

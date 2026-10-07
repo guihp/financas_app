@@ -177,11 +177,20 @@ const Assinatura = () => {
     subscription.status !== "cancelled" &&
     subscription.days_remaining > 0;
 
-  const isPaid =
-    subscription &&
-    subscription.status === "active" &&
+  // cancel-subscription marca status "cancelled" + cancel_at_period_end, e o
+  // cliente mantém acesso até o fim do período pago.
+  const isCancellingAtEnd =
+    !!subscription &&
+    subscription.cancel_at_period_end === true &&
+    (subscription.status === "active" || subscription.status === "cancelled") &&
     !subscription.is_trial &&
     subscription.days_remaining > 0;
+
+  const isPaid =
+    !!subscription &&
+    !subscription.is_trial &&
+    subscription.days_remaining > 0 &&
+    (subscription.status === "active" || isCancellingAtEnd);
 
   // Anything that is neither an active paid plan nor a running trial means the user
   // cannot use the app and MUST see the renewal options. The previous version only
@@ -196,11 +205,6 @@ const Assinatura = () => {
   // charged. Falls back to the list price only until the quote arrives.
   const renewalPrice = renewalQuote?.value ?? appSettings?.full ?? 29.9;
   const renewalPriceLabel = renewalPrice.toFixed(2).replace(".", ",");
-
-  const isCancellingAtEnd =
-    subscription &&
-    subscription.cancel_at_period_end === true &&
-    subscription.status === "active";
 
   const generateRenewalPix = async () => {
     const cleanCpf = pixCpf.replace(/\D/g, '');

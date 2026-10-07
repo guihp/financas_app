@@ -134,6 +134,12 @@ export const checkSubscriptionAccess = async (
       return grant("trial_grace");
     }
 
+    // Cancelada mas com periodo pago vigente: acesso ate o fim do periodo.
+    if (data.status === "cancelled" && !data.is_trial && data.current_period_end) {
+      const todayMidnight = new Date(now.toISOString().split("T")[0]);
+      if (new Date(data.current_period_end) >= todayMidnight) return grant("active");
+    }
+
     if (data.status === "expired" || data.status === "cancelled" || data.status === "overdue") {
       const endDate = data.current_period_end ? new Date(data.current_period_end) : now;
       const daysAgo = Math.ceil((now.getTime() - endDate.getTime()) / (1000 * 60 * 60 * 24));

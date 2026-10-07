@@ -28,7 +28,7 @@ serve(async (req) => {
     console.log('Creating Asaas payment with data:', { ...body, creditCard: body.creditCard ? '[HIDDEN]' : undefined });
 
     const {
-      customerId,
+      customerId: bodyCustomerId,
       registrationId,
       billingType = 'PIX',
       // Credit card data (optional)
@@ -55,7 +55,7 @@ serve(async (req) => {
     }
 
     // Validate required fields
-    if (!customerId || !registrationId) {
+    if (!bodyCustomerId || !registrationId) {
       return new Response(
         JSON.stringify({ error: 'customerId e registrationId são obrigatórios' }),
         {
@@ -133,6 +133,24 @@ serve(async (req) => {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' }
         }
       );
+    }
+
+    // Cadastro ja pago/convertido ou com assinatura criada: nao gera nova
+    // cobranca (evitava assinatura duplicada no cartao ao reenviar o checkout).
+    if (
+      ['paid', 'card_registered', 'registered'].includes(registration.status) ||
+      registration.asaas_subscription_id
+    ) {
+      return new Response(
+        JSON.stringify({ error: 'Este cadastro já possui pagamento registrado. Faça login para acessar sua conta.' }),
+        { status: 409, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Usa sempre o cliente Asaas vinculado ao cadastro, nunca o enviado pelo navegador.
+    const customerId: string = registration.asaas_customer_id || bodyCustomerId;
+    if (registration.asaas_customer_id && bodyCustomerId !== registration.asaas_customer_id) {
+      console.warn('customerId do body difere do cadastro; usando o do cadastro', { registrationId });
     }
 
     const plan = (registration.plans ?? registration.plan) as { id: string; name: string; price: number } | null;
@@ -324,7 +342,7 @@ serve(async (req) => {
         updated_at: new Date().toISOString()
       };
       if (appliedPromoId) {
-        subUpdateData.promo_code_id = appliedPromoId;
+        subUpdateData.promotional_code_id = appliedPromoId;
       }
       if (address && typeof address === 'object') {
         if (address.postalCode != null) subUpdateData.address_postal_code = String(address.postalCode).replace(/\D/g, '');
@@ -548,7 +566,7 @@ serve(async (req) => {
       updated_at: new Date().toISOString()
     };
     if (appliedPromoId) {
-      updateData.promo_code_id = appliedPromoId;
+      updateData.promotional_code_id = appliedPromoId;
     }
     if (address && typeof address === 'object') {
       if (address.postalCode != null) updateData.address_postal_code = String(address.postalCode).replace(/\D/g, '');
@@ -597,7 +615,7 @@ serve(async (req) => {
       const emailResponse = await fetch(`${supabaseUrl}/functions/v1/send-payment-email`, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${supabaseAnonKey}`,
+          'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''}`,
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({

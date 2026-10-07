@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.53.0";
+import { findUserByEmail, requireRole } from "../_shared/admin-auth.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -18,6 +19,14 @@ serve(async (req) => {
     
     const supabase = createClient(supabaseUrl, supabaseKey);
 
+    const auth = await requireRole(req, supabase, ['admin', 'super_admin']);
+    if (!auth.ok) {
+      return new Response(
+        JSON.stringify({ error: auth.error }),
+        { status: auth.status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
     const { email, enabled } = await req.json();
 
     // Convert string to boolean if needed
@@ -35,7 +44,7 @@ serve(async (req) => {
     }
 
     // Get user by email
-    const { data: users, error: getUserError } = await supabase.auth.admin.listUsers();
+    const { user, error: getUserError } = await findUserByEmail(supabase, email);
     
     if (getUserError) {
       console.error('Error fetching users:', getUserError);
@@ -47,8 +56,6 @@ serve(async (req) => {
         }
       );
     }
-
-    const user = users.users.find(u => u.email === email);
     
     if (!user) {
       return new Response(
@@ -57,6 +64,19 @@ serve(async (req) => {
           status: 404, 
           headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
         }
+      );
+    }
+
+    // Admin comum nao pode banir/excluir super_admin nem a propria conta
+    const { data: targetRoles } = await supabase
+      .from('user_roles')
+      .select('role')
+      .eq('user_id', user.id);
+    const targetIsSuper = (targetRoles ?? []).some((r) => r.role === 'super_admin');
+    if (user.id === auth.user.id || (targetIsSuper && !auth.roles.includes('super_admin'))) {
+      return new Response(
+        JSON.stringify({ error: 'Access denied' }),
+        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 

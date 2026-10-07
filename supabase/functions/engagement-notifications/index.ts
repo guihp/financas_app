@@ -1,36 +1,12 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { isServiceRequest } from "../_shared/service-auth.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers":
     "authorization, x-client-info, apikey, content-type",
 };
-
-function authorizeService(req: Request): boolean {
-  const auth = req.headers.get("Authorization") ?? "";
-  const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
-  if (serviceKey && auth === `Bearer ${serviceKey}`) return true;
-
-  const token = auth.replace(/^Bearer\s+/i, "").trim();
-  if (!token || token.split(".").length < 2) return false;
-  try {
-    const payloadPart = token.split(".")[1]
-      .replace(/-/g, "+")
-      .replace(/_/g, "/");
-    const padded = payloadPart + "=".repeat((4 - (payloadPart.length % 4)) % 4);
-    const payload = JSON.parse(atob(padded)) as { role?: string; ref?: string };
-    const projectRef = (Deno.env.get("SUPABASE_URL") || "")
-      .replace(/^https?:\/\//, "")
-      .split(".")[0];
-    return (
-      payload.role === "service_role" &&
-      (!projectRef || !payload.ref || payload.ref === projectRef)
-    );
-  } catch {
-    return false;
-  }
-}
 
 async function dispatch(
   supabaseUrl: string,
@@ -57,7 +33,7 @@ serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
-  if (!authorizeService(req)) {
+  if (!(await isServiceRequest(req))) {
     return new Response(JSON.stringify({ error: "Unauthorized" }), {
       status: 401,
       headers: { ...corsHeaders, "Content-Type": "application/json" },

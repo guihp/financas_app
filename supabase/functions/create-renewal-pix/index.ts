@@ -219,6 +219,18 @@ serve(async (req) => {
       });
     }
 
+    // Grava o cupom na assinatura para as proximas renovacoes e relatorios.
+    // (O uso e contado na renovacao por cartao/cadastro, onde a cobranca e efetivada.)
+    if (couponApplied) {
+      const { data: promo } = await supabaseAdmin
+        .from('promotional_codes').select('id').eq('code', couponApplied).maybeSingle();
+      if (promo?.id) {
+        await supabaseAdmin.from('subscriptions')
+          .update({ promotional_code_id: promo.id, updated_at: new Date().toISOString() })
+          .eq('id', sub.id);
+      }
+    }
+
     // Fetch PIX QR
     let pixCode: string | undefined;
     let pixQrCodeBase64: string | undefined;
