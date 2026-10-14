@@ -9,6 +9,8 @@ import { parseTransactionDate, type DateFilterOption, type DateRange } from "@/u
 interface StatisticsProps {
   transactions: Transaction[];
   allTransactions?: Transaction[];
+  /** Saldo acumulado já calculado no banco (get_balance_summary); se ausente, soma localmente. */
+  balance?: number;
   dateFilter?: DateFilterOption;
   dateRange?: DateRange;
 }
@@ -25,6 +27,7 @@ const getCategoryDisplayName = (categoryName: string) => {
 export const Statistics = ({
   transactions,
   allTransactions,
+  balance: balanceProp,
   dateFilter = "all",
   dateRange = { start: null, end: null }
 }: StatisticsProps) => {
@@ -85,7 +88,7 @@ export const Statistics = ({
       return new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0, 23, 59, 59, 999);
     })();
 
-    const balance = sourceForBalance
+    const balance = balanceProp ?? sourceForBalance
       .filter((t) => {
         if (!balanceCutoff) return true;
         const txDate = parseTransactionDate(t.date as string);
@@ -154,7 +157,7 @@ export const Statistics = ({
       averageIncome: totalIncome / Math.max(validTransactions.filter(t => t.type === "income").length, 1),
       transactionCount: validTransactions.length,
     };
-  }, [transactions, allTransactions, dateFilter, dateRange.start, dateRange.end]);
+  }, [transactions, allTransactions, balanceProp, dateFilter, dateRange.start, dateRange.end]);
 
   const formatMonth = (monthStr: string) => {
     const [year, month] = monthStr.split('-');

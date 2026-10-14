@@ -169,12 +169,13 @@ serve(async (req) => {
 
     // Order by date (most recent first)
     query = query.order('date', { ascending: false })
-      .order('created_at', { ascending: false });
+      .order('created_at', { ascending: false })
+      .order('id');
 
     // Sem limite explícito, pagina para não truncar em 1000 linhas (summary/balance ficariam errados)
     const { data: transactions, error: transactionsError } = limit && !isNaN(parseInt(limit))
       ? await query
-      : await fetchAllRows(() => query.order('id'));
+      : await fetchAllRows(() => query);
 
     if (transactionsError) {
       console.error('Error fetching transactions:', transactionsError);

@@ -1,8 +1,8 @@
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useRef } from "react";
 import { useOutletContext } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { fetchAllRows } from "@/lib/fetchAllRows";
-import { fetchBalanceSummary } from "@/lib/balanceSummary";
+import { fetchBalanceSummary, toLocalDateString } from "@/lib/balanceSummary";
 import { User } from "@supabase/supabase-js";
 import { TransactionList } from "@/components/TransactionList";
 import { AddTransactionFab } from "@/components/AddTransactionFab";
@@ -12,7 +12,7 @@ import { TransactionPieChart } from "@/components/PieChart";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { DateRangeFilter } from "@/components/DateRangeFilter";
-import { filterTransactionsByDate, parseTransactionDate } from "@/utils/dateFilter";
+import { filterTransactionsByDate, getBalanceCutoff, getDateFilterBounds, parseTransactionDate } from "@/utils/dateFilter";
 import type { DateFilterOption, DateRange } from "@/utils/dateFilter";
 import { TrendingUp, TrendingDown, Wallet, Plus, Receipt, CheckCircle2, AlertTriangle, CreditCard } from "lucide-react";
 import { Transaction } from "@/components/Dashboard";
@@ -44,6 +44,44 @@ const DashPage = () => {
   const [dateFilter, setDateFilter] = useState<DateFilterOption>("thisMonth");
   const [dateRange, setDateRange] = useState<DateRange>({ start: null, end: null });
   const { allUserIds, loading: loadingConnections } = useConnectedUserIds(user?.id);
+  const [creditTransactions, setCreditTransactions] = useState<Transaction[]>([]);
+
+  // Só o período do filtro é buscado no banco (null = tudo). A chave em string evita
+  // recarregar quando o objeto dateRange muda sem mudar as datas.
+  const bounds = useMemo(() => getDateFilterBounds(dateFilter, dateRange), [dateFilter, dateRange]);
+  const boundsKey = bounds ? `${bounds.from}|${bounds.to}` : "all";
+
+  // Determine which month/year to show faturas for based on the filter
+  const targetDate = useMemo(() => {
+    if (dateFilter === "lastMonth") {
+      // dia 1 evita o estouro de setMonth (ex.: 31/03 − 1 mês viraria 03/03)
+      const d = new Date();
+      return new Date(d.getFullYear(), d.getMonth() - 1, 1);
+    }
+    if (dateFilter === "custom" && dateRange.start) {
+      return dateRange.start;
+    }
+    // "thisMonth" or "all" → use current month
+    return new Date();
+  }, [dateFilter, dateRange.start]);
+
+  const targetMonth = targetDate.getMonth();
+  const targetYear = targetDate.getFullYear();
+
+  // O ciclo da fatura começa no fechamento do mês anterior, então as compras no
+  // crédito são buscadas do 1º dia do mês anterior ao último dia do mês-alvo.
+  const creditFrom = toLocalDateString(new Date(targetYear, targetMonth - 1, 1));
+  const creditTo = toLocalDateString(new Date(targetYear, targetMonth + 1, 0));
+
+  const mapTransaction = (t: Record<string, unknown>) => ({
+    ...t,
+    amount: Number(t.amount),
+    date: (t.transaction_date ?? t.date ?? t.created_at) as string,
+    type: t.type as "income" | "expense",
+  }) as Transaction;
+
+  // Ignora respostas atrasadas ao trocar de filtro rapidamente
+  const requestIdRef = useRef(0);
 
   const loadTransactions = async (overrideIds?: string[]) => {
     const ids = overrideIds && overrideIds.length > 0 ? overrideIds : allUserIds;
@@ -51,31 +89,41 @@ const DashPage = () => {
       setLoading(false);
       return;
     }
+    const requestId = ++requestIdRef.current;
+    const isStale = () => requestId !== requestIdRef.current;
     try {
-      // Load transactions
-      const { data, error } = await fetchAllRows(() =>
+      // Load transactions (somente o período filtrado)
+      const { data, error } = await fetchAllRows(() => {
+        let query = supabase
+          .from("transactions")
+          .select("*")
+          .in("user_id", ids);
+        if (bounds) query = query.gte("date", bounds.from).lte("date", bounds.to);
+        return query
+          .order("date", { ascending: false })
+          .order("id");
+      });
+
+      if (error) throw error;
+      if (isStale()) return;
+
+      setTransactions((data || []).map(mapTransaction));
+
+      // Compras no crédito da janela da fatura do mês-alvo
+      const { data: creditData, error: creditError } = await fetchAllRows(() =>
         supabase
           .from("transactions")
           .select("*")
           .in("user_id", ids)
-          .order("date", { ascending: false })
+          .eq("payment_method", "credit")
+          .not("credit_card_id", "is", null)
+          .gte("date", creditFrom)
+          .lte("date", creditTo)
           .order("id")
       );
-
-      if (error) throw error;
-
-      const mapped = (data || []).map(t => ({
-        ...t,
-        amount: Number(t.amount),
-        date: (t as { transaction_date?: string }).transaction_date ?? t.date ?? t.created_at,
-        type: t.type as "income" | "expense",
-        payment_method: t.payment_method,
-        credit_card_id: t.credit_card_id,
-        total_installments: t.total_installments,
-        installment_number: t.installment_number,
-        installment_group_id: t.installment_group_id,
-      }));
-      setTransactions(mapped);
+      if (creditError) throw creditError;
+      if (isStale()) return;
+      setCreditTransactions((creditData || []).map(mapTransaction));
 
       // Load credit cards
       const { data: cardsData } = await supabase
@@ -127,7 +175,7 @@ const DashPage = () => {
       loadTransactions([user.id]);
     }, 8000);
     return () => clearTimeout(fallbackTimer);
-  }, [user?.id, allUserIds, loadingConnections]);
+  }, [user?.id, allUserIds, loadingConnections, boundsKey, creditFrom]);
 
   const filteredTransactions = useMemo(
     () => filterTransactionsByDate(transactions, dateFilter, dateRange) as Transaction[],
@@ -162,41 +210,10 @@ const DashPage = () => {
 
   // Saldo ACUMULADO ATÉ O PERÍODO: mantém o carry-over, mas respeita o filtro selecionado.
   // Ex.: "mês passado" mostra o saldo até o fim do mês passado; "este mês" até o fim do mês atual.
-  const balanceCutoff = useMemo(() => {
-    if (dateFilter === "all") return null;
-
-    if (dateFilter === "lastMonth") {
-      return new Date(new Date().getFullYear(), new Date().getMonth(), 0, 23, 59, 59, 999);
-    }
-
-    if (dateFilter === "custom") {
-      if (dateRange.end) {
-        return new Date(
-          dateRange.end.getFullYear(),
-          dateRange.end.getMonth(),
-          dateRange.end.getDate(),
-          23,
-          59,
-          59,
-          999
-        );
-      }
-      if (dateRange.start) {
-        return new Date(
-          dateRange.start.getFullYear(),
-          dateRange.start.getMonth(),
-          dateRange.start.getDate(),
-          23,
-          59,
-          59,
-          999
-        );
-      }
-    }
-
-    // "thisMonth" (padrão): considera até o fim do mês atual.
-    return new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0, 23, 59, 59, 999);
-  }, [dateFilter, dateRange.start, dateRange.end]);
+  const balanceCutoff = useMemo(
+    () => getBalanceCutoff(dateFilter, dateRange),
+    [dateFilter, dateRange]
+  );
 
   // Saldo calculado no banco (get_balance_summary). Recarrega quando as transações
   // mudam (add/delete chamam loadTransactions) ou quando o filtro de período muda.
@@ -215,22 +232,6 @@ const DashPage = () => {
   const now = new Date();
   const MONTH_NAMES = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
 
-  // Determine which month/year to show faturas for based on the filter
-  const targetDate = useMemo(() => {
-    if (dateFilter === "lastMonth") {
-      const d = new Date();
-      d.setMonth(d.getMonth() - 1);
-      return d;
-    }
-    if (dateFilter === "custom" && dateRange.start) {
-      return dateRange.start;
-    }
-    // "thisMonth" or "all" → use current month
-    return new Date();
-  }, [dateFilter, dateRange.start]);
-
-  const targetMonth = targetDate.getMonth();
-  const targetYear = targetDate.getFullYear();
   const targetMonthLabel = `${MONTH_NAMES[targetMonth]} ${targetYear}`;
 
   const faturasPerCard = useMemo(() => {
@@ -242,7 +243,7 @@ const DashPage = () => {
       const cycleEndDay = Math.min(closing, lastDay);
       const cycleEnd = new Date(targetYear, targetMonth, cycleEndDay, 23, 59, 59);
 
-      const cardTxs = transactions.filter(t => {
+      const cardTxs = creditTransactions.filter(t => {
         if (t.credit_card_id !== card.id || t.payment_method !== 'credit') return false;
         const txDate = parseTransactionDate(t.date as string);
         if (Number.isNaN(txDate.getTime())) return false;
@@ -269,7 +270,7 @@ const DashPage = () => {
 
       return { card, total, isPaid, isOverdue, txCount: cardTxs.length, remaining: remaining > 0 ? remaining : 0 };
     });
-  }, [creditCards, transactions, paidInvoices, targetMonth, targetYear, targetMonthLabel]);
+  }, [creditCards, creditTransactions, paidInvoices, targetMonth, targetYear, targetMonthLabel]);
 
   const totalFaturas = faturasPerCard.reduce((sum, f) => sum + f.total, 0);
   const totalFaturasAbertas = faturasPerCard.filter(f => !f.isPaid).reduce((sum, f) => sum + f.remaining, 0);

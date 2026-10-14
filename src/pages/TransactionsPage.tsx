@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useRef } from "react";
 import { useOutletContext } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { fetchAllRows } from "@/lib/fetchAllRows";
@@ -9,7 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useConnectedUserIds } from "@/hooks/useConnectedUserIds";
 import { Button } from "@/components/ui/button";
 import { DateRangeFilter } from "@/components/DateRangeFilter";
-import { filterTransactionsByDate } from "@/utils/dateFilter";
+import { filterTransactionsByDate, getDateFilterBounds } from "@/utils/dateFilter";
 import type { DateFilterOption, DateRange } from "@/utils/dateFilter";
 import { Plus, Building2 } from "lucide-react";
 import { Transaction } from "@/components/Dashboard";
@@ -59,19 +59,31 @@ const TransactionsPage = () => {
     }
   }, [user?.id, allUserIds, loadingConnections]);
 
+  // Só o período/banco filtrado é buscado no banco (null = todo o histórico)
+  const bounds = useMemo(() => getDateFilterBounds(dateFilter, dateRange), [dateFilter, dateRange]);
+  const boundsKey = bounds ? `${bounds.from}|${bounds.to}` : "all";
+
+  // Ignora respostas atrasadas ao trocar de filtro rapidamente
+  const requestIdRef = useRef(0);
+
   const loadTransactions = async () => {
     if (allUserIds.length === 0) return;
+    const requestId = ++requestIdRef.current;
     try {
-      const { data, error } = await fetchAllRows(() =>
-        supabase
+      const { data, error } = await fetchAllRows(() => {
+        let query = supabase
           .from("transactions")
           .select("*")
-          .in("user_id", allUserIds)
+          .in("user_id", allUserIds);
+        if (bounds) query = query.gte("date", bounds.from).lte("date", bounds.to);
+        if (selectedBank !== "all") query = query.eq("bank_account_id", selectedBank);
+        return query
           .order("date", { ascending: false })
-          .order("id")
-      );
+          .order("id");
+      });
 
       if (error) throw error;
+      if (requestId !== requestIdRef.current) return;
 
       const mapped = (data || []).map(t => ({
         ...t,
@@ -91,7 +103,7 @@ const TransactionsPage = () => {
     if (user?.id && !loadingConnections && allUserIds.length > 0) {
       loadTransactions();
     }
-  }, [user?.id, allUserIds, loadingConnections]);
+  }, [user?.id, allUserIds, loadingConnections, boundsKey, selectedBank]);
 
   const filteredTransactions = useMemo(() => {
     let result = filterTransactionsByDate(transactions as any, dateFilter, dateRange) as Transaction[];

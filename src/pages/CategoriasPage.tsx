@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useRef } from "react";
 import { useOutletContext } from "react-router-dom";
 import { User } from "@supabase/supabase-js";
 import { Categories } from "@/components/Categories";
@@ -7,7 +7,7 @@ import { fetchAllRows } from "@/lib/fetchAllRows";
 import { Transaction } from "@/components/Dashboard";
 import { useToast } from "@/hooks/use-toast";
 import { DateRangeFilter } from "@/components/DateRangeFilter";
-import { filterTransactionsByDate } from "@/utils/dateFilter";
+import { filterTransactionsByDate, getDateFilterBounds } from "@/utils/dateFilter";
 import type { DateFilterOption, DateRange } from "@/utils/dateFilter";
 
 interface OutletContextType {
@@ -24,15 +24,25 @@ const CategoriasPage = () => {
   const [dateFilter, setDateFilter] = useState<DateFilterOption>("thisMonth");
   const [dateRange, setDateRange] = useState<DateRange>({ start: null, end: null });
 
+  // Só o período do filtro é buscado no banco (null = todo o histórico)
+  const bounds = useMemo(() => getDateFilterBounds(dateFilter, dateRange), [dateFilter, dateRange]);
+  const boundsKey = bounds ? `${bounds.from}|${bounds.to}` : "all";
+
+  // Ignora respostas atrasadas ao trocar de filtro rapidamente
+  const requestIdRef = useRef(0);
+
   const fetchTransactions = async () => {
-    const { data } = await fetchAllRows(() =>
-      supabase
+    const requestId = ++requestIdRef.current;
+    const { data } = await fetchAllRows(() => {
+      let query = supabase
         .from("transactions")
         .select("*")
-        .eq("user_id", user.id)
-        .order("id")
-    );
+        .eq("user_id", user.id);
+      if (bounds) query = query.gte("date", bounds.from).lte("date", bounds.to);
+      return query.order("id");
+    });
 
+    if (requestId !== requestIdRef.current) return;
     if (data) {
       const mapped = data.map(t => ({
         ...t,
@@ -58,16 +68,18 @@ const CategoriasPage = () => {
     }
   };
 
-  const loadData = async () => {
-    await Promise.all([fetchTransactions(), fetchCategories()]);
-    setLoading(false);
-  };
-
   useEffect(() => {
     if (user?.id) {
-      loadData();
+      fetchCategories();
     }
   }, [user?.id]);
+
+  // Recarrega as transações ao trocar de período
+  useEffect(() => {
+    if (user?.id) {
+      fetchTransactions().finally(() => setLoading(false));
+    }
+  }, [user?.id, boundsKey]);
 
   const filteredTransactions = useMemo(
     () => filterTransactionsByDate(transactions as any, dateFilter, dateRange) as unknown as Transaction[],

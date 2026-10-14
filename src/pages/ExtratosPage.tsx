@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useRef } from "react";
 import { useOutletContext } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { fetchAllRows } from "@/lib/fetchAllRows";
@@ -8,7 +8,7 @@ import { TransactionList } from "@/components/TransactionList";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useConnectedUserIds } from "@/hooks/useConnectedUserIds";
 import { DateRangeFilter } from "@/components/DateRangeFilter";
-import { filterTransactionsByDate } from "@/utils/dateFilter";
+import { filterTransactionsByDate, getDateFilterBounds } from "@/utils/dateFilter";
 import type { DateFilterOption, DateRange } from "@/utils/dateFilter";
 import { Building2, ArrowUpCircle, ArrowDownCircle, Wallet } from "lucide-react";
 import { Transaction } from "@/components/Dashboard";
@@ -51,27 +51,6 @@ const ExtratosPage = () => {
                 setSelectedBankId(loadedBanks[0].id);
             }
 
-            // Load all transactions for all connected users so we can calculate balances
-            const { data: transData, error: transError } = await fetchAllRows(() =>
-                supabase
-                    .from("transactions")
-                    .select("*")
-                    .in("user_id", allUserIds)
-                    .not("bank_account_id", "is", null)
-                    .order("date", { ascending: false })
-                    .order("id")
-            );
-
-            if (transError) throw transError;
-
-            const mapped = (transData || []).map((t: any) => ({
-                ...t,
-                amount: Number(t.amount),
-                date: t.date || t.created_at,
-                type: t.type as "income" | "expense"
-            }));
-            setTransactions(mapped);
-
             const { byBank } = await fetchBalanceSummary(allUserIds);
             setBankBalances(byBank);
         } catch (error) {
@@ -81,28 +60,71 @@ const ExtratosPage = () => {
         }
     };
 
+    // Só as transações do banco selecionado no período filtrado
+    const bounds = useMemo(() => getDateFilterBounds(dateFilter, dateRange), [dateFilter, dateRange]);
+    const boundsKey = bounds ? `${bounds.from}|${bounds.to}` : "all";
+
+    // Ignora respostas atrasadas ao trocar de banco/período rapidamente
+    const requestIdRef = useRef(0);
+
+    const loadPeriodTransactions = async () => {
+        if (!selectedBankId || allUserIds.length === 0) return;
+        const requestId = ++requestIdRef.current;
+        try {
+            const { data: transData, error: transError } = await fetchAllRows(() => {
+                let query = supabase
+                    .from("transactions")
+                    .select("*")
+                    .in("user_id", allUserIds)
+                    .eq("bank_account_id", selectedBankId);
+                if (bounds) query = query.gte("date", bounds.from).lte("date", bounds.to);
+                return query
+                    .order("date", { ascending: false })
+                    .order("id");
+            });
+
+            if (transError) throw transError;
+            if (requestId !== requestIdRef.current) return;
+
+            const mapped = (transData || []).map((t: any) => ({
+                ...t,
+                amount: Number(t.amount),
+                date: t.date || t.created_at,
+                type: t.type as "income" | "expense"
+            }));
+            setTransactions(mapped);
+        } catch (error) {
+            console.error("Error loading extratos transactions:", error);
+        }
+    };
+
+    const reloadAll = () => {
+        loadInitialData();
+        loadPeriodTransactions();
+    };
+
     useEffect(() => {
         if (user?.id && !loadingConnections && allUserIds.length > 0) {
             loadInitialData();
         }
     }, [user?.id, allUserIds, loadingConnections]);
 
+    useEffect(() => {
+        if (user?.id && !loadingConnections && allUserIds.length > 0) {
+            loadPeriodTransactions();
+        }
+    }, [user?.id, allUserIds, loadingConnections, selectedBankId, boundsKey]);
+
     // Derived state for the selected bank
     const selectedBank = banks.find(b => b.id === selectedBankId);
-
-    // Filter transactions exactly for the selected bank
-    const bankTransactions = useMemo(() => {
-        if (!selectedBankId) return [];
-        return transactions.filter(t => t.bank_account_id === selectedBankId);
-    }, [transactions, selectedBankId]);
 
     // General Balance for the selected bank (All time, calculado no banco de dados)
     const bankTotalBalance = selectedBankId ? bankBalances[selectedBankId] ?? 0 : 0;
 
     // Transactions filtered by DATE for the UI List
     const periodTransactions = useMemo(() => {
-        return filterTransactionsByDate(bankTransactions as any, dateFilter, dateRange) as Transaction[];
-    }, [bankTransactions, dateFilter, dateRange]);
+        return filterTransactionsByDate(transactions as any, dateFilter, dateRange) as Transaction[];
+    }, [transactions, dateFilter, dateRange]);
 
     // Period Summary (Income/Expense in the selected month/period)
     const periodSummary = useMemo(() => {
@@ -259,7 +281,7 @@ const ExtratosPage = () => {
                                         <TransactionList
                                             transactions={periodTransactions}
                                             showAll={true}
-                                            onTransactionDeleted={loadInitialData}
+                                            onTransactionDeleted={reloadAll}
                                             currentUserId={user.id}
                                         />
                                     )}

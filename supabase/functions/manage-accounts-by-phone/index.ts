@@ -5,6 +5,7 @@ import autoTable from "npm:jspdf-autotable";
 import { logoBase64 } from "./logo.ts";
 import { isUserSubscriptionInactive, SUBSCRIPTION_BLOCK_MESSAGE, SUBSCRIPTION_INACTIVE_CODE } from "../_shared/subscription.ts";
 import { isServiceOrSuperAdmin, unauthorizedResponse } from "../_shared/service-auth.ts";
+import { fetchAllRows } from "../_shared/fetch-all.ts";
 
 const corsHeaders = {
     'Access-Control-Allow-Origin': '*',
@@ -125,13 +126,16 @@ serve(async (req) => {
                     txQuery = txQuery.gte('date', startDate).lt('date', endDate);
                 }
 
-                txQuery = txQuery.limit(maxRows);
-
-                const { data: cardTx } = await txQuery;
+                // Totais somam TODAS as transações do período (paginado, sem o teto de
+                // 1000 linhas); só a lista devolvida é limitada a maxRows.
+                const orderedTxQuery = txQuery.order('id');
+                const { data: allCardTx, error: cardTxErr } = await fetchAllRows(() => orderedTxQuery);
+                if (cardTxErr) throw cardTxErr;
+                const listedIds = new Set(allCardTx.slice(0, maxRows).map((t: any) => t.id));
 
                 // Calcular resumo por cartão
                 const cardSummaries = userCards.map((card: any) => {
-                    const cardTransactions = (cardTx || []).filter((t: any) => t.credit_card_id === card.id);
+                    const cardTransactions = allCardTx.filter((t: any) => t.credit_card_id === card.id);
                     const totalSpent = cardTransactions.reduce((sum: number, t: any) => {
                         return sum + (t.type === 'expense' ? Number(t.amount) || 0 : 0);
                     }, 0);
@@ -162,7 +166,7 @@ serve(async (req) => {
                         available_limit: availableLimit !== null ? Math.round(availableLimit * 100) / 100 : null,
                         usage_percentage: cardLimit > 0 ? Math.round((netSpent / cardLimit) * 10000) / 100 : null,
                         transaction_count: cardTransactions.length,
-                        transactions: cardTransactions.map((t: any) => ({
+                        transactions: cardTransactions.filter((t: any) => listedIds.has(t.id)).map((t: any) => ({
                             id: t.id,
                             amount: t.amount,
                             type: t.type,
@@ -234,8 +238,10 @@ serve(async (req) => {
                     txQuery = txQuery.gte('date', startDate).lt('date', endDate);
                 }
 
-                const { data: txList } = await txQuery.limit(200);
-                const transactions = txList || [];
+                const orderedTxQuery = txQuery.order('id');
+                const { data: txList, error: txListErr } = await fetchAllRows(() => orderedTxQuery);
+                if (txListErr) throw txListErr;
+                const transactions = txList;
 
                 const totalFatura = transactions
                     .filter((t: any) => t.type === 'expense')
