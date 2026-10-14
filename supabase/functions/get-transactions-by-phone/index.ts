@@ -194,7 +194,13 @@ serve(async (req) => {
     const totalExpense = transactions?.filter((t: any) => t.type === 'expense')
       .reduce((sum: number, t: any) => sum + parseFloat(t.amount), 0) || 0;
 
-    const balance = totalIncome - totalExpense;
+    // Saldo com a mesma regra do app (get_balance_summary): compras no crédito vão
+    // para a fatura e não saem da conta; receita "pagamento_fatura" não é dinheiro novo.
+    const balance = (transactions || []).reduce((sum: number, t: any) => {
+      if (t.type === 'income' && t.category !== 'pagamento_fatura') return sum + parseFloat(t.amount);
+      if (t.type === 'expense' && t.payment_method !== 'credit') return sum - parseFloat(t.amount);
+      return sum;
+    }, 0);
 
     console.log(`Found ${transactions?.length || 0} transactions for user ${userId}`);
 

@@ -2,6 +2,7 @@ import { useEffect, useState, useMemo } from "react";
 import { useOutletContext } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { fetchAllRows } from "@/lib/fetchAllRows";
+import { fetchBalanceSummary } from "@/lib/balanceSummary";
 import { User } from "@supabase/supabase-js";
 import { TransactionList } from "@/components/TransactionList";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -25,6 +26,7 @@ const ExtratosPage = () => {
     const [banks, setBanks] = useState<{ id: string, name: string, color: string }[]>([]);
     const [selectedBankId, setSelectedBankId] = useState<string | null>(null);
     const [loading, setLoading] = useState(true);
+    const [bankBalances, setBankBalances] = useState<Record<string, number>>({});
 
     const [dateFilter, setDateFilter] = useState<DateFilterOption>("thisMonth");
     const [dateRange, setDateRange] = useState<DateRange>({ start: null, end: null });
@@ -69,6 +71,9 @@ const ExtratosPage = () => {
                 type: t.type as "income" | "expense"
             }));
             setTransactions(mapped);
+
+            const { byBank } = await fetchBalanceSummary(allUserIds);
+            setBankBalances(byBank);
         } catch (error) {
             console.error("Error loading extratos data:", error);
         } finally {
@@ -91,14 +96,8 @@ const ExtratosPage = () => {
         return transactions.filter(t => t.bank_account_id === selectedBankId);
     }, [transactions, selectedBankId]);
 
-    // General Balance for the selected bank (All time, all transactions)
-    const bankTotalBalance = useMemo(() => {
-        return bankTransactions.reduce((acc, t) => {
-            if (t.type === "income" && t.category !== "pagamento_fatura") return acc + t.amount;
-            if (t.type === "expense" && t.payment_method !== "credit") return acc - t.amount;
-            return acc;
-        }, 0);
-    }, [bankTransactions]);
+    // General Balance for the selected bank (All time, calculado no banco de dados)
+    const bankTotalBalance = selectedBankId ? bankBalances[selectedBankId] ?? 0 : 0;
 
     // Transactions filtered by DATE for the UI List
     const periodTransactions = useMemo(() => {

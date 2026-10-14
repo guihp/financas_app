@@ -2,6 +2,7 @@ import { useEffect, useState, useMemo } from "react";
 import { useOutletContext } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { fetchAllRows } from "@/lib/fetchAllRows";
+import { fetchBalanceSummary } from "@/lib/balanceSummary";
 import { User } from "@supabase/supabase-js";
 import { TransactionList } from "@/components/TransactionList";
 import { AddTransactionFab } from "@/components/AddTransactionFab";
@@ -197,21 +198,18 @@ const DashPage = () => {
     return new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0, 23, 59, 59, 999);
   }, [dateFilter, dateRange.start, dateRange.end]);
 
-  const balance = useMemo(() => {
-    return transactions
-      .filter((t) => {
-        if (!balanceCutoff) return true;
-        const txDate = parseTransactionDate(t.date as string);
-        if (Number.isNaN(txDate.getTime())) return false;
-        return txDate <= balanceCutoff;
-      })
-      .filter(t => t.category !== "transferencia")
-      .reduce((sum, t) => {
-        if (t.type === "income" && t.category !== "pagamento_fatura") return sum + Number(t.amount);
-        if (t.type === "expense" && t.payment_method !== "credit") return sum - Number(t.amount);
-        return sum;
-      }, 0);
-  }, [transactions, balanceCutoff]);
+  // Saldo calculado no banco (get_balance_summary). Recarrega quando as transações
+  // mudam (add/delete chamam loadTransactions) ou quando o filtro de período muda.
+  const [balance, setBalance] = useState(0);
+  useEffect(() => {
+    if (!user?.id || loadingConnections) return;
+    const ids = allUserIds.length > 0 ? allUserIds : [user.id];
+    let cancelled = false;
+    fetchBalanceSummary(ids, balanceCutoff)
+      .then(summary => { if (!cancelled) setBalance(summary.total); })
+      .catch(error => console.error("Error loading balance:", error));
+    return () => { cancelled = true; };
+  }, [user?.id, allUserIds, loadingConnections, transactions, balanceCutoff]);
 
   // Credit expenses (faturas) — calculado por ciclo de fechamento baseado no filtro
   const now = new Date();

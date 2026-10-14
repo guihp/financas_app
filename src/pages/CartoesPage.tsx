@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useOutletContext } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { fetchAllRows } from "@/lib/fetchAllRows";
+import { fetchBalanceSummary } from "@/lib/balanceSummary";
 import { User } from "@supabase/supabase-js";
 import { useConnectedUserIds } from "@/hooks/useConnectedUserIds";
 import { parseTransactionDate } from "@/utils/dateFilter";
@@ -122,28 +123,8 @@ const CartoesPage = () => {
                 .order("name");
             if (error) throw error;
 
-            // Fetch transactions to calculate real balances
-            const { data: transData } = await fetchAllRows(() =>
-                supabase
-                    .from("transactions")
-                    .select("bank_account_id, amount, type, payment_method, category")
-                    .in("user_id", allUserIds)
-                    .not("bank_account_id", "is", null)
-                    .order("id")
-            );
-
-            const bankBalances: Record<string, number> = {};
-            if (transData) {
-                transData.forEach((t: any) => {
-                    const bId = t.bank_account_id;
-                    if (!bankBalances[bId]) bankBalances[bId] = 0;
-                    if (t.type === "income" && t.category !== "pagamento_fatura") {
-                        bankBalances[bId] += Number(t.amount);
-                    } else if (t.type === "expense" && t.payment_method !== "credit") {
-                        bankBalances[bId] -= Number(t.amount);
-                    }
-                });
-            }
+            // Saldo real por banco, calculado no banco de dados
+            const { byBank: bankBalances } = await fetchBalanceSummary(allUserIds);
 
             const banksWithBalance = (data || []).map(b => ({
                 ...b,

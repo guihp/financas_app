@@ -5,7 +5,6 @@ import autoTable from "npm:jspdf-autotable";
 import { logoBase64 } from "./logo.ts";
 import { isUserSubscriptionInactive, SUBSCRIPTION_BLOCK_MESSAGE, SUBSCRIPTION_INACTIVE_CODE } from "../_shared/subscription.ts";
 import { isServiceOrSuperAdmin, unauthorizedResponse } from "../_shared/service-auth.ts";
-import { fetchAllRows } from "../_shared/fetch-all.ts";
 
 const corsHeaders = {
     'Access-Control-Allow-Origin': '*',
@@ -358,35 +357,24 @@ serve(async (req) => {
                 .eq('user_id', userId)
                 .order('name');
 
-            const { data: transactions } = await fetchAllRows(() =>
-                supabase
-                    .from('transactions')
-                    .select('amount, type, bank_account_id')
-                    .eq('user_id', userId)
-                    .not('bank_account_id', 'is', null)
-                    .order('id')
+            // Mesma regra de saldo do app (RPC get_balance_summary). O saldo inicial já
+            // entra como transação "Saldo Inicial", então bank.balance não é somado de novo.
+            const { data: summary, error: summaryError } = await supabase
+                .rpc('get_balance_summary', { p_user_ids: [userId] });
+            if (summaryError) throw summaryError;
+
+            const summaryByBank = new Map<string, any>(
+                (summary || []).map((row: any) => [row.bank_account_id, row])
             );
 
             const banksWithBalance = (banks || []).map((bank: any) => {
-                let income = 0;
-                let expense = 0;
-
-                (transactions || []).forEach((t: any) => {
-                    if (t.bank_account_id === bank.id) {
-                        const amount = Number(t.amount) || 0;
-                        if (t.type === 'income') income += amount;
-                        else if (t.type === 'expense') expense += amount;
-                    }
-                });
-
-                const initialBalance = Number(bank.balance) || 0;
-
+                const row = summaryByBank.get(bank.id);
                 return {
                     ...bank,
-                    initial_balance: initialBalance,
-                    calculated_balance: initialBalance + income - expense,
-                    income,
-                    expense
+                    initial_balance: Number(bank.balance) || 0,
+                    calculated_balance: Number(row?.balance) || 0,
+                    income: Number(row?.income) || 0,
+                    expense: Number(row?.expense) || 0
                 };
             });
 
