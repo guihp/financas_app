@@ -5,6 +5,7 @@ import autoTable from "npm:jspdf-autotable";
 import { logoBase64 } from "./logo.ts";
 import { isUserSubscriptionInactive, SUBSCRIPTION_BLOCK_MESSAGE, SUBSCRIPTION_INACTIVE_CODE } from "../_shared/subscription.ts";
 import { isServiceOrSuperAdmin, unauthorizedResponse } from "../_shared/service-auth.ts";
+import { fetchAllRows } from "../_shared/fetch-all.ts";
 
 const corsHeaders = {
     'Access-Control-Allow-Origin': '*',
@@ -357,11 +358,14 @@ serve(async (req) => {
                 .eq('user_id', userId)
                 .order('name');
 
-            const { data: transactions } = await supabase
-                .from('transactions')
-                .select('amount, type, bank_account_id')
-                .eq('user_id', userId)
-                .not('bank_account_id', 'is', null);
+            const { data: transactions } = await fetchAllRows(() =>
+                supabase
+                    .from('transactions')
+                    .select('amount, type, bank_account_id')
+                    .eq('user_id', userId)
+                    .not('bank_account_id', 'is', null)
+                    .order('id')
+            );
 
             const banksWithBalance = (banks || []).map((bank: any) => {
                 let income = 0;

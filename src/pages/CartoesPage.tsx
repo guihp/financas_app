@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useOutletContext } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
+import { fetchAllRows } from "@/lib/fetchAllRows";
 import { User } from "@supabase/supabase-js";
 import { useConnectedUserIds } from "@/hooks/useConnectedUserIds";
 import { parseTransactionDate } from "@/utils/dateFilter";
@@ -122,11 +123,14 @@ const CartoesPage = () => {
             if (error) throw error;
 
             // Fetch transactions to calculate real balances
-            const { data: transData } = await supabase
-                .from("transactions")
-                .select("bank_account_id, amount, type, payment_method, category")
-                .in("user_id", allUserIds)
-                .not("bank_account_id", "is", null);
+            const { data: transData } = await fetchAllRows(() =>
+                supabase
+                    .from("transactions")
+                    .select("bank_account_id, amount, type, payment_method, category")
+                    .in("user_id", allUserIds)
+                    .not("bank_account_id", "is", null)
+                    .order("id")
+            );
 
             const bankBalances: Record<string, number> = {};
             if (transData) {
@@ -155,12 +159,15 @@ const CartoesPage = () => {
     const loadFaturasTotals = async (cardsList: CreditCardType[]) => {
         if (allUserIds.length === 0) return;
         try {
-            const { data, error } = await supabase
-                .from("transactions")
-                .select("credit_card_id, amount, date")
-                .in("user_id", allUserIds)
-                .eq("payment_method", "credit")
-                .not("credit_card_id", "is", null);
+            const { data, error } = await fetchAllRows(() =>
+                supabase
+                    .from("transactions")
+                    .select("credit_card_id, amount, date")
+                    .in("user_id", allUserIds)
+                    .eq("payment_method", "credit")
+                    .not("credit_card_id", "is", null)
+                    .order("id")
+            );
 
             if (error) throw error;
             const totals: Record<string, number> = {};

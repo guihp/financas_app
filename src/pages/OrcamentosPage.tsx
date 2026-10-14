@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { fetchAllRows } from "@/lib/fetchAllRows";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -111,13 +112,16 @@ const OrcamentosPage = () => {
       const [y, m] = currentMonthStr.split("-").map(Number);
       const lastDay = new Date(y, m, 0).getDate();
       const endDateStr = `${currentMonthStr}-${String(lastDay).padStart(2, "0")}`;
-      const { data: txData, error: txErr } = await supabase
-        .from("transactions")
-        .select("amount, category, user_id")
-        .in("user_id", allUserIds)
-        .eq("type", "expense")
-        .gte("date", `${currentMonthStr}-01`)
-        .lte("date", endDateStr);
+      const { data: txData, error: txErr } = await fetchAllRows(() =>
+        supabase
+          .from("transactions")
+          .select("amount, category, user_id")
+          .in("user_id", allUserIds)
+          .eq("type", "expense")
+          .gte("date", `${currentMonthStr}-01`)
+          .lte("date", endDateStr)
+          .order("id")
+      );
 
       if (txErr) throw txErr;
 

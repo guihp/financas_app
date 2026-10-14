@@ -1,6 +1,7 @@
 import { useEffect, useState, useMemo } from "react";
 import { useOutletContext } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
+import { fetchAllRows } from "@/lib/fetchAllRows";
 import { User } from "@supabase/supabase-js";
 import { TransactionList } from "@/components/TransactionList";
 import { AddTransactionFab } from "@/components/AddTransactionFab";
@@ -51,11 +52,14 @@ const DashPage = () => {
     }
     try {
       // Load transactions
-      const { data, error } = await supabase
-        .from("transactions")
-        .select("*")
-        .in("user_id", ids)
-        .order("date", { ascending: false });
+      const { data, error } = await fetchAllRows(() =>
+        supabase
+          .from("transactions")
+          .select("*")
+          .in("user_id", ids)
+          .order("date", { ascending: false })
+          .order("id")
+      );
 
       if (error) throw error;
 
@@ -81,11 +85,14 @@ const DashPage = () => {
       setCreditCards(cardsData || []);
 
       // Load paid invoice descriptions with amounts
-      const { data: paidData } = await supabase
-        .from("transactions")
-        .select("description, amount, credit_card_id")
-        .in("user_id", ids)
-        .eq("category", "pagamento_fatura");
+      const { data: paidData } = await fetchAllRows(() =>
+        supabase
+          .from("transactions")
+          .select("description, amount, credit_card_id")
+          .in("user_id", ids)
+          .eq("category", "pagamento_fatura")
+          .order("id")
+      );
       setPaidInvoices(
         paidData?.map(p => ({
           description: p.description || "",

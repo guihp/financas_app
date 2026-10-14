@@ -3,6 +3,7 @@ import { useOutletContext } from "react-router-dom";
 import { User } from "@supabase/supabase-js";
 import { Categories } from "@/components/Categories";
 import { supabase } from "@/integrations/supabase/client";
+import { fetchAllRows } from "@/lib/fetchAllRows";
 import { Transaction } from "@/components/Dashboard";
 import { useToast } from "@/hooks/use-toast";
 import { DateRangeFilter } from "@/components/DateRangeFilter";
@@ -24,10 +25,13 @@ const CategoriasPage = () => {
   const [dateRange, setDateRange] = useState<DateRange>({ start: null, end: null });
 
   const fetchTransactions = async () => {
-    const { data } = await supabase
-      .from("transactions")
-      .select("*")
-      .eq("user_id", user.id);
+    const { data } = await fetchAllRows(() =>
+      supabase
+        .from("transactions")
+        .select("*")
+        .eq("user_id", user.id)
+        .order("id")
+    );
 
     if (data) {
       const mapped = data.map(t => ({

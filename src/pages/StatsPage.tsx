@@ -3,6 +3,7 @@ import { useOutletContext } from "react-router-dom";
 import { User } from "@supabase/supabase-js";
 import { Statistics } from "@/components/Statistics";
 import { supabase } from "@/integrations/supabase/client";
+import { fetchAllRows } from "@/lib/fetchAllRows";
 import { useConnectedUserIds } from "@/hooks/useConnectedUserIds";
 import { DateRangeFilter } from "@/components/DateRangeFilter";
 import { filterTransactionsByDate } from "@/utils/dateFilter";
@@ -31,11 +32,14 @@ const StatsPage = () => {
     const fetchTransactions = async () => {
       if (allUserIds.length === 0) return;
       try {
-        const { data, error } = await supabase
-          .from("transactions")
-          .select("*")
-          .in("user_id", allUserIds)
-          .order("date", { ascending: false });
+        const { data, error } = await fetchAllRows(() =>
+          supabase
+            .from("transactions")
+            .select("*")
+            .in("user_id", allUserIds)
+            .order("date", { ascending: false })
+            .order("id")
+        );
 
         if (error) throw error;
 

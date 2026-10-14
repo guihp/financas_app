@@ -1,6 +1,7 @@
 import { useEffect, useState, useMemo } from "react";
 import { useOutletContext } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
+import { fetchAllRows } from "@/lib/fetchAllRows";
 import { User } from "@supabase/supabase-js";
 import { TransactionList } from "@/components/TransactionList";
 import { AddTransactionFab } from "@/components/AddTransactionFab";
@@ -61,11 +62,14 @@ const TransactionsPage = () => {
   const loadTransactions = async () => {
     if (allUserIds.length === 0) return;
     try {
-      const { data, error } = await supabase
-        .from("transactions")
-        .select("*")
-        .in("user_id", allUserIds)
-        .order("date", { ascending: false });
+      const { data, error } = await fetchAllRows(() =>
+        supabase
+          .from("transactions")
+          .select("*")
+          .in("user_id", allUserIds)
+          .order("date", { ascending: false })
+          .order("id")
+      );
 
       if (error) throw error;
 

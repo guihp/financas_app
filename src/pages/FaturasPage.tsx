@@ -1,6 +1,7 @@
 import { useEffect, useState, useMemo } from "react";
 import { useOutletContext } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
+import { fetchAllRows } from "@/lib/fetchAllRows";
 import { User } from "@supabase/supabase-js";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -108,25 +109,31 @@ const FaturasPage = () => {
             setBanks(banksData || []);
 
             // Load credit transactions for a wide range to cover installments
-            const { data: txData, error: txError } = await supabase
-                .from("transactions")
-                .select(
-                    "id, description, amount, date, category, credit_card_id, total_installments, installment_number, installment_group_id"
-                )
-                .in("user_id", allUserIds)
-                .eq("payment_method", "credit")
-                .not("credit_card_id", "is", null)
-                .order("date", { ascending: false });
+            const { data: txData, error: txError } = await fetchAllRows(() =>
+                supabase
+                    .from("transactions")
+                    .select(
+                        "id, description, amount, date, category, credit_card_id, total_installments, installment_number, installment_group_id"
+                    )
+                    .in("user_id", allUserIds)
+                    .eq("payment_method", "credit")
+                    .not("credit_card_id", "is", null)
+                    .order("date", { ascending: false })
+                    .order("id")
+            );
 
             if (txError) throw txError;
             setTransactions(txData || []);
 
             // Load explicit invoice payments (with amounts)
-            const { data: paymentsData, error: paymentsError } = await supabase
-                .from("transactions")
-                .select("description, amount, credit_card_id")
-                .in("user_id", allUserIds)
-                .eq("category", "pagamento_fatura");
+            const { data: paymentsData, error: paymentsError } = await fetchAllRows(() =>
+                supabase
+                    .from("transactions")
+                    .select("description, amount, credit_card_id")
+                    .in("user_id", allUserIds)
+                    .eq("category", "pagamento_fatura")
+                    .order("id")
+            );
 
             if (paymentsError) throw paymentsError;
             setPaidInvoices(

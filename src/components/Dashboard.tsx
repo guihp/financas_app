@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Plus, TrendingUp, TrendingDown, DollarSign, CreditCard, BarChart3, Tag, LogOut, Calendar, Settings, Shield } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
+import { fetchAllRows } from "@/lib/fetchAllRows";
 import { useToast } from "@/hooks/use-toast";
 import { User } from "@supabase/supabase-js";
 import { TransactionChart } from "./TransactionChart";
@@ -157,11 +158,14 @@ export const Dashboard = ({ user }: DashboardProps) => {
         }
 
         // Load transactions
-        const { data: transactionsData, error: transactionsError } = await supabase
-          .from('transactions')
-          .select('*')
-          .eq('user_id', user.id)
-          .order('created_at', { ascending: false });
+        const { data: transactionsData, error: transactionsError } = await fetchAllRows(() =>
+          supabase
+            .from('transactions')
+            .select('*')
+            .eq('user_id', user.id)
+            .order('created_at', { ascending: false })
+            .order('id')
+        );
 
         if (transactionsError) {
           toast({
@@ -654,11 +658,14 @@ export const Dashboard = ({ user }: DashboardProps) => {
                         onTransactionDeleted={() => {
                           // Reload transactions after deletion
                           const loadData = async () => {
-                            const { data: transactionsData } = await supabase
-                              .from('transactions')
-                              .select('*')
-                              .eq('user_id', user.id)
-                              .order('created_at', { ascending: false });
+                            const { data: transactionsData } = await fetchAllRows(() =>
+                              supabase
+                                .from('transactions')
+                                .select('*')
+                                .eq('user_id', user.id)
+                                .order('created_at', { ascending: false })
+                                .order('id')
+                            );
 
                             if (transactionsData) {
                               const mappedTransactions = transactionsData.map(t => ({
@@ -690,11 +697,14 @@ export const Dashboard = ({ user }: DashboardProps) => {
                     onTransactionDeleted={() => {
                       // Reload transactions after deletion
                       const loadData = async () => {
-                        const { data: transactionsData } = await supabase
-                          .from('transactions')
-                          .select('*')
-                          .eq('user_id', user.id)
-                          .order('created_at', { ascending: false });
+                        const { data: transactionsData } = await fetchAllRows(() =>
+                          supabase
+                            .from('transactions')
+                            .select('*')
+                            .eq('user_id', user.id)
+                            .order('created_at', { ascending: false })
+                            .order('id')
+                        );
 
                         if (transactionsData) {
                           const mappedTransactions = transactionsData.map(t => ({

@@ -1,6 +1,7 @@
 import { useEffect, useState, useMemo } from "react";
 import { useOutletContext } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
+import { fetchAllRows } from "@/lib/fetchAllRows";
 import { User } from "@supabase/supabase-js";
 import { TransactionList } from "@/components/TransactionList";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -49,12 +50,15 @@ const ExtratosPage = () => {
             }
 
             // Load all transactions for all connected users so we can calculate balances
-            const { data: transData, error: transError } = await supabase
-                .from("transactions")
-                .select("*")
-                .in("user_id", allUserIds)
-                .not("bank_account_id", "is", null)
-                .order("date", { ascending: false });
+            const { data: transData, error: transError } = await fetchAllRows(() =>
+                supabase
+                    .from("transactions")
+                    .select("*")
+                    .in("user_id", allUserIds)
+                    .not("bank_account_id", "is", null)
+                    .order("date", { ascending: false })
+                    .order("id")
+            );
 
             if (transError) throw transError;
 
